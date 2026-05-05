@@ -1,0 +1,225 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { Bell, ChevronDown, LayoutGrid, LogOut, Mail, Settings, User } from "lucide-react";
+
+import { NAV_ITEMS } from "@/config/navigation";
+import { canAccessWorkspaceModule } from "@/lib/access-control";
+import { useAuth } from "@/hooks/auth/use-auth";
+import type { AuthUser } from "@/types/auth.types";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useNotificationStore } from "@/store/notification.store";
+
+interface GlobalDhimsHeaderProps {
+  user: AuthUser;
+}
+
+export function GlobalDhimsHeader({ user }: GlobalDhimsHeaderProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+
+  const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+  const accessibleTabs = NAV_ITEMS.filter((tab) => canAccessWorkspaceModule(user, tab.module));
+  const activeTab = accessibleTabs.find(
+    (tab) => pathname === tab.href || pathname.startsWith(`${tab.href}/`)
+  );
+
+  async function handleLogout() {
+    await logout();
+    router.replace("/login");
+  }
+
+  return (
+    <header className="dashboard-shell-header" role="banner">
+      {/* ── Top row ─────────────────────────────────────────── */}
+      <div className="flex h-[52px] items-center gap-2 px-3">
+        {/* Logo */}
+        <Link
+          href="/dashboard"
+          className="shrink-0 rounded bg-white px-2 py-1"
+          aria-label="Go to dashboard"
+        >
+          <Image
+            src="/assets/nhims-logo.png"
+            alt="NHIMS"
+            width={180}
+            height={52}
+            className="h-[26px] w-auto object-contain"
+            priority
+          />
+        </Link>
+
+        {/* Vertical divider */}
+        <div className="h-5 w-px shrink-0 bg-white/20" aria-hidden="true" />
+
+        {/* System title + context */}
+        <div className="min-w-0 flex-1 hidden sm:flex sm:items-center sm:gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-semibold leading-none text-white">
+              Hospital Management Information System
+            </p>
+            <p className="mt-[3px] flex min-w-0 items-center gap-2 truncate text-[11px] leading-none text-white/55">
+              {user.facilityLogoDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- data URLs from API for facility branding
+                <img
+                  src={user.facilityLogoDataUrl}
+                  alt=""
+                  className="h-7 w-7 shrink-0 rounded-md border border-white/25 bg-white/10 object-cover"
+                />
+              ) : (
+                <span
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/25 bg-white/10 text-[10px] font-bold text-white"
+                  aria-hidden
+                >
+                  {user.facilityCode.slice(0, 2)}
+                </span>
+              )}
+              <span className="truncate">
+                <span className="font-medium text-white/90">{user.facilityName}</span>
+                {" · "}
+                {activeTab?.label ?? "Workspace"}
+                {" · "}
+                {formatRole(user.role)}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        {/* Right actions */}
+        <div className="flex items-center gap-0.5 ml-auto">
+          {/* Online badge */}
+          <span className="dashboard-online-badge mr-1.5 hidden md:inline-flex">
+            <span className="dashboard-online-dot" aria-hidden="true" />
+            <span className="text-[11px] font-medium">Online</span>
+          </span>
+
+          {/* Notifications */}
+          <button
+            className="dashboard-icon-btn relative"
+            aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
+          >
+            <Bell className="h-[18px] w-[18px]" />
+            {unreadCount > 0 && (
+              <span className="dashboard-counter-badge" aria-hidden="true">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Messages */}
+          <button className="dashboard-icon-btn" aria-label="Messages">
+            <Mail className="h-[18px] w-[18px]" />
+          </button>
+
+          {/* Apps grid */}
+          <button className="dashboard-icon-btn" aria-label="Applications">
+            <LayoutGrid className="h-[18px] w-[18px]" />
+          </button>
+
+          {/* Divider */}
+          <div className="mx-1.5 h-5 w-px shrink-0 bg-white/20" aria-hidden="true" />
+
+          {/* User dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-white/10"
+                aria-label="User menu"
+              >
+                <span
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold"
+                  style={{ background: "hsl(var(--accent))", color: "white" }}
+                  aria-hidden="true"
+                >
+                  {initials}
+                </span>
+                <span className="hidden text-[13px] font-medium text-white lg:block">
+                  {user.firstName}
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-sm font-semibold">{user.firstName} {user.lastName}</p>
+                  <p className="font-clinical text-xs text-muted-foreground">{user.username}</p>
+                  <p className="text-xs text-muted-foreground">{formatRole(user.role)}</p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/settings/profile")}>
+                <User className="mr-2 h-4 w-4" />
+                My Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/settings/security")}>
+                <Settings className="mr-2 h-4 w-4" />
+                Security Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* ── Module tab bar ───────────────────────────────────── */}
+      <nav className="dashboard-tabbar" aria-label="NHIMS modules">
+        {accessibleTabs.map((tab) => {
+          const isActive = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+          const Icon = tab.icon;
+
+          return (
+            <DropdownMenu key={tab.module}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className={`dashboard-tab ${isActive ? "active" : ""}`}
+                  aria-label={`${tab.label} module`}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>{tab.label}</span>
+                  <ChevronDown className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-48">
+                <DropdownMenuLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {tab.label}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {tab.subNav.map((item) => (
+                  <DropdownMenuItem key={item.href} asChild>
+                    <Link href={item.href}>{item.label}</Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        })}
+      </nav>
+    </header>
+  );
+}
+
+function formatRole(role: string): string {
+  return role
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
