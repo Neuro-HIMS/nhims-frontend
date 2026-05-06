@@ -1,31 +1,29 @@
 "use client";
 
 import { useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { ChevronRight, History } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useEncountersStore } from "@/store/encounters.store";
 import { STATUS_LABEL, TRIAGE_LABELS } from "@/components/nurse/lib/nurse-data";
+import type { Visit } from "@/lib/clinical-types";
 
 interface FolderVisitsProps {
-  patientId: string;
+  visits: Visit[];
   currentVisitId?: string;
+  onSelect?: (visitId: string) => void;
 }
 
-export function FolderVisits({ patientId, currentVisitId }: FolderVisitsProps) {
-  const router = useRouter();
-  const visits = useEncountersStore((s) => s.visits);
-
+export function FolderVisits({ visits, currentVisitId, onSelect }: FolderVisitsProps) {
   const list = useMemo(
-    () => visits.filter((v) => v.patientId === patientId).sort((a, b) => b.appointmentDate.localeCompare(a.appointmentDate) || b.appointmentTime.localeCompare(a.appointmentTime)),
-    [visits, patientId]
+    () =>
+      [...visits].sort(
+        (a, b) =>
+          b.appointmentDate.localeCompare(a.appointmentDate) ||
+          b.appointmentTime.localeCompare(a.appointmentTime),
+      ),
+    [visits],
   );
-
-  function open(visitId: string) {
-    router.push(`/nurse?view=folder&patientId=${patientId}&visitId=${visitId}`);
-  }
 
   if (list.length === 0) {
     return (
@@ -61,7 +59,7 @@ export function FolderVisits({ patientId, currentVisitId }: FolderVisitsProps) {
                 <tr
                   key={v.id}
                   className={`table-row-interactive ${isCurrent ? "bg-[hsl(var(--notice-info-bg))]" : ""}`}
-                  onClick={() => open(v.id)}
+                  onClick={() => onSelect?.(v.id)}
                 >
                   <td className="px-3 py-2.5 text-foreground">
                     <p className="font-clinical">{v.appointmentDate}</p>

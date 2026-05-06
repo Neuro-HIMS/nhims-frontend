@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Activity, CheckCircle2, Save } from "lucide-react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, CheckCircle2, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -10,8 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RecordsField } from "@/components/records/shared/records-field";
 import { calculateBmi, formatDateTime } from "@/components/nurse/lib/nurse-data";
-import { useEncountersStore } from "@/store/encounters.store";
+import { clinicalService } from "@/services/clinical.service";
+import { queryKeys } from "@/lib/query-keys";
 import type { Visit } from "@/lib/clinical-types";
+import type { ApiError } from "@/types/api.types";
+import type { RecordVitalsPayload } from "@/types/clinical.types";
 
 const EMPTY_VITALS = {
   systolic: "",
@@ -31,17 +35,31 @@ interface FolderVitalsProps {
   recordedBy: string;
 }
 
-export function FolderVitals({ patientId, visit, recordedBy }: FolderVitalsProps) {
-  const allVitals = useEncountersStore((s) => s.vitals);
-  const addVitals = useEncountersStore((s) => s.addVitals);
+export function FolderVitals({ visit }: FolderVitalsProps) {
+  const qc = useQueryClient();
+
+  const historyQuery = useQuery({
+    queryKey: visit ? queryKeys.clinical.vitals(visit.id) : ["clinical", "vitals", "idle"],
+    queryFn: () => clinicalService.encounterVitals(visit!.id),
+    enabled: Boolean(visit),
+  });
+
+  const recordMut = useMutation({
+    mutationFn: (payload: RecordVitalsPayload) => clinicalService.recordVitals(visit!.id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Vitals recorded", {
+        description: "Patient is now awaiting consultation.",
+      });
+      setForm(EMPTY_VITALS);
+    },
+    onError: (e: unknown) => {
+      const ax = e as { response?: { data?: ApiError } };
+      toast.error(ax.response?.data?.message ?? "Could not save vitals");
+    },
+  });
 
   const [form, setForm] = useState(EMPTY_VITALS);
-
-  const history = useMemo(
-    () => allVitals.filter((v) => v.patientId === patientId).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt)),
-    [allVitals, patientId]
-  );
-
   const bmi = calculateBmi(form.weight, form.height);
 
   function update<K extends keyof typeof form>(key: K, value: string) {
@@ -59,18 +77,20 @@ export function FolderVitals({ patientId, visit, recordedBy }: FolderVitalsProps
       toast.error("Enter at least one vital sign before saving");
       return;
     }
-    addVitals({
-      visitId: visit.id,
-      patientId,
-      ...form,
-      bmi,
-      recordedBy,
+    recordMut.mutate({
+      systolicMmHg: numOrNull(form.systolic),
+      diastolicMmHg: numOrNull(form.diastolic),
+      temperatureC: numOrNull(form.temperature),
+      pulseBpm: numOrNull(form.pulse),
+      respiratoryRateBpm: numOrNull(form.respiratoryRate),
+      spo2Pct: numOrNull(form.spo2),
+      weightKg: numOrNull(form.weight),
+      heightCm: numOrNull(form.height),
+      notes: form.notes ?? "",
     });
-    toast.success("Vitals recorded", {
-      description: "Patient is now awaiting consultation.",
-    });
-    setForm(EMPTY_VITALS);
   }
+
+  const history = historyQuery.data ?? [];
 
   return (
     <div className="space-y-4">
@@ -126,11 +146,15 @@ export function FolderVitals({ patientId, visit, recordedBy }: FolderVitalsProps
           </RecordsField>
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setForm(EMPTY_VITALS)}>
+            <Button variant="outline" onClick={() => setForm(EMPTY_VITALS)} disabled={recordMut.isPending}>
               Reset
             </Button>
-            <Button onClick={handleSave}>
-              <Save className="mr-1.5 h-4 w-4" />
+            <Button onClick={handleSave} disabled={recordMut.isPending || !visit}>
+              {recordMut.isPending ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-1.5 h-4 w-4" />
+              )}
               Save Vitals
             </Button>
           </div>
@@ -143,10 +167,14 @@ export function FolderVitals({ patientId, visit, recordedBy }: FolderVitalsProps
           <CardDescription>{history.length} record{history.length === 1 ? "" : "s"} on file</CardDescription>
         </CardHeader>
         <CardContent>
-          {history.length === 0 ? (
+          {historyQuery.isLoading ? (
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          ) : history.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-8 text-center">
               <CheckCircle2 className="h-7 w-7 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">No vitals recorded yet for this patient.</p>
+              <p className="text-sm text-muted-foreground">No vitals recorded yet for this visit.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -168,16 +196,20 @@ export function FolderVitals({ patientId, visit, recordedBy }: FolderVitalsProps
                 <tbody className="divide-y divide-border">
                   {history.map((v) => (
                     <tr key={v.id}>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{formatDateTime(v.recordedAt)}</td>
-                      <td className="px-3 py-2 font-clinical">{v.systolic && v.diastolic ? `${v.systolic}/${v.diastolic}` : "—"}</td>
-                      <td className="px-3 py-2 font-clinical">{v.temperature || "—"}</td>
-                      <td className="px-3 py-2 font-clinical">{v.pulse || "—"}</td>
-                      <td className="px-3 py-2 font-clinical">{v.spo2 || "—"}</td>
-                      <td className="px-3 py-2 font-clinical">{v.respiratoryRate || "—"}</td>
-                      <td className="px-3 py-2 font-clinical">{v.weight || "—"}</td>
-                      <td className="px-3 py-2 font-clinical">{v.height || "—"}</td>
-                      <td className="px-3 py-2 font-clinical">{v.bmi || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{v.recordedBy}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {v.recordedAt ? formatDateTime(v.recordedAt) : "—"}
+                      </td>
+                      <td className="px-3 py-2 font-clinical">
+                        {v.systolicMmHg && v.diastolicMmHg ? `${v.systolicMmHg}/${v.diastolicMmHg}` : "—"}
+                      </td>
+                      <td className="px-3 py-2 font-clinical">{format(v.temperatureC)}</td>
+                      <td className="px-3 py-2 font-clinical">{format(v.pulseBpm)}</td>
+                      <td className="px-3 py-2 font-clinical">{format(v.spo2Pct)}</td>
+                      <td className="px-3 py-2 font-clinical">{format(v.respiratoryRateBpm)}</td>
+                      <td className="px-3 py-2 font-clinical">{format(v.weightKg)}</td>
+                      <td className="px-3 py-2 font-clinical">{format(v.heightCm)}</td>
+                      <td className="px-3 py-2 font-clinical">{format(v.bmi)}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{v.recordedByName || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -188,6 +220,18 @@ export function FolderVitals({ patientId, visit, recordedBy }: FolderVitalsProps
       </Card>
     </div>
   );
+}
+
+function numOrNull(s: string): number | null {
+  const t = s.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function format(v: number | string | null | undefined) {
+  if (v === null || v === undefined || v === "") return "—";
+  return String(v);
 }
 
 function DualField({ label, left, right }: { label: string; left: React.ReactNode; right: React.ReactNode }) {

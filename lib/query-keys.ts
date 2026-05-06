@@ -34,6 +34,30 @@ export const queryKeys = {
       consultation: (visitId: string) => ["opd", "consultation", visitId] as const,
       vitals: (visitId: string) => ["opd", "vitals", visitId] as const,
     },
+
+    // ── Clinical encounters (the workflow hub: nurse, OPD, lab, pharmacy)
+    clinical: {
+      all: ["clinical"] as const,
+      today: ["clinical", "encounters", "today"] as const,
+      encounters: ["clinical", "encounters"] as const,
+      encounter: (id: string) => ["clinical", "encounters", id] as const,
+      byPatient: (patientId: string) => ["clinical", "encounters", "by-patient", patientId] as const,
+      vitals: (encounterId: string) => ["clinical", "encounters", encounterId, "vitals"] as const,
+      patientVitals: (patientId: string) => ["clinical", "patients", patientId, "vitals"] as const,
+      consultations: (encounterId: string) =>
+        ["clinical", "encounters", encounterId, "consultations"] as const,
+      labOrders: (encounterId: string) => ["clinical", "encounters", encounterId, "lab-orders"] as const,
+      labWorklist: ["clinical", "lab", "worklist"] as const,
+      labOrder: (id: string) => ["clinical", "lab-orders", id] as const,
+      prescriptions: (encounterId: string) =>
+        ["clinical", "encounters", encounterId, "prescriptions"] as const,
+      pharmacyQueue: ["clinical", "pharmacy", "queue"] as const,
+      prescription: (id: string) => ["clinical", "prescriptions", id] as const,
+      admissions: (encounterId: string) => ["clinical", "encounters", encounterId, "admissions"] as const,
+      referrals: (encounterId: string) => ["clinical", "encounters", encounterId, "referrals"] as const,
+      alerts: (patientId: string) => ["clinical", "patients", patientId, "alerts"] as const,
+      folder: (encounterId: string) => ["clinical", "encounters", encounterId, "folder"] as const,
+    },
   
     // ── IPD
     ipd: {

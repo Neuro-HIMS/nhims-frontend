@@ -65,3 +65,44 @@ export function canRecordVitals(role: UserRole | undefined): boolean {
   if (!role) return false;
   return role === "NURSE" || role === "MIDWIFE" || role === "MEDICAL_OFFICER" || role === "FACILITY_ADMIN" || role === "SUPER_ADMIN";
 }
+
+// ── Role-shaped folder slices ─────────────────────────────────────────────
+// Each slice is what the backend's EncounterFolderService.viewFor returns
+// for that role. These predicates let UI components decide which tabs to
+// render without having to know the full role table.
+
+const LAB_SLICE_ROLES: UserRole[] = ["LAB_SCIENTIST", "LAB_TECH"];
+const PHARMACY_SLICE_ROLES: UserRole[] = ["PHARMACIST", "PHARMACY_TECH"];
+const BILLING_SLICE_ROLES: UserRole[] = ["BILLING_OFFICER", "FINANCE_OFFICER"];
+const RECORDS_SLICE_ROLES: UserRole[] = ["RECORDS_OFFICER"];
+
+export function canViewLabSlice(role: UserRole | undefined): boolean {
+  return Boolean(role && LAB_SLICE_ROLES.includes(role));
+}
+
+export function canViewPharmacySlice(role: UserRole | undefined): boolean {
+  return Boolean(role && PHARMACY_SLICE_ROLES.includes(role));
+}
+
+export function canViewBillingSlice(role: UserRole | undefined): boolean {
+  return Boolean(role && BILLING_SLICE_ROLES.includes(role));
+}
+
+export function canViewRecordsSlice(role: UserRole | undefined): boolean {
+  return Boolean(role && RECORDS_SLICE_ROLES.includes(role));
+}
+
+/**
+ * The discriminator used by `FolderViewDto.kind`. Returns null for roles
+ * that have no folder access (the backend would reject the call).
+ */
+export type FolderSliceKind = "FULL" | "LAB" | "PHARMACY" | "BILLING" | "RECORDS";
+
+export function folderSliceFor(role: UserRole | undefined): FolderSliceKind | null {
+  if (canViewFullFolder(role)) return "FULL";
+  if (canViewLabSlice(role)) return "LAB";
+  if (canViewPharmacySlice(role)) return "PHARMACY";
+  if (canViewBillingSlice(role)) return "BILLING";
+  if (canViewRecordsSlice(role)) return "RECORDS";
+  return null;
+}

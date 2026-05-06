@@ -1,40 +1,100 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Activity, ChevronRight } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, ChevronRight, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { TRIAGE_LABELS, TRIAGE_ORDER, todayDateIso } from "@/components/nurse/lib/nurse-data";
-import { useEncountersStore } from "@/store/encounters.store";
+import { encounterToVisit } from "@/components/clinical/lib/encounter-adapter";
+import { clinicalService } from "@/services/clinical.service";
+import { queryKeys } from "@/lib/query-keys";
 import type { TriagePriority } from "@/lib/clinical-types";
+import type { ApiError } from "@/types/api.types";
 
 export function TriageView() {
   const today = todayDateIso();
-  const visits = useEncountersStore((s) => s.visits);
-  const setVisitPriority = useEncountersStore((s) => s.setVisitPriority);
-  const updateVisitStatus = useEncountersStore((s) => s.updateVisitStatus);
+  const qc = useQueryClient();
+
+  const todayQuery = useQuery({
+    queryKey: queryKeys.clinical.today,
+    queryFn: () => clinicalService.today(),
+    refetchInterval: 30_000,
+  });
+
+  const triageMut = useMutation({
+    mutationFn: ({
+      id,
+      priority,
+      chiefComplaint,
+    }: {
+      id: string;
+      priority: TriagePriority;
+      chiefComplaint: string;
+    }) =>
+      clinicalService.recordTriage(id, {
+        priority: mapPriority(priority),
+        chiefComplaint,
+        reasoning: "",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Triage assigned — patient sent to vitals");
+    },
+    onError: (e: unknown) => {
+      const ax = e as { response?: { data?: ApiError } };
+      toast.error(ax.response?.data?.message ?? "Could not assign triage");
+    },
+  });
+
+  function mapPriority(p: TriagePriority): "ROUTINE" | "URGENT" | "EMERGENCY" | "SEMI_URGENT" {
+    switch (p) {
+      case "emergency":
+        return "EMERGENCY";
+      case "urgent":
+        return "URGENT";
+      case "semi":
+        return "SEMI_URGENT";
+      case "routine":
+      default:
+        return "ROUTINE";
+    }
+  }
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const visits = useMemo(
+    () => (todayQuery.data ?? []).map(encounterToVisit),
+    [todayQuery.data],
+  );
 
   const queue = useMemo(() => {
     return visits
       .filter((v) => v.appointmentDate === today)
-      .filter((v) => ["awaiting-triage", "checked-in", "in-triage", "booked"].includes(v.status))
-      .sort((a, b) => TRIAGE_ORDER[a.priority] - TRIAGE_ORDER[b.priority] || a.appointmentTime.localeCompare(b.appointmentTime));
+      .filter((v) =>
+        ["awaiting-triage", "checked-in", "in-triage", "booked", "awaiting-vitals"].includes(v.status),
+      )
+      .sort(
+        (a, b) =>
+          TRIAGE_ORDER[a.priority] - TRIAGE_ORDER[b.priority] ||
+          a.appointmentTime.localeCompare(b.appointmentTime),
+      );
   }, [visits, today]);
 
   const selected = queue.find((v) => v.id === selectedId) ?? null;
 
   function assign(level: TriagePriority) {
     if (!selected) return;
-    setVisitPriority(selected.id, level);
-    updateVisitStatus(selected.id, "awaiting-vitals");
-    setSelectedId(null);
+    triageMut.mutate(
+      { id: selected.id, priority: level, chiefComplaint: selected.reason },
+      { onSuccess: () => setSelectedId(null) },
+    );
   }
 
   const triagedCount = visits.filter(
-    (v) => v.appointmentDate === today && v.priority !== "pending"
+    (v) => v.appointmentDate === today && v.priority !== "pending",
   ).length;
 
   return (
@@ -43,6 +103,11 @@ export function TriageView() {
         <p className="text-sm text-muted-foreground">
           {queue.length} awaiting triage · {triagedCount} triaged today
         </p>
+        {todayQuery.isFetching && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Refreshing
+          </span>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
@@ -113,8 +178,9 @@ export function TriageView() {
                 {(["emergency", "urgent", "semi", "routine"] as const).map((level) => (
                   <button
                     key={level}
+                    disabled={triageMut.isPending}
                     onClick={() => assign(level)}
-                    className={`flex items-center gap-3 rounded-md border-2 px-3 py-2.5 text-left text-sm font-medium transition-colors hover:opacity-90 ${
+                    className={`flex items-center gap-3 rounded-md border-2 px-3 py-2.5 text-left text-sm font-medium transition-colors hover:opacity-90 disabled:opacity-60 ${
                       level === "emergency"
                         ? "border-[hsl(var(--clinical-emergency))] bg-[hsl(var(--clinical-emergency-bg))] text-[hsl(var(--clinical-emergency))]"
                         : level === "urgent"

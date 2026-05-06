@@ -1,15 +1,15 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Loader2, Search, UserPlus } from "lucide-react";
+import { AlertCircle, CalendarPlus, Loader2, Search, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { Patient, SearchMode } from "@/components/records/lib/records-types";
-import { AppointmentBookingForm } from "@/components/appointments/appointment-booking-form";
+import { BookingFormDialog } from "@/components/booking/booking-form-dialog";
 import { HospitalPatientCard } from "@/components/records/views/hospital-patient-card";
 import { PatientResultCard } from "@/components/records/views/patient-result-card";
 import { patientSummaryToLegacyPatient } from "@/lib/patient-mapper";
@@ -38,6 +38,7 @@ export function ClientLookupView() {
   const [lastName, setLastName] = useState("");
   const [activeSearch, setActiveSearch] = useState<ActiveSearch | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
 
   const searchQuery = useQuery({
     queryKey: activeSearch ? queryKeys.patients.search(toQueryKeyParams(activeSearch)) : ["patients", "search", "idle"],
@@ -214,28 +215,24 @@ export function ClientLookupView() {
       )}
 
       {selectedPatient && selectedPatient.id && selectedPatientDetailQuery.data && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <p className="text-center text-sm font-medium text-muted-foreground">Patient card</p>
           <HospitalPatientCard patient={selectedPatientDetailQuery.data} />
+          <div className="flex justify-center">
+            <Button onClick={() => setBookingDialogOpen(true)}>
+              <CalendarPlus className="mr-1.5 h-4 w-4" />
+              Book Appointment
+            </Button>
+          </div>
         </div>
       )}
 
-      {selectedPatient && selectedPatient.id && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Book Appointment for Existing Client</CardTitle>
-            <CardDescription>
-              Service is sourced from the Finance catalog so the same name flows from booking → completion → billing.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AppointmentBookingForm
-              patient={selectedPatient}
-              patientId={selectedPatient.id}
-            />
-          </CardContent>
-        </Card>
-      )}
+      <BookingFormDialog
+        open={bookingDialogOpen}
+        onOpenChange={setBookingDialogOpen}
+        patient={selectedPatient}
+        patientId={selectedPatient?.id ?? null}
+      />
     </div>
   );
 }

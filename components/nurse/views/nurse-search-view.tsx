@@ -14,7 +14,6 @@ import { patientSummaryToLegacyPatient } from "@/lib/patient-mapper";
 import { formatPatientPublicIdLive } from "@/lib/patient-public-id";
 import { queryKeys } from "@/lib/query-keys";
 import { patientsService } from "@/services/patients.service";
-import { useEncountersStore } from "@/store/encounters.store";
 import type { PatientSearchParams } from "@/types/patients.types";
 import type { ApiError } from "@/types/api.types";
 
@@ -29,7 +28,6 @@ function toQueryKeyParams(s: ActiveSearch) {
 
 export function NurseSearchView() {
   const router = useRouter();
-  const visits = useEncountersStore((s) => s.visits);
 
   const [mode, setMode] = useState<SearchMode>("id");
   const [idQuery, setIdQuery] = useState("");
@@ -76,7 +74,10 @@ export function NurseSearchView() {
   }
 
   function openFolder(patient: Patient) {
-    router.push(`/nurse?view=folder&patientId=${encodeURIComponent(patient.patientId)}`);
+    // The folder view expects the backend patient UUID so it can fetch
+    // encounters via /api/clinical/encounters/by-patient/{uuid}.
+    if (!patient.id) return;
+    router.push(`/nurse?view=folder&patientId=${encodeURIComponent(patient.id)}`);
   }
 
   const searched = activeSearch !== null;
@@ -226,10 +227,6 @@ export function NurseSearchView() {
           </p>
 
           {results.map((patient) => {
-            const recent = visits
-              .filter((v) => v.patientId === patient.patientId)
-              .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-            const last = recent[0];
             return (
               <button
                 key={patient.patientId}
@@ -249,11 +246,6 @@ export function NurseSearchView() {
                     <p className="patient-id mt-0.5">
                       {patient.patientId} · {patient.phone}
                     </p>
-                    {last && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Last visit: {last.appointmentDate} · {last.serviceName}
-                      </p>
-                    )}
                   </div>
                   <Badge
                     variant="outline"

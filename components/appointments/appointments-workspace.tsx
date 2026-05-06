@@ -7,7 +7,7 @@ import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { QueueView } from "@/components/appointments/views/queue-view";
 import { CalendarView } from "@/components/appointments/views/calendar-view";
 import { HistoryView } from "@/components/appointments/views/history-view";
-import { BookView } from "@/components/appointments/views/book-view";
+import { BookingSearchView } from "@/components/booking/booking-search-view";
 
 const SUB_NAV = [
   { label: "Book", view: "book", href: "/appointments?view=book" },
@@ -37,7 +37,7 @@ export function AppointmentsWorkspace() {
       <ModuleSubNav items={SUB_NAV} basePath="/appointments" />
 
       <div className="pt-2">
-        {view === "book" && <BookView />}
+        {view === "book" && <BookingSearchView />}
         {view === "queue" && <QueueView />}
         {view === "calendar" && <CalendarView />}
         {view === "history" && <HistoryView />}

@@ -19,7 +19,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PatientResultCard } from "@/components/records/views/patient-result-card";
+import { MiniPatientCard } from "@/components/booking/mini-patient-card";
+import {
+  PRIORITIES,
+  VISIT_TYPES,
+  type BookingResult,
+} from "@/components/booking/lib/booking-types";
+import {
+  lookupTariff,
+  prettyRole,
+  visitTypeToGroups,
+} from "@/components/booking/lib/booking-utils";
 import type { Patient } from "@/components/records/lib/records-types";
 import { appointmentsService } from "@/services/appointments.service";
 import { financeService } from "@/services/finance.service";
@@ -28,45 +38,28 @@ import type {
   CreateAppointmentPayload,
   VisitType,
 } from "@/types/appointments.types";
-import type { ServiceCatalogDto, ServicePricingDto } from "@/types/finance.types";
+import type { ServiceCatalogDto } from "@/types/finance.types";
 import { minorToGhs, PAYER_LABEL } from "@/components/finance/finance-utils";
 import type { ApiError } from "@/types/api.types";
 
-const VISIT_TYPES: Array<{ value: VisitType; label: string }> = [
-  { value: "OPD", label: "OPD" },
-  { value: "ANC", label: "ANC" },
-  { value: "POSTNATAL", label: "Postnatal" },
-  { value: "LAB", label: "Laboratory" },
-  { value: "RADIOLOGY", label: "Radiology" },
-  { value: "WARD", label: "Ward Review" },
-  { value: "EMERGENCY", label: "Emergency" },
-  { value: "DENTAL", label: "Dental" },
-  { value: "PHARMACY", label: "Pharmacy" },
-  { value: "SPECIALIST", label: "Specialist" },
-  { value: "FOLLOW_UP", label: "Follow-up" },
-];
-
-const PRIORITIES = [
-  { value: "ROUTINE", label: "Routine" },
-  { value: "URGENT", label: "Urgent" },
-  { value: "EMERGENCY", label: "Emergency" },
-];
-
-interface BookingResult {
-  appointment: AppointmentDto;
-  patientName: string;
-  serviceName: string;
-}
-
-export function AppointmentBookingForm({
+/**
+ * The booking form proper. The mini patient card is rendered at the
+ * top-left so the operator can confirm identity while filling in the
+ * appointment metadata. The legacy form layout is preserved — only the
+ * patient header has been compacted to fit modal usage.
+ */
+export function BookingForm({
   patient,
   patientId,
   onBooked,
+  showPatientHeader = true,
 }: {
   patient: Patient;
   /** Real backend UUID for the patient — bookings need this, not the public ID. */
   patientId: string;
   onBooked?: (appt: AppointmentDto) => void;
+  /** Hide the embedded mini patient card when the parent already shows it. */
+  showPatientHeader?: boolean;
 }) {
   const qc = useQueryClient();
   const router = useRouter();
@@ -114,7 +107,6 @@ export function AppointmentBookingForm({
   const [feeOverride, setFeeOverride] = useState<string>("");
   const [booked, setBooked] = useState<BookingResult | null>(null);
 
-  // Filter services by visit-type → service-group mapping.
   const filteredServices = useMemo(() => {
     const all = services.data ?? [];
     const groups = visitTypeToGroups(visitType);
@@ -127,7 +119,10 @@ export function AppointmentBookingForm({
     [services.data, serviceId],
   );
 
-  const tariff = useMemo(() => lookupTariff(pricing.data ?? [], serviceId, payerType), [pricing.data, serviceId, payerType]);
+  const tariff = useMemo(
+    () => lookupTariff(pricing.data ?? [], serviceId, payerType),
+    [pricing.data, serviceId, payerType],
+  );
   const effectiveFee = feeOverride.trim()
     ? Math.round(Number.parseFloat(feeOverride) * 100)
     : tariff?.unitPriceMinor ?? 0;
@@ -190,12 +185,11 @@ export function AppointmentBookingForm({
     });
   }
 
-  // Re-default payer when patient changes (e.g. selecting a different result).
   useEffect(() => {
     setPayerType(patient.nhisStatus === "active" ? "NHIS" : "CASH");
     setNhisActive(patient.nhisStatus === "active");
     setNhisMemberNumber(patient.nhisCard || "");
-  }, [patient.patientId, patient.nhisStatus]);
+  }, [patient.patientId, patient.nhisStatus, patient.nhisCard]);
 
   useEffect(() => {
     const y = Number.parseInt(date.slice(0, 4), 10);
@@ -211,14 +205,26 @@ export function AppointmentBookingForm({
   }, [date, patientVisits.data]);
 
   if (booked) {
-    return <BookedConfirmation booking={booked} onAnother={() => setBooked(null)} onGoToQueue={() => router.push("/appointments?view=queue")} />;
+    return (
+      <BookedConfirmation
+        booking={booked}
+        onAnother={() => setBooked(null)}
+        onGoToQueue={() => router.push("/appointments?view=queue")}
+      />
+    );
   }
 
   const filteredCliniciansList = clinicians.data ?? [];
 
   return (
     <div className="space-y-4">
-      <PatientResultCard patient={patient} showBookButton={false} />
+      {showPatientHeader && (
+        <div className="flex">
+          <div className="w-full max-w-sm">
+            <MiniPatientCard patient={patient} />
+          </div>
+        </div>
+      )}
 
       <div className="booking-section">
         <div className="booking-section-header flex items-center gap-2">
@@ -237,7 +243,12 @@ export function AppointmentBookingForm({
               />
             </Field>
             <Field label="Time *">
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="font-clinical" />
+              <Input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="font-clinical"
+              />
             </Field>
             <Field label="Duration (mins)">
               <Input
@@ -256,7 +267,9 @@ export function AppointmentBookingForm({
                 </SelectTrigger>
                 <SelectContent>
                   {PRIORITIES.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    <SelectItem key={p.value} value={p.value}>
+                      {p.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -273,13 +286,21 @@ export function AppointmentBookingForm({
         <div className="booking-section-body">
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Visit Type *">
-              <Select value={visitType} onValueChange={(v) => { setVisitType(v as VisitType); setServiceId(""); }}>
+              <Select
+                value={visitType}
+                onValueChange={(v) => {
+                  setVisitType(v as VisitType);
+                  setServiceId("");
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {VISIT_TYPES.map((v) => (
-                    <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
+                    <SelectItem key={v.value} value={v.value}>
+                      {v.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -292,12 +313,14 @@ export function AppointmentBookingForm({
                 <SelectContent className="max-h-[320px]">
                   {filteredServices.length === 0 && (
                     <div className="p-2 text-xs text-muted-foreground">
-                      No services in this group. Switch the visit type or add the service in Finance → Service Catalog.
+                      No services in this group. Switch the visit type or add the service in
+                      Finance → Service Catalog.
                     </div>
                   )}
                   {filteredServices.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.serviceName} <span className="text-xs text-muted-foreground">· {s.serviceGroup}</span>
+                      {s.serviceName}{" "}
+                      <span className="text-xs text-muted-foreground">· {s.serviceGroup}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -311,7 +334,9 @@ export function AppointmentBookingForm({
                 </SelectTrigger>
                 <SelectContent>
                   {(payers.data ?? []).map((p) => (
-                    <SelectItem key={p} value={p}>{PAYER_LABEL[p] ?? p}</SelectItem>
+                    <SelectItem key={p} value={p}>
+                      {PAYER_LABEL[p] ?? p}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -341,7 +366,10 @@ export function AppointmentBookingForm({
             </Field>
 
             <Field label="Assigned clinician" className="md:col-span-2">
-              <Select value={clinicianId || "__unassigned"} onValueChange={(v) => setClinicianId(v === "__unassigned" ? "" : v)}>
+              <Select
+                value={clinicianId || "__unassigned"}
+                onValueChange={(v) => setClinicianId(v === "__unassigned" ? "" : v)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -349,7 +377,8 @@ export function AppointmentBookingForm({
                   <SelectItem value="__unassigned">— Unassigned —</SelectItem>
                   {filteredCliniciansList.map((c) => (
                     <SelectItem key={c.userId} value={c.userId}>
-                      {c.fullName} <span className="text-xs text-muted-foreground">· {prettyRole(c.role)}</span>
+                      {c.fullName}{" "}
+                      <span className="text-xs text-muted-foreground">· {prettyRole(c.role)}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -361,12 +390,15 @@ export function AppointmentBookingForm({
 
       <div className="booking-section">
         <div className="booking-section-header">
-          <h3 className="booking-section-title">Client status & NHIS validation</h3>
+          <h3 className="booking-section-title">Client status &amp; NHIS validation</h3>
         </div>
         <div className="booking-section-body">
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Client status (calendar year rule)">
-              <Select value={clientStatus} onValueChange={(v) => setClientStatus(v as "new" | "old")}>
+              <Select
+                value={clientStatus}
+                onValueChange={(v) => setClientStatus(v as "new" | "old")}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -429,10 +461,18 @@ export function AppointmentBookingForm({
               />
             </Field>
             <Field label="Referral source">
-              <Input value={referral} onChange={(e) => setReferral(e.target.value)} placeholder="Optional" />
+              <Input
+                value={referral}
+                onChange={(e) => setReferral(e.target.value)}
+                placeholder="Optional"
+              />
             </Field>
             <Field label="Notes">
-              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+              <Input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional"
+              />
             </Field>
           </div>
         </div>
@@ -442,16 +482,27 @@ export function AppointmentBookingForm({
         <p className="text-sm text-muted-foreground">
           {selectedService ? (
             <>
-              Booking <span className="font-medium text-foreground">{selectedService.serviceName}</span> for{" "}
-              <span className="font-medium text-foreground">{patient.firstName} {patient.lastName}</span> at{" "}
-              <span className="font-clinical">GH₵ {minorToGhs(effectiveFee)}</span>
+              Booking{" "}
+              <span className="font-medium text-foreground">{selectedService.serviceName}</span>{" "}
+              for{" "}
+              <span className="font-medium text-foreground">
+                {patient.firstName} {patient.lastName}
+              </span>{" "}
+              at <span className="font-clinical">GH₵ {minorToGhs(effectiveFee)}</span>
             </>
           ) : (
             <>Pick a service to enable booking.</>
           )}
         </p>
-        <Button onClick={submit} disabled={bookMut.isPending || !serviceId || !reason.trim()}>
-          {bookMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CalendarPlus className="mr-1.5 h-4 w-4" />}
+        <Button
+          onClick={submit}
+          disabled={bookMut.isPending || !serviceId || !reason.trim()}
+        >
+          {bookMut.isPending ? (
+            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+          ) : (
+            <CalendarPlus className="mr-1.5 h-4 w-4" />
+          )}
           Book appointment
         </Button>
       </div>
@@ -459,7 +510,15 @@ export function AppointmentBookingForm({
   );
 }
 
-function Field({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <div className={`space-y-1 ${className}`}>
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
@@ -485,51 +544,21 @@ function BookedConfirmation({
         <div>
           <p className="font-medium">Appointment booked successfully</p>
           <p className="mt-0.5 text-sm">
-            {a.appointmentNumber} · {booking.serviceName} · {a.scheduledFor ? format(new Date(a.scheduledFor), "PPpp") : ""}
+            {a.appointmentNumber} · {booking.serviceName} ·{" "}
+            {a.scheduledFor ? format(new Date(a.scheduledFor), "PPpp") : ""}
           </p>
           <p className="mt-1 text-sm">
-            Fee: GH₵ {minorToGhs(a.feeMinor)} · {PAYER_LABEL[a.payerType] ?? a.payerType}. A bill will open in Finance when the
-            appointment is marked completed.
+            Fee: GH₵ {minorToGhs(a.feeMinor)} · {PAYER_LABEL[a.payerType] ?? a.payerType}. A bill
+            will open in Finance when the appointment is marked completed.
           </p>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button onClick={onGoToQueue}>Go to today&apos;s queue</Button>
-        <Button variant="outline" onClick={onAnother}>Book another</Button>
+        <Button variant="outline" onClick={onAnother}>
+          Book another
+        </Button>
       </div>
     </div>
   );
-}
-
-function lookupTariff(
-  pricing: ServicePricingDto[],
-  serviceId: string,
-  payerType: string,
-): ServicePricingDto | null {
-  if (!serviceId) return null;
-  const direct = pricing.find((p) => p.active && p.serviceId === serviceId && p.payerType === payerType);
-  if (direct) return direct;
-  const cash = pricing.find((p) => p.active && p.serviceId === serviceId && p.payerType === "CASH");
-  return cash ?? null;
-}
-
-function visitTypeToGroups(visitType: VisitType): string[] {
-  switch (visitType) {
-    case "OPD": return ["CONSULTATION", "PROCEDURE"];
-    case "ANC":
-    case "POSTNATAL": return ["MATERNITY", "CONSULTATION"];
-    case "LAB": return ["LAB"];
-    case "RADIOLOGY": return ["IMAGING"];
-    case "WARD": return ["WARD", "CONSULTATION"];
-    case "EMERGENCY": return ["EMERGENCY", "CONSULTATION", "PROCEDURE"];
-    case "DENTAL": return ["DENTAL"];
-    case "PHARMACY": return ["PHARMACY"];
-    case "SPECIALIST": return ["CONSULTATION"];
-    case "FOLLOW_UP": return ["CONSULTATION"];
-    default: return [];
-  }
-}
-
-function prettyRole(role: string): string {
-  return role.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }

@@ -1,22 +1,30 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { calculateAge, STATUS_LABEL, TRIAGE_LABELS } from "@/components/nurse/lib/nurse-data";
-import { useEncountersStore } from "@/store/encounters.store";
+import { clinicalService } from "@/services/clinical.service";
+import { queryKeys } from "@/lib/query-keys";
 import type { Visit } from "@/lib/clinical-types";
 
 interface FolderHeaderProps {
-  patientId: string;
+  patientUuid: string;
+  patientPublicId: string;
   visit: Visit | null;
+  visits: Visit[];
   onRefresh: () => void;
 }
 
-export function FolderHeader({ patientId, visit, onRefresh }: FolderHeaderProps) {
-  const alerts = useEncountersStore((s) => s.alerts).filter((a) => a.patientId === patientId);
-  const visits = useEncountersStore((s) => s.visits).filter((v) => v.patientId === patientId);
+export function FolderHeader({ patientUuid, patientPublicId, visit, visits, onRefresh }: FolderHeaderProps) {
+  const alertsQuery = useQuery({
+    queryKey: patientUuid ? queryKeys.clinical.alerts(patientUuid) : ["clinical", "alerts", "idle"],
+    queryFn: () => clinicalService.listAlerts(patientUuid),
+    enabled: Boolean(patientUuid),
+  });
+  const alerts = alertsQuery.data ?? [];
 
   const previousVisitCount = visits.length;
   const headerVisit = visit ?? visits[0];
@@ -29,7 +37,9 @@ export function FolderHeader({ patientId, visit, onRefresh }: FolderHeaderProps)
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Patient
             </p>
-            <p className="font-medium text-foreground">No visit on record for {patientId}</p>
+            <p className="font-medium text-foreground">
+              No visit on record for {patientPublicId || "this patient"}
+            </p>
           </div>
           <Button variant="outline" size="sm" onClick={onRefresh}>
             <RefreshCw className="mr-1.5 h-4 w-4" />

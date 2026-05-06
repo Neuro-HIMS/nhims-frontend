@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AppointmentBookingForm } from "@/components/appointments/appointment-booking-form";
+import { BookingForm } from "@/components/booking/booking-form";
 import { HospitalPatientCard } from "@/components/records/views/hospital-patient-card";
 import { GHANA_REGIONS, OCCUPATION_OPTIONS } from "@/components/records/lib/records-data";
 import { RecordsField } from "@/components/records/shared/records-field";
@@ -519,7 +519,7 @@ export function RegistrationView() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <AppointmentBookingForm
+            <BookingForm
               patient={patientDtoToLegacyPatient(registeredDto)}
               patientId={registeredDto.id}
             />

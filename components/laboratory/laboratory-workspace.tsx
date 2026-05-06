@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { ChevronRight, FlaskConical, Save, ShieldCheck } from "lucide-react";
+import { ChevronRight, FlaskConical, Loader2, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
@@ -12,10 +13,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { useAuthStore } from "@/store/auth.store";
-import { useEncountersStore } from "@/store/encounters.store";
-import { calculateAge, formatDateTime } from "@/components/nurse/lib/nurse-data";
-import type { LabOrder, LabOrderStatus, LabResultRow } from "@/lib/clinical-types";
+import { formatDateTime } from "@/components/nurse/lib/nurse-data";
+import { clinicalService } from "@/services/clinical.service";
+import { queryKeys } from "@/lib/query-keys";
+import type { ApiError } from "@/types/api.types";
+import type { LabOrderDto, LabOrderStatus, SubmitLabResultsPayload } from "@/types/clinical.types";
 
 const SUB_NAV = [
   { label: "Worklist", view: "worklist", href: "/laboratory?view=worklist" },
@@ -32,7 +34,7 @@ export function LaboratoryWorkspace() {
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Laboratory</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Process test requests and authorise results. You see only the orders assigned to your station -
+          Process test requests and authorise results. You see only the orders assigned to your station —
           patient folders are restricted to clinicians.
         </p>
       </div>
@@ -46,64 +48,90 @@ export function LaboratoryWorkspace() {
   );
 }
 
-const ACTIVE_STATUSES: LabOrderStatus[] = ["ordered", "awaiting-payment", "awaiting-sample", "in-progress"];
+const ACTIVE_STATUSES: LabOrderStatus[] = ["ORDERED", "PAID", "CLAIMED", "IN_PROGRESS"];
 
 // ── Worklist ──────────────────────────────────────────────────────────
 
 function WorklistView() {
-  const orders = useEncountersStore((s) => s.labOrders);
-  const billing = useEncountersStore((s) => s.billing);
-  const setStatus = useEncountersStore((s) => s.setLabOrderStatus);
-
-  const [filter, setFilter] = useState<"active" | "all" | LabOrderStatus>("active");
+  const qc = useQueryClient();
+  const [filter, setFilter] = useState<"READY" | "all" | LabOrderStatus>("READY");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    return orders
-      .filter((o) =>
-        filter === "all"
-          ? true
-          : filter === "active"
-          ? ACTIVE_STATUSES.includes(o.status)
-          : o.status === filter
-      )
-      .sort((a, b) => urgencyRank(a) - urgencyRank(b) || a.orderedAt.localeCompare(b.orderedAt));
-  }, [orders, filter]);
+  const worklistQuery = useQuery({
+    queryKey: [...queryKeys.clinical.labWorklist, filter],
+    queryFn: () =>
+      clinicalService.labWorklist(filter === "all" ? undefined : filter === "READY" ? "READY" : filter),
+    refetchInterval: 30_000,
+  });
 
-  const selected = filtered.find((o) => o.id === selectedId) ?? null;
-  const billingForSelected = selected ? billing.find((b) => b.sourceRef === selected.id) : null;
+  const startMut = useMutation({
+    mutationFn: (id: string) => clinicalService.updateLabOrderStatus(id, "IN_PROGRESS"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Order moved to In Progress");
+    },
+    onError: (e: unknown) => {
+      const ax = e as { response?: { data?: ApiError } };
+      toast.error(ax.response?.data?.message ?? "Could not start order");
+    },
+  });
 
-  function start(id: string) {
-    setStatus(id, "in-progress");
-    toast.success("Order moved to In Progress");
-  }
+  const orders = worklistQuery.data ?? [];
+  const sorted = useMemo(
+    () =>
+      [...orders].sort(
+        (a, b) =>
+          urgencyRank(a) - urgencyRank(b) ||
+          (a.orderedAt ?? "").localeCompare(b.orderedAt ?? ""),
+      ),
+    [orders],
+  );
+
+  const selected = sorted.find((o) => o.id === selectedId) ?? null;
+
+  const stats = useMemo(() => {
+    return {
+      pending: orders.filter((o) => o.status === "ORDERED" || o.status === "PAID" || o.status === "CLAIMED").length,
+      inProgress: orders.filter((o) => o.status === "IN_PROGRESS").length,
+      stat: orders.filter((o) => ACTIVE_STATUSES.includes(o.status) && o.priority !== "ROUTINE").length,
+      done: orders.filter((o) => o.status === "AUTHORISED" || o.status === "COMPLETED").length,
+    };
+  }, [orders]);
 
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
-        <Stat label="Pending" value={orders.filter((o) => o.status === "ordered" || o.status === "awaiting-sample").length} />
-        <Stat label="In Progress" value={orders.filter((o) => o.status === "in-progress").length} accent="info" />
-        <Stat label="STAT/Urgent" value={orders.filter((o) => ACTIVE_STATUSES.includes(o.status) && o.urgency !== "routine").length} accent="warn" />
-        <Stat label="Completed Today" value={orders.filter((o) => o.status === "completed" && isToday(o.resultEnteredAt)).length} accent="ok" />
+        <Stat label="Pending" value={stats.pending} />
+        <Stat label="In Progress" value={stats.inProgress} accent="info" />
+        <Stat label="STAT/Urgent" value={stats.stat} accent="warn" />
+        <Stat label="Reported" value={stats.done} accent="ok" />
       </div>
 
       <div className="flex items-center gap-3">
         <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
-            <SelectItem value="active">Active orders</SelectItem>
-            <SelectItem value="ordered">Ordered (new)</SelectItem>
-            <SelectItem value="in-progress">In progress</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="READY">Ready (paid/claimed)</SelectItem>
+            <SelectItem value="ORDERED">Ordered (awaiting payment)</SelectItem>
+            <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+            <SelectItem value="COMPLETED">Completed (unauthorised)</SelectItem>
+            <SelectItem value="AUTHORISED">Authorised</SelectItem>
             <SelectItem value="all">All</SelectItem>
           </SelectContent>
         </Select>
-        <p className="text-sm text-muted-foreground">{filtered.length} orders</p>
+        <p className="text-sm text-muted-foreground">{sorted.length} orders</p>
+        {worklistQuery.isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="overflow-hidden rounded-lg border border-border bg-card">
-          {filtered.length === 0 ? (
+          {worklistQuery.isLoading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" /> Loading worklist…
+            </div>
+          ) : sorted.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center">
               <FlaskConical className="h-7 w-7 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">No orders in this view.</p>
@@ -115,13 +143,13 @@ function WorklistView() {
                   <Th>Patient</Th>
                   <Th>Test</Th>
                   <Th>Ordered By</Th>
-                  <Th>Urgency</Th>
+                  <Th>Priority</Th>
                   <Th>Status</Th>
                   <Th />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map((o) => (
+                {sorted.map((o) => (
                   <tr
                     key={o.id}
                     onClick={() => setSelectedId(o.id)}
@@ -129,16 +157,22 @@ function WorklistView() {
                   >
                     <td className="px-4 py-3">
                       <p className="font-medium text-foreground">{o.patientName}</p>
-                      <p className="patient-id mt-0.5">{o.patientId}</p>
+                      <p className="patient-id mt-0.5">{o.patientPublicId}</p>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="text-foreground">{o.testName}</p>
-                      <p className="text-xs text-muted-foreground">{o.category}</p>
+                      <p className="text-foreground">{o.serviceName}</p>
+                      <p className="text-xs text-muted-foreground">{o.serviceCode}</p>
                     </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{o.orderedBy}</td>
-                    <td className="px-4 py-3"><UrgencyPill urgency={o.urgency} /></td>
-                    <td className="px-4 py-3"><StatusPill status={o.status} /></td>
-                    <td className="px-4 py-3"><ChevronRight className="h-4 w-4 text-muted-foreground" /></td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{o.orderedByName}</td>
+                    <td className="px-4 py-3">
+                      <UrgencyPill priority={o.priority} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusPill status={o.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -149,14 +183,16 @@ function WorklistView() {
         {selected ? (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">{selected.testName}</CardTitle>
-              <CardDescription>{selected.category}</CardDescription>
+              <CardTitle className="text-base">{selected.serviceName}</CardTitle>
+              <CardDescription>{selected.serviceCode}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="rounded-md border border-dashed border-border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Patient context (limited)</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Patient context (limited)
+                </p>
                 <p className="mt-1 font-medium text-foreground">{selected.patientName}</p>
-                <p className="patient-id">{selected.patientId} · {selected.patientSex} · {calculateAge(selected.patientDob)}</p>
+                <p className="patient-id">{selected.patientPublicId}</p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   <ShieldCheck className="mr-1 inline h-3 w-3" />
                   Full clinical folder is restricted to nurses and clinicians.
@@ -164,44 +200,49 @@ function WorklistView() {
               </div>
 
               <DataRow label="Order ID" value={selected.id} mono />
-              <DataRow label="Ordered by" value={selected.orderedBy} />
-              <DataRow label="Ordered at" value={formatDateTime(selected.orderedAt)} />
-              <DataRow label="Urgency" value={selected.urgency.toUpperCase()} />
-              <DataRow label="Fee" value={`GHS ${selected.fee.toFixed(2)}`} mono />
-              {billingForSelected && (
-                <DataRow
-                  label="Billing"
-                  value={`${billingForSelected.status} · ${billingForSelected.sponsor}`}
-                />
-              )}
+              <DataRow label="Ordered by" value={selected.orderedByName} />
+              <DataRow label="Ordered at" value={selected.orderedAt ? formatDateTime(selected.orderedAt) : "—"} />
+              <DataRow label="Priority" value={selected.priority} />
+              <DataRow label="Payer" value={selected.payerType} />
+              <DataRow label="Status" value={selected.status} />
 
-              {selected.clinicalNotes && (
+              {selected.reason && (
                 <div className="rounded-md border border-border bg-card p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Clinical question</p>
-                  <p className="mt-1 text-foreground">{selected.clinicalNotes}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Clinical question
+                  </p>
+                  <p className="mt-1 text-foreground">{selected.reason}</p>
                 </div>
               )}
 
               <Separator />
 
               <div className="flex flex-col gap-2">
-                {selected.status === "ordered" && (
-                  <Button onClick={() => start(selected.id)}>
+                {(selected.status === "ORDERED" || selected.status === "PAID" || selected.status === "CLAIMED") && (
+                  <Button onClick={() => startMut.mutate(selected.id)} disabled={startMut.isPending}>
                     <FlaskConical className="mr-1.5 h-4 w-4" /> Start Processing
                   </Button>
                 )}
-                {(selected.status === "in-progress" || selected.status === "ordered") && (
-                  <Button variant="outline" onClick={() => {
-                    const u = new URL(window.location.href);
-                    u.searchParams.set("view", "results");
-                    u.searchParams.set("orderId", selected.id);
-                    window.history.pushState(null, "", u.toString());
-                    window.dispatchEvent(new PopStateEvent("popstate"));
-                  }}>
+                {(selected.status === "IN_PROGRESS" ||
+                  selected.status === "PAID" ||
+                  selected.status === "CLAIMED" ||
+                  selected.status === "ORDERED") && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const u = new URL(window.location.href);
+                      u.searchParams.set("view", "results");
+                      u.searchParams.set("orderId", selected.id);
+                      window.history.pushState(null, "", u.toString());
+                      window.dispatchEvent(new PopStateEvent("popstate"));
+                    }}
+                  >
                     Enter Results
                   </Button>
                 )}
-                <Button variant="ghost" onClick={() => setSelectedId(null)}>Close</Button>
+                <Button variant="ghost" onClick={() => setSelectedId(null)}>
+                  Close
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -220,84 +261,100 @@ function WorklistView() {
 
 // ── Result entry ──────────────────────────────────────────────────────
 
-const RESULT_TEMPLATES: Record<string, { analyte: string; refRange: string; unit: string }[]> = {
-  FBC: [
-    { analyte: "Haemoglobin", refRange: "12.0-17.5", unit: "g/dL" },
-    { analyte: "WBC", refRange: "4.0-11.0", unit: "x10^3/uL" },
-    { analyte: "Platelets", refRange: "150-400", unit: "x10^3/uL" },
-    { analyte: "PCV", refRange: "36-54", unit: "%" },
-  ],
-  MAL: [
-    { analyte: "Malaria RDT", refRange: "Negative", unit: "" },
-    { analyte: "Species", refRange: "—", unit: "" },
-  ],
-  FBG: [
-    { analyte: "Fasting Glucose", refRange: "3.9-5.6", unit: "mmol/L" },
-  ],
-  UMC: [
-    { analyte: "Appearance", refRange: "Clear", unit: "" },
-    { analyte: "WBC (microscopy)", refRange: "<5", unit: "/HPF" },
-    { analyte: "Organism", refRange: "—", unit: "" },
-  ],
-  HBA: [{ analyte: "HbA1c", refRange: "<5.7", unit: "%" }],
-  LFT: [
-    { analyte: "ALT", refRange: "7-56", unit: "U/L" },
-    { analyte: "AST", refRange: "10-40", unit: "U/L" },
-    { analyte: "ALP", refRange: "44-147", unit: "U/L" },
-    { analyte: "Total Bilirubin", refRange: "0.1-1.2", unit: "mg/dL" },
-  ],
-  RFT: [
-    { analyte: "Urea", refRange: "2.5-7.5", unit: "mmol/L" },
-    { analyte: "Creatinine", refRange: "60-110", unit: "umol/L" },
-    { analyte: "eGFR", refRange: ">90", unit: "mL/min" },
-  ],
-  ECG: [{ analyte: "Findings", refRange: "—", unit: "" }],
-};
+interface RowDraft {
+  analyte: string;
+  value: string;
+  units: string;
+  referenceRange: string;
+  flag: string;
+  comment: string;
+}
+
+function blankRow(): RowDraft {
+  return { analyte: "", value: "", units: "", referenceRange: "", flag: "", comment: "" };
+}
 
 function ResultEntryView() {
-  const orders = useEncountersStore((s) => s.labOrders);
-  const submitResult = useEncountersStore((s) => s.submitLabResult);
-  const setStatus = useEncountersStore((s) => s.setLabOrderStatus);
-  const user = useAuthStore((s) => s.user);
-  const userLabel = user ? `${user.firstName} ${user.lastName}`.trim() || user.username : "Lab Officer";
-
+  const qc = useQueryClient();
   const searchParams = useSearchParams();
   const initialOrderId = searchParams.get("orderId") ?? "";
 
-  const eligible = useMemo(
-    () => orders.filter((o) => o.status === "ordered" || o.status === "in-progress").sort((a, b) => urgencyRank(a) - urgencyRank(b)),
-    [orders]
-  );
+  const eligibleQuery = useQuery({
+    queryKey: [...queryKeys.clinical.labWorklist, "READY+IN_PROGRESS"],
+    queryFn: async () => {
+      // Fetch ready and in-progress in parallel and merge.
+      const [ready, inProgress] = await Promise.all([
+        clinicalService.labWorklist("READY"),
+        clinicalService.labWorklist("IN_PROGRESS"),
+      ]);
+      const seen = new Set<string>();
+      const all = [...ready, ...inProgress];
+      return all.filter((o) => (seen.has(o.id) ? false : (seen.add(o.id), true)));
+    },
+  });
 
-  const [orderId, setOrderId] = useState(initialOrderId || eligible[0]?.id || "");
-  const order = orders.find((o) => o.id === orderId) ?? null;
-  const template = order ? RESULT_TEMPLATES[order.testCode] ?? [{ analyte: order.testName, refRange: "—", unit: "" }] : [];
+  const submitMut = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: SubmitLabResultsPayload }) =>
+      clinicalService.submitLabResults(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Results authorised — clinician will see them in the patient folder");
+      setOrderId("");
+      setRows([blankRow()]);
+      setSummary("");
+    },
+    onError: (e: unknown) => {
+      const ax = e as { response?: { data?: ApiError } };
+      toast.error(ax.response?.data?.message ?? "Could not submit results");
+    },
+  });
 
-  const [rows, setRows] = useState<Record<string, { value: string; flag: LabResultRow["flag"] }>>({});
+  const eligible = eligibleQuery.data ?? [];
+  const [orderId, setOrderId] = useState(initialOrderId || "");
+  useEffect(() => {
+    if (!orderId && eligible[0]) setOrderId(eligible[0].id);
+  }, [orderId, eligible]);
+
+  const order = eligible.find((o) => o.id === orderId) ?? null;
+  const [rows, setRows] = useState<RowDraft[]>([blankRow()]);
   const [summary, setSummary] = useState("");
 
-  function update(analyte: string, key: "value" | "flag", val: string) {
-    setRows((prev) => ({ ...prev, [analyte]: { ...(prev[analyte] ?? { value: "", flag: "normal" }), [key]: val as LabResultRow["flag"] } }));
+  function update(idx: number, key: keyof RowDraft, value: string) {
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+  }
+  function removeRow(idx: number) {
+    setRows((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)));
   }
 
   function submit() {
     if (!order) return;
-    const results: LabResultRow[] = template.map((t) => ({
-      analyte: t.analyte,
-      refRange: t.refRange,
-      unit: t.unit,
-      value: rows[t.analyte]?.value ?? "",
-      flag: rows[t.analyte]?.flag ?? "normal",
-    }));
-    if (results.every((r) => !r.value.trim())) {
-      toast.error("Enter at least one result before authorising");
+    const cleaned = rows.filter((r) => r.analyte.trim() && r.value.trim());
+    if (cleaned.length === 0) {
+      toast.error("Enter at least one analyte + value before authorising");
       return;
     }
-    submitResult(order.id, results, summary.trim(), userLabel);
-    toast.success("Results authorised - clinician will see them in the patient folder");
-    setRows({});
-    setSummary("");
-    setOrderId("");
+    const payload: SubmitLabResultsPayload = {
+      rows: cleaned.map((r) => ({
+        analyte: r.analyte.trim(),
+        value: r.value.trim(),
+        units: r.units.trim(),
+        referenceRange: r.referenceRange.trim(),
+        flag: r.flag.trim(),
+        comment: summary.trim() || r.comment.trim(),
+      })),
+      authoriseImmediately: true,
+    };
+    submitMut.mutate({ id: order.id, payload });
+  }
+
+  if (eligibleQuery.isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" /> Loading ready orders…
+        </CardContent>
+      </Card>
+    );
   }
 
   if (!order) {
@@ -315,76 +372,104 @@ function ResultEntryView() {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Enter Test Results</CardTitle>
-        <CardDescription>Select an order and capture the result. Submitting authorises and closes the request.</CardDescription>
+        <CardDescription>
+          Select an order, capture the result rows, and authorise. Authorising returns the patient to the doctor.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1">
           <label className="text-sm font-medium text-foreground">Select Lab Order</label>
-          <Select value={orderId} onValueChange={(v) => { setOrderId(v); setRows({}); setSummary(""); if (v) setStatus(v, "in-progress"); }}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+          <Select
+            value={orderId}
+            onValueChange={(v) => {
+              setOrderId(v);
+              setRows([blankRow()]);
+              setSummary("");
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {eligible.map((o) => (
-                <SelectItem key={o.id} value={o.id}>{o.patientName} - {o.testName} ({o.urgency})</SelectItem>
+                <SelectItem key={o.id} value={o.id}>
+                  {o.patientName} — {o.serviceName} ({o.priority})
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
         <div className="rounded-md border border-dashed border-border bg-muted/20 p-3 text-sm">
-          <p className="font-medium text-foreground">{order.testName}</p>
+          <p className="font-medium text-foreground">{order.serviceName}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Patient: {order.patientName} ({order.patientId}, {order.patientSex}, {calculateAge(order.patientDob)}) · ordered by {order.orderedBy}
+            Patient: {order.patientName} ({order.patientPublicId}) · ordered by {order.orderedByName}
           </p>
-          {order.clinicalNotes && <p className="mt-2 text-foreground">Question: {order.clinicalNotes}</p>}
-          <p className="mt-2 text-xs text-muted-foreground"><ShieldCheck className="mr-1 inline h-3 w-3" /> No folder access from this station.</p>
+          {order.reason && <p className="mt-2 text-foreground">Question: {order.reason}</p>}
+          <p className="mt-2 text-xs text-muted-foreground">
+            <ShieldCheck className="mr-1 inline h-3 w-3" /> No folder access from this station.
+          </p>
         </div>
 
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Analyte</th>
-              <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Ref. Range</th>
-              <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Unit</th>
-              <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Result</th>
-              <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Flag</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {template.map((t) => {
-              const r = rows[t.analyte];
-              return (
-                <tr key={t.analyte} className={r?.flag === "critical" ? "bg-[hsl(var(--clinical-emergency-bg))]" : ""}>
-                  <td className="py-2.5 font-medium text-foreground">{t.analyte}</td>
-                  <td className="py-2.5 font-clinical text-xs text-muted-foreground">{t.refRange}</td>
-                  <td className="py-2.5 text-xs text-muted-foreground">{t.unit}</td>
-                  <td className="py-2.5">
-                    <Input value={r?.value ?? ""} onChange={(e) => update(t.analyte, "value", e.target.value)} className="h-8 w-32 font-clinical text-sm" placeholder="—" />
-                  </td>
-                  <td className="py-2.5">
-                    <Select value={r?.flag ?? "normal"} onValueChange={(v) => update(t.analyte, "flag", v)}>
-                      <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="critical">Critical</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="space-y-2">
+          {rows.map((r, idx) => (
+            <div key={idx} className="grid items-end gap-2 sm:grid-cols-[1.4fr_1fr_0.7fr_1fr_0.7fr_auto]">
+              <Input
+                placeholder="Analyte"
+                value={r.analyte}
+                onChange={(e) => update(idx, "analyte", e.target.value)}
+              />
+              <Input
+                placeholder="Value"
+                value={r.value}
+                onChange={(e) => update(idx, "value", e.target.value)}
+                className="font-clinical"
+              />
+              <Input
+                placeholder="Units"
+                value={r.units}
+                onChange={(e) => update(idx, "units", e.target.value)}
+              />
+              <Input
+                placeholder="Ref range"
+                value={r.referenceRange}
+                onChange={(e) => update(idx, "referenceRange", e.target.value)}
+              />
+              <Select value={r.flag || "OK"} onValueChange={(v) => update(idx, "flag", v === "OK" ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OK">Normal</SelectItem>
+                  <SelectItem value="HIGH">High</SelectItem>
+                  <SelectItem value="LOW">Low</SelectItem>
+                  <SelectItem value="CRITICAL">Critical</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="ghost" size="icon" onClick={() => removeRow(idx)} disabled={rows.length === 1}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button variant="outline" size="sm" onClick={() => setRows((prev) => [...prev, blankRow()])}>
+            <Plus className="mr-1.5 h-4 w-4" /> Add row
+          </Button>
+        </div>
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-foreground">Comment / Interpretation</label>
-          <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} placeholder="Optional comment for the clinician…" />
+          <Textarea
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            rows={2}
+            placeholder="Optional comment for the clinician…"
+          />
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={submit}>
-            <Save className="mr-1.5 h-4 w-4" /> Authorise & Report
+          <Button onClick={submit} disabled={submitMut.isPending}>
+            {submitMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+            Authorise & Report
           </Button>
         </div>
       </CardContent>
@@ -395,15 +480,35 @@ function ResultEntryView() {
 // ── Completed view ────────────────────────────────────────────────────
 
 function CompletedView() {
-  const orders = useEncountersStore((s) => s.labOrders);
-  const completed = orders.filter((o) => o.status === "completed").sort((a, b) => (b.resultEnteredAt ?? "").localeCompare(a.resultEnteredAt ?? ""));
+  const completedQuery = useQuery({
+    queryKey: [...queryKeys.clinical.labWorklist, "AUTHORISED"],
+    queryFn: () => clinicalService.labWorklist("AUTHORISED"),
+  });
+
+  const completed = useMemo(
+    () =>
+      [...(completedQuery.data ?? [])]
+        .filter((o) => isToday(o.authorisedAt) || isToday(o.completedAt))
+        .sort((a, b) => (b.authorisedAt ?? b.completedAt ?? "").localeCompare(a.authorisedAt ?? a.completedAt ?? "")),
+    [completedQuery.data],
+  );
+
+  if (completedQuery.isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" /> Loading completed reports…
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (completed.length === 0) {
     return (
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
           <FlaskConical className="h-7 w-7 text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">No completed reports yet.</p>
+          <p className="text-sm text-muted-foreground">No completed reports yet today.</p>
         </CardContent>
       </Card>
     );
@@ -423,16 +528,21 @@ function CompletedView() {
         </thead>
         <tbody className="divide-y divide-border">
           {completed.map((o) => {
-            const hasCritical = o.results?.some((r) => r.flag === "critical");
+            const hasCritical = o.results.some((r) => (r.flag ?? "").toUpperCase() === "CRITICAL");
+            const reportedAt = o.authorisedAt ?? o.completedAt;
             return (
               <tr key={o.id}>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground">{o.resultEnteredAt ? formatDateTime(o.resultEnteredAt) : "—"}</td>
+                <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                  {reportedAt ? formatDateTime(reportedAt) : "—"}
+                </td>
                 <td className="px-4 py-2.5">
                   <p className="font-medium">{o.patientName}</p>
-                  <p className="patient-id mt-0.5">{o.patientId}</p>
+                  <p className="patient-id mt-0.5">{o.patientPublicId}</p>
                 </td>
-                <td className="px-4 py-2.5">{o.testName}</td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground">{o.resultEnteredBy}</td>
+                <td className="px-4 py-2.5">{o.serviceName}</td>
+                <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                  {o.results[0]?.recordedByName ?? "—"}
+                </td>
                 <td className="px-4 py-2.5">
                   {hasCritical ? (
                     <span className="status-pill text-xs bg-[hsl(var(--clinical-emergency))] text-white">Critical</span>
@@ -451,11 +561,11 @@ function CompletedView() {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function urgencyRank(o: LabOrder): number {
-  return o.urgency === "stat" ? 0 : o.urgency === "urgent" ? 1 : 2;
+function urgencyRank(o: LabOrderDto): number {
+  return o.priority === "STAT" ? 0 : o.priority === "EMERGENCY" ? 1 : o.priority === "URGENT" ? 2 : 3;
 }
 
-function isToday(iso: string | undefined) {
+function isToday(iso: string | null | undefined) {
   if (!iso) return false;
   const d = new Date(iso);
   const t = new Date();
@@ -471,28 +581,40 @@ function DataRow({ label, value, mono }: { label: string; value: string; mono?: 
   );
 }
 
-function UrgencyPill({ urgency }: { urgency: LabOrder["urgency"] }) {
+function UrgencyPill({ priority }: { priority: LabOrderDto["priority"] }) {
   return (
-    <span className={`status-pill text-xs ${urgency === "stat" ? "bg-[hsl(var(--clinical-emergency))] text-white" : urgency === "urgent" ? "bg-[hsl(var(--clinical-urgent))] text-white" : "status-pill-pending"}`}>
-      {urgency === "stat" ? "STAT" : urgency.charAt(0).toUpperCase() + urgency.slice(1)}
+    <span
+      className={`status-pill text-xs ${
+        priority === "STAT" || priority === "EMERGENCY"
+          ? "bg-[hsl(var(--clinical-emergency))] text-white"
+          : priority === "URGENT"
+          ? "bg-[hsl(var(--clinical-urgent))] text-white"
+          : "status-pill-pending"
+      }`}
+    >
+      {priority}
     </span>
   );
 }
 
 function StatusPill({ status }: { status: LabOrderStatus }) {
   const cls =
-    status === "completed"
+    status === "AUTHORISED" || status === "COMPLETED"
       ? "status-pill-active"
-      : status === "in-progress"
+      : status === "IN_PROGRESS"
       ? "bg-[hsl(var(--notice-info-bg))] text-[hsl(var(--notice-info-foreground))]"
-      : status === "cancelled"
+      : status === "CANCELLED"
       ? "status-pill-inactive"
       : "status-pill-pending";
   return <span className={`status-pill text-xs ${cls}`}>{status}</span>;
 }
 
 function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <th className={`px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className ?? ""}`}>{children}</th>;
+  return (
+    <th className={`px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className ?? ""}`}>
+      {children}
+    </th>
+  );
 }
 
 function Stat({ label, value, accent }: { label: string; value: number; accent?: "warn" | "ok" | "info" }) {
