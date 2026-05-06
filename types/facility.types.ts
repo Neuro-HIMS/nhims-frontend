@@ -60,6 +60,7 @@ export interface FacilitySettingsDto {
 
 export interface FacilitySettingsUpdateRequest {
   name: string;
+  code: string;
   settings: FacilitySettingsPayload;
   logoBase64?: string | null;
   logoContentType?: string | null;

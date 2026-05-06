@@ -1,64 +1,10 @@
-import type {
-  Clinician,
-  NhisLookup,
-  Patient,
-  ServiceCatalogItem,
-} from "@/components/records/lib/records-types";
+import type { Clinician, NhisLookup, ServiceCatalogItem } from "@/components/records/lib/records-types";
 
 export const RECORDS_NAV = [
   { label: "Client Lookup", view: "search", href: "/records?view=search" },
   { label: "First-Time Registration", view: "register", href: "/records?view=register" },
-];
-
-export const FACILITY_PROFILE = {
-  name: "Kaneshie Polyclinic",
-};
-
-export const PATIENTS: Patient[] = [
-  {
-    patientId: "GH-2026-04821",
-    firstName: "Kofi",
-    lastName: "Acheampong",
-    dob: "1985-03-12",
-    sex: "M",
-    phone: "0244123456",
-    district: "Accra Metropolitan",
-    nhisCard: "GH/12345678-01",
-    nhisStatus: "active",
-  },
-  {
-    patientId: "GH-2026-03109",
-    firstName: "Abena",
-    lastName: "Osei",
-    dob: "1992-07-22",
-    sex: "F",
-    phone: "0201987654",
-    district: "Kumasi Metropolitan",
-    nhisCard: "GH/98765432-02",
-    nhisStatus: "active",
-  },
-  {
-    patientId: "GH-2026-01774",
-    firstName: "Kwame",
-    lastName: "Mensah",
-    dob: "1968-11-30",
-    sex: "M",
-    phone: "0277654321",
-    district: "Cape Coast",
-    nhisCard: "",
-    nhisStatus: "inactive",
-  },
-  {
-    patientId: "GH-2026-05512",
-    firstName: "Esi",
-    lastName: "Yeboah",
-    dob: "2001-05-08",
-    sex: "F",
-    phone: "0554332211",
-    district: "Tema Metropolitan",
-    nhisCard: "GH/55443322-03",
-    nhisStatus: "active",
-  },
+  { label: "Patient Records", view: "manage", href: "/records?view=manage" },
+  { label: "Visit History", view: "visits", href: "/records?view=visits" },
 ];
 
 export const OCCUPATION_OPTIONS = [

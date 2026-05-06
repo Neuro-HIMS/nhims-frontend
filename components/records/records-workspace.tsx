@@ -7,6 +7,8 @@ import { ClientLookupView } from "@/components/records/views/client-lookup-view"
 import { RECORDS_NAV } from "@/components/records/lib/records-data";
 import { RecordsFlowHeader } from "@/components/records/shared/records-flow-header";
 import { RegistrationView } from "@/components/records/views/registration-view";
+import { PatientRecordsManagementView } from "@/components/records/views/patient-records-management-view";
+import { VisitHistoryView } from "@/components/records/views/visit-history-view";
 
 export function RecordsWorkspace() {
   const searchParams = useSearchParams();
@@ -20,6 +22,8 @@ export function RecordsWorkspace() {
       <div className="pt-1">
         {view === "search" && <ClientLookupView />}
         {view === "register" && <RegistrationView />}
+        {view === "manage" && <PatientRecordsManagementView />}
+        {view === "visits" && <VisitHistoryView />}
       </div>
     </div>
   );

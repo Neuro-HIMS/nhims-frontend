@@ -19,6 +19,7 @@ import type {
 } from "@/types/facility.types";
 import { MODULE_PATHS } from "@/lib/access-control";
 import type { AppModule } from "@/types/auth.types";
+import type { ApiError } from "@/types/api.types";
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -169,6 +170,7 @@ export function FacilitySettingsWorkspace({
 
       const dto = await facilityService.update(facilityId, {
         name: model.profile.facilityName.trim(),
+        code: model.profile.facilityCode.trim(),
         settings: model,
         logoBase64: logoDirty === "replace" ? logoBase64 : undefined,
         logoContentType: logoDirty === "replace" ? logoContentType : undefined,
@@ -186,11 +188,14 @@ export function FacilitySettingsWorkspace({
       const session = await authService.reissueSession();
       setSessionUser(session.user);
       router.refresh();
-    } catch {
-      setFeedback({
-        text: "Could not save facility settings. Check your connection and try again.",
-        tone: "error",
-      });
+    } catch (error: unknown) {
+      const ax = error as { response?: { data?: ApiError } };
+      const fieldMsg = ax.response?.data?.fieldErrors?.map((f) => f.message).join(" ");
+      const msg =
+        fieldMsg ||
+        ax.response?.data?.message ||
+        "Could not save facility settings. Check your connection and try again.";
+      setFeedback({ text: msg, tone: "error" });
     } finally {
       setSaving(false);
     }
@@ -339,8 +344,22 @@ function FacilityProfileView({
               />
               <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">Facility code</p>
-                <Input value={profile.facilityCode} readOnly className="bg-muted/50" />
-                <p className="text-xs text-muted-foreground">Code is managed by the system.</p>
+                <Input
+                  value={profile.facilityCode}
+                  maxLength={20}
+                  className="font-mono uppercase"
+                  onChange={(event) =>
+                    onProfileChange({
+                      ...profile,
+                      facilityCode: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""),
+                    })
+                  }
+                  spellCheck={false}
+                  autoCapitalize="characters"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Unique alphanumeric code (2–20 characters). Used in patient IDs and reporting; changing it affects new IDs after save.
+                </p>
               </div>
             </div>
 

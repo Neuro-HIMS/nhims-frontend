@@ -21,8 +21,19 @@ export function DateTimePicker({
   onTimeChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const y = new Date().getFullYear();
+  const startMonth = useMemo(() => new Date(y - 1, 0, 1), [y]);
+  const endMonth = useMemo(() => new Date(y + 2, 11, 1), [y]);
 
-  const selectedDate = useMemo(() => (date ? new Date(`${date}T00:00:00`) : undefined), [date]);
+  const selectedDate = useMemo(() => {
+    if (!date.trim()) return undefined;
+    const parts = date.split("-").map((p) => Number.parseInt(p, 10));
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return undefined;
+    const [y, m, d] = parts;
+    const dt = new Date(y, m - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return undefined;
+    return dt;
+  }, [date]);
   const dateLabel = selectedDate ? format(selectedDate, "PPP") : "Select appointment date";
 
   function setNow() {
@@ -43,6 +54,10 @@ export function DateTimePicker({
         <PopoverContent align="start" className="w-auto p-2">
           <Calendar
             mode="single"
+            captionLayout="dropdown"
+            startMonth={startMonth}
+            endMonth={endMonth}
+            defaultMonth={selectedDate ?? new Date()}
             selected={selectedDate}
             onSelect={(selected) => {
               if (!selected) return;

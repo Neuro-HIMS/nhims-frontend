@@ -506,4 +506,40 @@
     background: hsl(var(--nhis-pending-bg));
     color: hsl(var(--nhis-pending));
   }
+
+  /* Patient row used in search results, appointment lists, etc. */
+  .patient-result-card {
+    @apply block rounded-lg border border-border bg-card px-4 py-3 transition-colors;
+  }
+  .patient-result-card:hover {
+    @apply border-primary/40 bg-accent/5;
+  }
+  .patient-result-card--selected {
+    @apply border-primary bg-primary/5;
+  }
+
+  /* Booking form section */
+  .booking-section {
+    @apply rounded-lg border border-border bg-card;
+  }
+  .booking-section-header {
+    @apply border-b border-border px-4 py-2.5;
+  }
+  .booking-section-title {
+    @apply text-sm font-semibold text-foreground;
+  }
+  .booking-section-body {
+    @apply space-y-4 px-4 py-4;
+  }
+
+  /* Appointment status pill — distinct visuals per stage. */
+  .appt-pill {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  .appt-pill-scheduled    { background: hsl(var(--nhis-pending-bg));         color: hsl(var(--nhis-pending)); }
+  .appt-pill-checked-in   { background: hsl(var(--clinical-semi-urgent-bg)); color: hsl(var(--clinical-semi-urgent)); }
+  .appt-pill-in-progress  { background: hsl(var(--clinical-urgent-bg));      color: hsl(var(--clinical-urgent)); }
+  .appt-pill-completed    { background: hsl(var(--nhis-active-bg));          color: hsl(var(--nhis-active)); }
+  .appt-pill-no-show      { background: hsl(var(--nhis-inactive-bg));        color: hsl(var(--nhis-inactive)); }
+  .appt-pill-cancelled    { @apply bg-muted text-muted-foreground; }
 }

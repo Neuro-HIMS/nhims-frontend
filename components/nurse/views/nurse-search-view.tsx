@@ -1,16 +1,31 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ChevronRight, FolderOpen, Search } from "lucide-react";
+import { AlertCircle, ChevronRight, FolderOpen, Loader2, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { PATIENTS } from "@/components/records/lib/records-data";
 import type { Patient, SearchMode } from "@/components/records/lib/records-types";
+import { patientSummaryToLegacyPatient } from "@/lib/patient-mapper";
+import { formatPatientPublicIdLive } from "@/lib/patient-public-id";
+import { queryKeys } from "@/lib/query-keys";
+import { patientsService } from "@/services/patients.service";
 import { useEncountersStore } from "@/store/encounters.store";
+import type { PatientSearchParams } from "@/types/patients.types";
+import type { ApiError } from "@/types/api.types";
+
+type ActiveSearch = PatientSearchParams;
+
+function toQueryKeyParams(s: ActiveSearch) {
+  if (s.mode === "name") {
+    return { mode: s.mode, firstName: s.firstName, lastName: s.lastName };
+  }
+  return { mode: s.mode, q: s.q };
+}
 
 export function NurseSearchView() {
   const router = useRouter();
@@ -21,54 +36,29 @@ export function NurseSearchView() {
   const [nhisQuery, setNhisQuery] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [searched, setSearched] = useState(false);
+  const [activeSearch, setActiveSearch] = useState<ActiveSearch | null>(null);
 
-  const knownPatients = useMemo(() => {
-    // Combine the static records directory with patients seen via visits, so the
-    // nurse can look up anyone who has been booked even if not in the seed list.
-    const seen = new Map<string, Patient>();
-    PATIENTS.forEach((p) => seen.set(p.patientId, p));
-    visits.forEach((v) => {
-      if (seen.has(v.patientId)) return;
-      const [firstName, ...rest] = v.patientName.split(" ");
-      seen.set(v.patientId, {
-        patientId: v.patientId,
-        firstName,
-        lastName: rest.join(" "),
-        dob: v.patientDob,
-        sex: v.patientSex,
-        phone: v.patientPhone,
-        district: "—",
-        nhisCard: v.sponsor === "NHIS" ? "—" : "",
-        nhisStatus: v.sponsor === "NHIS" ? "active" : "inactive",
-      });
-    });
-    return Array.from(seen.values());
-  }, [visits]);
+  const searchQuery = useQuery({
+    queryKey: activeSearch ? queryKeys.patients.search(toQueryKeyParams(activeSearch)) : ["patients", "search", "idle"],
+    queryFn: () => patientsService.search(activeSearch!),
+    enabled: activeSearch !== null,
+  });
 
-  const results = useMemo(() => {
-    if (!searched) return [];
-    if (mode === "id") {
-      return knownPatients.filter((p) =>
-        idQuery.trim() && p.patientId.toLowerCase().includes(idQuery.trim().toLowerCase())
-      );
-    }
-    if (mode === "nhis") {
-      return knownPatients.filter((p) =>
-        nhisQuery.trim() && p.nhisCard.toLowerCase().includes(nhisQuery.trim().toLowerCase())
-      );
-    }
-    return knownPatients.filter((p) => {
-      const hasAnyName = firstName.trim() || lastName.trim();
-      if (!hasAnyName) return false;
-      const firstMatches = !firstName.trim() || p.firstName.toLowerCase().includes(firstName.trim().toLowerCase());
-      const lastMatches = !lastName.trim() || p.lastName.toLowerCase().includes(lastName.trim().toLowerCase());
-      return firstMatches && lastMatches;
-    });
-  }, [firstName, idQuery, lastName, mode, nhisQuery, searched, knownPatients]);
+  const results = useMemo(
+    () => (searchQuery.data ?? []).map(patientSummaryToLegacyPatient),
+    [searchQuery.data]
+  );
 
   function runSearch() {
-    setSearched(true);
+    if (mode === "id") {
+      setActiveSearch({ mode: "id", q: idQuery.trim() });
+      return;
+    }
+    if (mode === "nhis") {
+      setActiveSearch({ mode: "nhis", q: nhisQuery.trim() });
+      return;
+    }
+    setActiveSearch({ mode: "name", firstName: firstName.trim(), lastName: lastName.trim() });
   }
 
   function clearSearch() {
@@ -76,7 +66,7 @@ export function NurseSearchView() {
     setNhisQuery("");
     setFirstName("");
     setLastName("");
-    setSearched(false);
+    setActiveSearch(null);
   }
 
   function hasValidQuery() {
@@ -86,8 +76,15 @@ export function NurseSearchView() {
   }
 
   function openFolder(patient: Patient) {
-    router.push(`/nurse?view=folder&patientId=${patient.patientId}`);
+    router.push(`/nurse?view=folder&patientId=${encodeURIComponent(patient.patientId)}`);
   }
+
+  const searched = activeSearch !== null;
+  const showEmpty = searched && searchQuery.isSuccess && results.length === 0 && !searchQuery.isFetching;
+  const errMsg =
+    searchQuery.error && typeof searchQuery.error === "object" && "response" in searchQuery.error
+      ? (searchQuery.error as { response?: { data?: ApiError } }).response?.data?.message
+      : null;
 
   return (
     <div className="space-y-4">
@@ -98,7 +95,8 @@ export function NurseSearchView() {
             Patient Search
           </CardTitle>
           <CardDescription>
-            Search any registered patient to open their folder for vitals, notes, and care continuation.
+            Search registered patients from your facility MPI to open their folder for vitals, notes, and care
+            continuation.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -113,7 +111,7 @@ export function NurseSearchView() {
                 type="button"
                 onClick={() => {
                   setMode(item.id);
-                  setSearched(false);
+                  setActiveSearch(null);
                 }}
                 className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   mode === item.id
@@ -130,16 +128,18 @@ export function NurseSearchView() {
             <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
               <Input
                 value={idQuery}
-                onChange={(e) => setIdQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && runSearch()}
-                placeholder="Example: GH-2026-04821"
+                onChange={(e) => setIdQuery(formatPatientPublicIdLive(e.target.value))}
+                onKeyDown={(e) => e.key === "Enter" && hasValidQuery() && runSearch()}
+                placeholder="Example: KBTH-12345678-26"
                 className="font-clinical"
               />
               <Button onClick={runSearch} disabled={!hasValidQuery()}>
                 <Search className="mr-1.5 h-4 w-4" />
                 Search
               </Button>
-              <Button variant="outline" onClick={clearSearch}>Clear</Button>
+              <Button variant="outline" onClick={clearSearch}>
+                Clear
+              </Button>
             </div>
           )}
 
@@ -148,7 +148,7 @@ export function NurseSearchView() {
               <Input
                 value={nhisQuery}
                 onChange={(e) => setNhisQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                onKeyDown={(e) => e.key === "Enter" && hasValidQuery() && runSearch()}
                 placeholder="Example: GH/12345678-01"
                 className="font-clinical"
               />
@@ -156,7 +156,9 @@ export function NurseSearchView() {
                 <Search className="mr-1.5 h-4 w-4" />
                 Search
               </Button>
-              <Button variant="outline" onClick={clearSearch}>Clear</Button>
+              <Button variant="outline" onClick={clearSearch}>
+                Clear
+              </Button>
             </div>
           )}
 
@@ -171,14 +173,37 @@ export function NurseSearchView() {
                   <Search className="mr-1.5 h-4 w-4" />
                   Search
                 </Button>
-                <Button variant="outline" onClick={clearSearch}>Clear</Button>
+                <Button variant="outline" onClick={clearSearch}>
+                  Clear
+                </Button>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {searched && results.length === 0 && (
+      {searched && searchQuery.isFetching && (
+        <Card className="border-dashed">
+          <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Searching registry…
+          </CardContent>
+        </Card>
+      )}
+
+      {searched && searchQuery.isError && (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="py-6 text-center text-sm">
+            <p className="font-medium text-destructive">Search failed</p>
+            <p className="mt-1 text-muted-foreground">{errMsg ?? "Check your connection and try again."}</p>
+            <Button className="mt-4" variant="outline" size="sm" onClick={() => searchQuery.refetch()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {showEmpty && (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
@@ -194,7 +219,7 @@ export function NurseSearchView() {
         </Card>
       )}
 
-      {results.length > 0 && (
+      {results.length > 0 && !searchQuery.isFetching && (
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {results.length} patient{results.length > 1 ? "s" : ""} found

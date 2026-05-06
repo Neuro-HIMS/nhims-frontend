@@ -1,9 +1,13 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, UserPlus } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Loader2, RefreshCw, UserPlus } from "lucide-react";
+import { toast } from "sonner";
+import { endOfToday } from "date-fns";
 
 import { Button } from "@/components/ui/button";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,35 +17,95 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AppointmentBookingCard } from "@/components/records/views/appointment-booking-card";
+import { AppointmentBookingForm } from "@/components/appointments/appointment-booking-form";
+import { HospitalPatientCard } from "@/components/records/views/hospital-patient-card";
 import { GHANA_REGIONS, OCCUPATION_OPTIONS } from "@/components/records/lib/records-data";
 import { RecordsField } from "@/components/records/shared/records-field";
-import { EMPTY_REGISTRATION_FORM, type Patient, type RegistrationForm } from "@/components/records/lib/records-types";
-import { calculateAgeFromDob, generatePatientId, mockValidateNhis } from "@/components/records/lib/records-utils";
+import { EMPTY_REGISTRATION_FORM, type RegistrationForm } from "@/components/records/lib/records-types";
+import { calculateAgeFromDob, mockValidateNhis } from "@/components/records/lib/records-utils";
+import { patientDtoToLegacyPatient } from "@/lib/patient-mapper";
+import { queryKeys } from "@/lib/query-keys";
+import { patientsService } from "@/services/patients.service";
+import type { PatientDto } from "@/types/patients.types";
+import type { ApiError } from "@/types/api.types";
+
+function registrationFormToPayload(form: RegistrationForm) {
+  return {
+    clientStatus: form.clientStatus,
+    firstName: form.firstName,
+    middleName: form.middleName,
+    lastName: form.lastName,
+    dob: form.dob,
+    dobUnknown: form.dobUnknown,
+    age: form.age,
+    ageUnit: form.ageUnit,
+    sex: form.sex,
+    phone: form.phone,
+    altPhone: form.altPhone,
+    region: form.region,
+    address: form.address,
+    maritalStatus: form.maritalStatus,
+    occupation: form.occupation,
+    nhisNumber: form.nhisNumber,
+    nhisStatus: form.nhisStatus,
+    nhisExpiry: form.nhisExpiry,
+    emergencyName: form.emergencyName,
+    emergencyRelation: form.emergencyRelation,
+    emergencyPhone: form.emergencyPhone,
+  };
+}
 
 export function RegistrationView() {
+  const currentYear = new Date().getFullYear();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<RegistrationForm>(EMPTY_REGISTRATION_FORM);
-  const [createdPatient, setCreatedPatient] = useState<Patient | null>(null);
+  const [registeredDto, setRegisteredDto] = useState<PatientDto | null>(null);
   const [nhisMessage, setNhisMessage] = useState("");
   const [isValidatingNhis, setIsValidatingNhis] = useState(false);
 
+  const nextRefQuery = useQuery({
+    queryKey: queryKeys.patients.nextReference,
+    queryFn: () => patientsService.peekNextReference(),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    const id = nextRefQuery.data?.patientPublicId;
+    if (id) {
+      setForm((previous) => ({ ...previous, patientId: id }));
+    }
+  }, [nextRefQuery.data?.patientPublicId]);
+
+  const registerMutation = useMutation({
+    mutationFn: (payload: ReturnType<typeof registrationFormToPayload>) => patientsService.register(payload),
+    onSuccess: (data) => {
+      setRegisteredDto(data);
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients.nextReference });
+      toast.success("Patient registered", {
+        description: `${data.firstName} ${data.lastName} · ${data.patientPublicId}`,
+      });
+    },
+    onError: (error: unknown) => {
+      const ax = error as { response?: { data?: ApiError } };
+      const msg = ax.response?.data?.message ?? "Registration failed";
+      toast.error(msg);
+    },
+  });
+
+  const hasDobOrAge = form.dobUnknown ? form.age.trim().length > 0 : Boolean(form.dob?.trim());
+
   const canSubmit =
-    form.patientId &&
-    form.firstName.trim() &&
-    form.lastName.trim() &&
-    form.sex &&
-    (form.dob || form.age.trim()) &&
-    form.phone.trim();
+    Boolean(form.firstName.trim()) &&
+    Boolean(form.lastName.trim()) &&
+    Boolean(form.sex) &&
+    hasDobOrAge &&
+    Boolean(form.phone.trim()) &&
+    !registerMutation.isPending;
 
   function updateForm<K extends keyof RegistrationForm>(key: K, value: RegistrationForm[K]) {
     setForm((previous) => ({ ...previous, [key]: value }));
   }
-
-  useEffect(() => {
-    if (!form.patientId) {
-      updateForm("patientId", generatePatientId());
-    }
-  }, [form.patientId]);
 
   useEffect(() => {
     if (!form.dob || form.dobUnknown) return;
@@ -50,8 +114,8 @@ export function RegistrationView() {
     updateForm("ageUnit", ageResult.unit);
   }, [form.dob, form.dobUnknown]);
 
-  function regeneratePatientId() {
-    updateForm("patientId", generatePatientId());
+  function refreshPreviewId() {
+    nextRefQuery.refetch();
   }
 
   function onDobUnknownChange(checked: boolean) {
@@ -88,19 +152,18 @@ export function RegistrationView() {
 
   function handleRegister() {
     if (!canSubmit) return;
-
-    setCreatedPatient({
-      patientId: form.patientId,
-      firstName: form.firstName.trim(),
-      lastName: form.lastName.trim(),
-      dob: form.dob || "Unknown",
-      sex: form.sex as "M" | "F",
-      phone: form.phone.trim(),
-      district: form.region || "Not provided",
-      nhisCard: form.nhisNumber,
-      nhisStatus: form.nhisStatus === "yes" ? "active" : "inactive",
-    });
+    registerMutation.mutate(registrationFormToPayload(form));
   }
+
+  function resetForm() {
+    setForm({ ...EMPTY_REGISTRATION_FORM });
+    setRegisteredDto(null);
+    refreshPreviewId();
+  }
+
+  const previewError = nextRefQuery.isError;
+  const peekAx = nextRefQuery.error as { response?: { status?: number; data?: ApiError } } | undefined;
+  const peekErrDetail = peekAx?.response?.data?.message;
 
   return (
     <div className="space-y-4">
@@ -121,11 +184,33 @@ export function RegistrationView() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <RecordsField label="PATIENT_ID *" className="lg:col-span-2">
               <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                <Input value={form.patientId} readOnly className="font-clinical" />
-                <Button type="button" variant="outline" onClick={regeneratePatientId}>
-                  Regenerate
+                <Input
+                  value={form.patientId}
+                  readOnly
+                  placeholder={nextRefQuery.isLoading ? "Loading…" : "—"}
+                  className="font-clinical"
+                />
+                <Button type="button" variant="outline" onClick={refreshPreviewId} disabled={nextRefQuery.isFetching}>
+                  {nextRefQuery.isFetching ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  <span className="ml-1.5 hidden sm:inline">Refresh</span>
                 </Button>
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Pattern: <span className="font-mono">FACILITYCODE-12345678-YY</span> — server-assigned. Tap Refresh to
+                regenerate the preview if allocation conflicts (409).
+              </p>
+              {previewError && (
+                <p className="mt-1 text-xs text-destructive">
+                  {peekAx?.response?.status === 409
+                    ? (peekErrDetail ?? "Could not reserve a unique preview ID — tap Refresh.")
+                    : (peekErrDetail ??
+                      "Could not load the next ID preview. You can still register — the server will assign an ID.")}
+                </p>
+              )}
             </RecordsField>
             <RecordsField label="Client Status *">
               <div className="flex h-10 items-center gap-4 rounded-md border border-input px-3">
@@ -157,11 +242,15 @@ export function RegistrationView() {
               <Input value={form.lastName} onChange={(event) => updateForm("lastName", event.target.value)} />
             </RecordsField>
             <RecordsField label="Date of Birth">
-              <Input
-                type="date"
+              <DatePickerField
                 value={form.dob}
                 disabled={form.dobUnknown}
-                onChange={(event) => updateForm("dob", event.target.value)}
+                placeholder="Select date of birth"
+                fromYear={1900}
+                toYear={currentYear}
+                disableAfter={endOfToday()}
+                className="font-clinical"
+                onChange={(iso) => updateForm("dob", iso)}
               />
             </RecordsField>
             <RecordsField label="Age">
@@ -334,10 +423,13 @@ export function RegistrationView() {
               </div>
             </RecordsField>
             <RecordsField label="NHIS Expiry Date">
-              <Input
-                type="date"
+              <DatePickerField
                 value={form.nhisExpiry}
-                onChange={(event) => updateForm("nhisExpiry", event.target.value)}
+                placeholder="Select expiry date"
+                fromYear={2000}
+                toYear={currentYear + 20}
+                className="font-clinical"
+                onChange={(iso) => updateForm("nhisExpiry", iso)}
               />
             </RecordsField>
           </div>
@@ -378,43 +470,62 @@ export function RegistrationView() {
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
           <p className="text-sm text-muted-foreground">
-            Required fields: PATIENT_ID, First Name, Last Name, Sex, DOB or Age, and Phone Number.
+            Required fields: PATIENT_ID preview, First Name, Last Name, Sex, DOB or Age, and Phone Number.
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setForm({ ...EMPTY_REGISTRATION_FORM, patientId: generatePatientId() })}>
+            <Button variant="outline" type="button" onClick={resetForm}>
               Reset Form
             </Button>
-            <Button onClick={handleRegister} disabled={!canSubmit}>
-              <UserPlus className="mr-1.5 h-4 w-4" />
+            <Button type="button" onClick={handleRegister} disabled={!canSubmit}>
+              {registerMutation.isPending ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <UserPlus className="mr-1.5 h-4 w-4" />
+              )}
               Register Client
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {createdPatient && (
-        <Card className="border-green-200 bg-green-50">
+      {registeredDto && (
+        <Card className="border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/40">
           <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-700" />
+            <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-700 dark:text-green-400" />
             <div>
-              <p className="font-medium text-green-900">Client registered successfully</p>
-              <p className="mt-0.5 text-sm text-green-800">
-                {createdPatient.firstName} {createdPatient.lastName} - {createdPatient.patientId}
+              <p className="font-medium text-green-900 dark:text-green-100">Client registered successfully</p>
+              <p className="mt-0.5 text-sm text-green-800 dark:text-green-200">
+                {registeredDto.firstName} {registeredDto.lastName} — {registeredDto.patientPublicId}
               </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {createdPatient && (
-        <AppointmentBookingCard
-          patient={createdPatient}
-          title="Book Appointment for Newly Registered Client"
-          description="Use this immediately to complete the registration workflow."
-        />
+      {registeredDto && (
+        <div className="space-y-2">
+          <p className="text-center text-sm font-medium text-muted-foreground">Hospital card</p>
+          <HospitalPatientCard patient={registeredDto} />
+        </div>
+      )}
+
+      {registeredDto && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Book Appointment for Newly Registered Client</CardTitle>
+            <CardDescription>
+              Use this immediately to complete the registration workflow. The service comes from the Finance catalog so the
+              same canonical name reaches the cashier.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AppointmentBookingForm
+              patient={patientDtoToLegacyPatient(registeredDto)}
+              patientId={registeredDto.id}
+            />
+          </CardContent>
+        </Card>
       )}
     </div>
   );
 }
-
-

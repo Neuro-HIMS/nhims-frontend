@@ -2,7 +2,9 @@
 export type VisitType = "opd" | "anc" | "lab" | "radiology" | "ward";
 
 export type Patient = {
-  patientId: string;
+  /** Backend UUID — required for authoritative writes (booking, billing). */
+  id?: string;
+  patientId: string; // public-facing ID e.g. "KBTH-12345678-26"
   firstName: string;
   lastName: string;
   dob: string;

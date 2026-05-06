@@ -20,6 +20,7 @@
   Brain,
   Activity,
   Droplets,
+  Landmark,
   type LucideIcon,
 } from "lucide-react";
 
@@ -64,6 +65,7 @@ export const NAV_ITEMS: NavItem[] = [
     subNav: [
       { label: "Register Patient", href: "/records?view=register" },
       { label: "Search Records", href: "/records?view=search" },
+      { label: "Patient Records", href: "/records?view=manage" },
       { label: "Visit History", href: "/records?view=visits" },
     ],
   },
@@ -75,6 +77,7 @@ export const NAV_ITEMS: NavItem[] = [
     workflowGroup: "clinical",
     allowedRoles: ["RECORDS_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
     subNav: [
+      { label: "Book", href: "/appointments?view=book" },
       { label: "Calendar", href: "/appointments?view=calendar" },
       { label: "Today's Queue", href: "/appointments?view=queue" },
       { label: "Appointment History", href: "/appointments?view=history" },
@@ -250,6 +253,25 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
+    href: "/finance",
+    label: "Finance",
+    icon: Landmark,
+    module: "finance",
+    workflowGroup: "finance",
+    allowedRoles: ["FINANCE_OFFICER", "BILLING_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
+    subNav: [
+      { label: "Dashboard", href: "/finance?view=dashboard" },
+      { label: "Services", href: "/finance?view=catalog" },
+      { label: "Pricing matrix", href: "/finance?view=pricing-matrix" },
+      { label: "Billing", href: "/finance?view=billing" },
+      { label: "Payments", href: "/finance?view=payments" },
+      { label: "Revenue", href: "/finance?view=revenue" },
+      { label: "Legacy prices", href: "/finance?view=legacy-pricing" },
+      { label: "NHIS Claims", href: "/finance?view=nhis-claims" },
+      { label: "NHIS Reports", href: "/finance?view=nhis-reports" },
+    ],
+  },
+  {
     href: "/billing",
     label: "Billing",
     icon: CreditCard,
@@ -257,8 +279,9 @@ export const NAV_ITEMS: NavItem[] = [
     workflowGroup: "finance",
     allowedRoles: ["BILLING_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
     subNav: [
-      { label: "Invoices", href: "/billing?view=invoices" },
-      { label: "Claims", href: "/billing?view=claims" },
+      { label: "Dashboard", href: "/billing?view=dashboard" },
+      { label: "Bills", href: "/billing?view=bills" },
+      { label: "New Bill", href: "/billing?view=new" },
       { label: "Payments", href: "/billing?view=payments" },
     ],
   },

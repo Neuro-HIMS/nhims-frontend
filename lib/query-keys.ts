@@ -19,7 +19,10 @@ export const queryKeys = {
     // ── Patients
     patients: {
       all: ["patients"] as const,
-      search: (query: string) => ["patients", "search", query] as const,
+      nextReference: ["patients", "nextReference"] as const,
+      /** Stable key for TanStack Query — pass the same shape as {@link import("@/types/patients.types").PatientSearchParams}. */
+      search: (params: { mode: string; q?: string; firstName?: string; lastName?: string }) =>
+        ["patients", "search", params.mode, params.q ?? "", params.firstName ?? "", params.lastName ?? ""] as const,
       detail: (id: string) => ["patients", id] as const,
       allergies: (id: string) => ["patients", id, "allergies"] as const,
       visits: (id: string) => ["patients", id, "visits"] as const,
