@@ -130,6 +130,25 @@ export interface RecordTriagePayload {
   reasoning?: string;
 }
 
+export interface ClassificationSummaryDto {
+  id: string;
+  code: string;
+  description: string;
+  icd11Code: string;
+}
+
+export interface ConsultationNoteAdditionalDiagnosisDto {
+  id: string;
+  classificationId: string | null;
+  classificationCode: string | null;
+  classificationDescription: string | null;
+  icd11Code: string | null;
+  freeText: string;
+  newCase: boolean;
+  oldCase: boolean;
+  sortOrder: number;
+}
+
 // ── Consultation notes ───────────────────────────────────────────────────
 export interface ConsultationNoteDto {
   id: string;
@@ -139,19 +158,39 @@ export interface ConsultationNoteDto {
   examinationFindings: string;
   assessment: string;
   plan: string;
+  /** Legacy field; new notes leave this empty. */
   icd10Code: string;
+  provisionalDiagnosis: string;
+  provisionalClassificationId: string | null;
+  provisionalClassification: ClassificationSummaryDto | null;
+  principalClassification: ClassificationSummaryDto | null;
+  principalDiagnosisNewCase: boolean;
+  principalDiagnosisOldCase: boolean;
+  additionalDiagnoses?: ConsultationNoteAdditionalDiagnosisDto[];
   authoredByName: string;
   authoredRole: string;
   authoredAt: string | null;
 }
 
+export interface AdditionalDiagnosisInputPayload {
+  classificationId?: string | null;
+  freeText?: string;
+  newCase?: boolean;
+  oldCase?: boolean;
+}
+
 export interface CreateConsultationNotePayload {
+  provisionalDiagnosis?: string;
+  provisionalClassificationId?: string | null;
+  principalClassificationId?: string | null;
+  principalDiagnosisNewCase?: boolean;
+  principalDiagnosisOldCase?: boolean;
+  additionalDiagnoses?: AdditionalDiagnosisInputPayload[];
   chiefComplaint?: string;
   historyOfPresentComplaint?: string;
   examinationFindings?: string;
   assessment?: string;
   plan?: string;
-  icd10Code?: string;
   authoredRole?: string;
 }
 
@@ -164,6 +203,32 @@ export interface ClinicalServiceDto {
   nhisTariffCode: string;
   description: string;
   active: boolean;
+}
+
+/** Facility dictionary for ICD-style condition pickers. */
+export interface ClinicalConditionDto {
+  id: string;
+  code: string;
+  description: string;
+  icdHint: string;
+  icd11Code: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClinicalConditionPageDto {
+  content: ClinicalConditionDto[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
+export interface ClassificationImportResultDto {
+  imported: number;
+  skipped: number;
+  errors: string[];
 }
 
 // ── Lab orders ───────────────────────────────────────────────────────────

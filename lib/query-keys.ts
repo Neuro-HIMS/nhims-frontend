@@ -47,6 +47,7 @@ export const queryKeys = {
       consultations: (encounterId: string) =>
         ["clinical", "encounters", encounterId, "consultations"] as const,
       labOrders: (encounterId: string) => ["clinical", "encounters", encounterId, "lab-orders"] as const,
+      labCatalogSetup: ["clinical", "catalog", "lab-setup"] as const,
       labWorklist: ["clinical", "lab", "worklist"] as const,
       labOrder: (id: string) => ["clinical", "lab-orders", id] as const,
       prescriptions: (encounterId: string) =>
@@ -56,6 +57,15 @@ export const queryKeys = {
       admissions: (encounterId: string) => ["clinical", "encounters", encounterId, "admissions"] as const,
       referrals: (encounterId: string) => ["clinical", "encounters", encounterId, "referrals"] as const,
       alerts: (patientId: string) => ["clinical", "patients", patientId, "alerts"] as const,
+      conditions: (q: string, activeOnly: boolean) =>
+        ["clinical", "conditions", q, activeOnly] as const,
+      /** Paginated classifications (same `/clinical/conditions` catalogue). */
+      conditionsPage: (
+        q: string,
+        page: number,
+        activeOnly: boolean,
+        size: number = 20,
+      ) => ["clinical", "conditions-page", q, page, activeOnly, size] as const,
       folder: (encounterId: string) => ["clinical", "encounters", encounterId, "folder"] as const,
     },
   
@@ -96,6 +106,11 @@ export const queryKeys = {
       invoices: ["billing", "invoices"] as const,
     },
   
+    // ── Reports hub (definitions from backend catalogue)
+    reporting: {
+      definitions: ["reports", "definitions"] as const,
+    },
+
     // ── DHIMS2
     dhims2: {
       report: (period: string) => ["dhims2", "report", period] as const,

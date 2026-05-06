@@ -17,6 +17,7 @@ import { queryKeys } from "@/lib/query-keys";
 import type { VisitStatus } from "@/lib/clinical-types";
 import type { ApiError } from "@/types/api.types";
 
+/** In-visit statuses through diagnostics so patients never “vanish” after lab/Rx orders. */
 const ACTIVE_STATUSES: VisitStatus[] = [
   "booked",
   "checked-in",
@@ -26,6 +27,8 @@ const ACTIVE_STATUSES: VisitStatus[] = [
   "in-vitals",
   "awaiting-consultation",
   "in-consultation",
+  "awaiting-lab",
+  "awaiting-pharmacy",
 ];
 
 export function VisitsQueueView() {
@@ -94,7 +97,14 @@ export function VisitsQueueView() {
       total: todays.length,
       awaiting: todays.filter((v) => v.status === "awaiting-triage" || v.status === "awaiting-vitals" || v.status === "checked-in").length,
       inProgress: todays.filter((v) =>
-        ["in-triage", "in-vitals", "awaiting-consultation", "in-consultation"].includes(v.status),
+        [
+          "in-triage",
+          "in-vitals",
+          "awaiting-consultation",
+          "in-consultation",
+          "awaiting-lab",
+          "awaiting-pharmacy",
+        ].includes(v.status),
       ).length,
       emergency: todays.filter((v) => v.priority === "emergency").length,
     };

@@ -45,6 +45,8 @@ export function FolderOrdersLab({ visit, canOrder }: FolderOrdersLabProps) {
     mutationFn: (payload: CreateLabOrderPayload) => clinicalService.placeLabOrder(visit!.id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.clinical.today });
+      void qc.invalidateQueries({ queryKey: queryKeys.clinical.labWorklist });
       toast.success("Lab order placed — billing line generated");
       setShowForm(false);
     },

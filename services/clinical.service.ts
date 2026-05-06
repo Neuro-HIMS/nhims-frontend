@@ -1,10 +1,13 @@
 import { apiClient } from "@/services/api-client";
 import type { ApiResponse } from "@/types/api.types";
-import type { BillDto } from "@/types/finance.types";
+import type { BillDto, ServiceCatalogDto } from "@/types/finance.types";
 import type {
   AdmissionDto,
   AdmitPayload,
   AssignClinicianPayload,
+  ClassificationImportResultDto,
+  ClinicalConditionDto,
+  ClinicalConditionPageDto,
   ClinicalServiceDto,
   ConsultationNoteDto,
   CreateConsultationNotePayload,
@@ -170,10 +173,111 @@ export const clinicalService = {
   },
 
   // ── Clinical catalog look-up (read-only) ────────────────────────────────
-  async catalog(group?: string): Promise<ClinicalServiceDto[]> {
+  async catalog(group?: string, activeOnly = true): Promise<ClinicalServiceDto[]> {
     const res = await apiClient.get<ApiResponse<ClinicalServiceDto[]>>("/clinical/catalog/services", {
-      params: group ? { group } : undefined,
+      params: { ...(group ? { group } : {}), activeOnly },
     });
+    return res.data.data;
+  },
+
+  /** LAB-only catalog rows — backed by `/api/clinical/catalog/services` (not finance RBAC). */
+  async createLabCatalogItem(payload: {
+    serviceCode: string;
+    serviceName: string;
+    serviceGroup?: "LAB";
+    nhisTariffCode?: string;
+    description?: string;
+    active?: boolean;
+  }): Promise<ServiceCatalogDto> {
+    const res = await apiClient.post<ApiResponse<ServiceCatalogDto>>("/clinical/catalog/services", {
+      ...payload,
+      serviceGroup: "LAB",
+    });
+    return res.data.data;
+  },
+
+  async updateLabCatalogItem(
+    serviceId: string,
+    payload: {
+      serviceName: string;
+      serviceGroup?: "LAB";
+      nhisTariffCode?: string;
+      description?: string;
+      active?: boolean;
+    },
+  ): Promise<ServiceCatalogDto> {
+    const res = await apiClient.put<ApiResponse<ServiceCatalogDto>>(
+      `/clinical/catalog/services/${serviceId}`,
+      { ...payload, serviceGroup: "LAB" },
+    );
+    return res.data.data;
+  },
+
+  /** Facility-scoped ICD-style problem dictionary. */
+  async conditions(params?: { q?: string; activeOnly?: boolean }): Promise<ClinicalConditionDto[]> {
+    const res = await apiClient.get<ApiResponse<ClinicalConditionDto[]>>("/clinical/conditions", {
+      params: { q: params?.q, activeOnly: params?.activeOnly ?? true },
+    });
+    return res.data.data;
+  },
+
+  async conditionsPaged(params?: {
+    q?: string;
+    activeOnly?: boolean;
+    page?: number;
+    size?: number;
+    sort?: string;
+  }): Promise<ClinicalConditionPageDto> {
+    const res = await apiClient.get<ApiResponse<ClinicalConditionPageDto>>("/clinical/conditions/page", {
+      params: {
+        q: params?.q,
+        activeOnly: params?.activeOnly ?? true,
+        page: params?.page ?? 0,
+        size: params?.size ?? 20,
+        sort: params?.sort,
+      },
+    });
+    return res.data.data;
+  },
+
+  async exportConditions(params: {
+    format: "csv" | "xlsx";
+    q?: string;
+    activeOnly?: boolean;
+  }): Promise<Blob> {
+    const res = await apiClient.get("/clinical/conditions/export", {
+      params: { format: params.format, q: params.q, activeOnly: params.activeOnly ?? true },
+      responseType: "blob",
+    });
+    return res.data as Blob;
+  },
+
+  async importConditions(file: File): Promise<ClassificationImportResultDto> {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await apiClient.post<ApiResponse<ClassificationImportResultDto>>(
+      "/clinical/conditions/import",
+      body,
+    );
+    return res.data.data;
+  },
+
+  async createCondition(payload: {
+    code: string;
+    description: string;
+    icdHint?: string;
+    icd11Code?: string;
+    active?: boolean;
+  }): Promise<ClinicalConditionDto> {
+    const res = await apiClient.post<ApiResponse<ClinicalConditionDto>>("/clinical/conditions", payload);
+    return res.data.data;
+  },
+
+  async updateCondition(
+    id: string,
+    payload: { description: string; icdHint?: string; icd11Code?: string; active: boolean },
+  ): Promise<ClinicalConditionDto> {
+    const res = await apiClient.put<ApiResponse<ClinicalConditionDto>>(`/clinical/conditions/${id}`, payload);
     return res.data.data;
   },
 

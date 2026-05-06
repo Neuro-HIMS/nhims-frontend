@@ -11,14 +11,12 @@ import { TRIAGE_LABELS, TRIAGE_ORDER, todayDateIso } from "@/components/nurse/li
 import { encounterToVisit, mapPriority } from "@/components/clinical/lib/encounter-adapter";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
+import type { EncounterDto } from "@/types/clinical.types";
 
 /**
- * Minimal OPD doctor queue. Lists today's encounters that have been
- * triaged + had vitals taken (status = AT_CONSULTATION) and ones the
- * doctor is already actively consulting (IN_CONSULTATION). Selecting an
- * encounter routes to the existing patient folder where the doctor
- * records consultation notes, places lab/Rx orders, and triggers the
- * next station transition.
+ * OPD queues: consultants see patients awaiting or in consultation, plus
+ * a second list for those at lab/pharmacy so visits do not “disappear”
+ * after ordering tests or Rx.
  */
 export function OpdConsultQueue() {
   const router = useRouter();
@@ -30,45 +28,120 @@ export function OpdConsultQueue() {
     refetchInterval: 30_000,
   });
 
-  const rows = useMemo(() => {
-    return (todayQuery.data ?? [])
+  const { consultRows, diagRows } = useMemo(() => {
+    const encounters = todayQuery.data ?? [];
+    type Row = {
+      encounter: EncounterDto;
+      visit: ReturnType<typeof encounterToVisit>;
+      priority: ReturnType<typeof mapPriority>;
+    };
+    const mapRow = (e: EncounterDto): Row => ({
+      encounter: e,
+      visit: encounterToVisit(e),
+      priority: mapPriority(e.priority),
+    });
+    const isTodayCalendar = (e: EncounterDto) => encounterToVisit(e).appointmentDate === today;
+
+    const consultRaw = encounters
       .filter((e) => e.status === "AT_CONSULTATION" || e.status === "IN_CONSULTATION")
-      .map((e) => ({ encounter: e, visit: encounterToVisit(e), priority: mapPriority(e.priority) }))
+      .filter(isTodayCalendar)
+      .map(mapRow)
       .sort(
         (a, b) =>
           TRIAGE_ORDER[a.priority] - TRIAGE_ORDER[b.priority] ||
           a.visit.appointmentTime.localeCompare(b.visit.appointmentTime),
       );
-  }, [todayQuery.data]);
+
+    const diagRaw = encounters
+      .filter((e) => e.status === "AT_LAB" || e.status === "AT_PHARMACY")
+      .filter(isTodayCalendar)
+      .map(mapRow)
+      .sort(
+        (a, b) =>
+          TRIAGE_ORDER[a.priority] - TRIAGE_ORDER[b.priority] ||
+          a.visit.appointmentTime.localeCompare(b.visit.appointmentTime),
+      );
+
+    return { consultRows: consultRaw, diagRows: diagRaw };
+  }, [todayQuery.data, today]);
 
   function open(encounterId: string, patientUuid: string) {
     router.push(`/nurse?view=folder&patientId=${patientUuid}&visitId=${encounterId}`);
   }
 
+  const loading = todayQuery.isLoading;
+
+  return (
+    <div className="space-y-6">
+      <QueueSection
+        title={`Consult queue · ${today}`}
+        description="Patients vitalled and ready for the doctor, or already in consultation. Open folder for SOAP notes and orders."
+        loading={loading}
+        emptyTitle="No patients waiting"
+        emptyHint="Once a nurse takes vitals the patient will appear here automatically."
+        rows={consultRows}
+        statusLabel={(e) =>
+          e.status === "IN_CONSULTATION" ? "In consultation" : "Awaiting doctor"
+        }
+        onOpen={open}
+      />
+
+      <QueueSection
+        title="At lab / pharmacy (same visit)"
+        description="Patients sent for investigations or dispensing still appear here so you can reopen the folder and continue care after results."
+        loading={loading}
+        emptyTitle="No patients in diagnostics"
+        emptyHint="When you place lab or pharmacy orders, the encounter moves here until the station completes its work."
+        rows={diagRows}
+        statusLabel={(e) => (e.status === "AT_LAB" ? "At lab" : "At pharmacy")}
+        onOpen={open}
+      />
+    </div>
+  );
+}
+
+function QueueSection({
+  title,
+  description,
+  loading,
+  emptyTitle,
+  emptyHint,
+  rows,
+  statusLabel,
+  onOpen,
+}: {
+  title: string;
+  description: string;
+  loading: boolean;
+  emptyTitle: string;
+  emptyHint: string;
+  rows: Array<{
+    encounter: EncounterDto;
+    visit: ReturnType<typeof encounterToVisit>;
+    priority: ReturnType<typeof mapPriority>;
+  }>;
+  statusLabel: (e: EncounterDto) => string;
+  onOpen: (encounterId: string, patientUuid: string) => void;
+}) {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Activity className="h-4 w-4 text-muted-foreground" />
-          OPD Consultation Queue · {today}
+          {title}
         </CardTitle>
-        <CardDescription>
-          Patients vitalled by the nurse station and ready for the doctor. Open the folder to record SOAP notes, place orders, or
-          send to lab/pharmacy.
-        </CardDescription>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent>
-        {todayQuery.isLoading ? (
+        {loading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" /> Loading queue…
           </div>
         ) : rows.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-10 text-center">
             <Inbox className="h-7 w-7 text-muted-foreground/50" />
-            <p className="text-sm font-medium text-foreground">No patients waiting</p>
-            <p className="text-xs text-muted-foreground">
-              Once a nurse takes vitals the patient will appear here automatically.
-            </p>
+            <p className="text-sm font-medium text-foreground">{emptyTitle}</p>
+            <p className="text-xs text-muted-foreground">{emptyHint}</p>
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -90,7 +163,7 @@ export function OpdConsultQueue() {
                   return (
                     <tr
                       key={encounter.id}
-                      onClick={() => open(encounter.id, encounter.patientId)}
+                      onClick={() => onOpen(encounter.id, encounter.patientId)}
                       className={`table-row-interactive ${triage.rowClass}`}
                     >
                       <td className="px-4 py-3 font-clinical text-xs text-foreground">
@@ -109,9 +182,7 @@ export function OpdConsultQueue() {
                         <span className={`status-pill text-xs ${triage.badgeClass}`}>{triage.label}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="status-pill status-pill-pending text-xs">
-                          {encounter.status === "IN_CONSULTATION" ? "In Consultation" : "Awaiting Doctor"}
-                        </span>
+                        <span className="status-pill status-pill-pending text-xs">{statusLabel(encounter)}</span>
                       </td>
                       <td className="px-4 py-3">
                         <Button size="sm" variant="ghost" className="gap-1">

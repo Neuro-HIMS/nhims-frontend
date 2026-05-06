@@ -7,6 +7,7 @@ import { AlertTriangle, CheckCircle2, ChevronRight, Loader2, Pill, ShieldCheck }
 import { toast } from "sonner";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -227,12 +228,13 @@ function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: () => vo
     return m;
   });
   const [notes, setNotes] = useState(rx.pharmacyNotes ?? "");
+  const [dispensePayload, setDispensePayload] = useState<DispensePayload | null>(null);
 
   const allDispensable = rx.lines.every(
     (l) => l.status === "READY" || l.status === "PARTIALLY_DISPENSED" || l.status === "DISPENSED" || l.status === "CANCELLED",
   );
 
-  function handleDispense() {
+  function buildDispensePayload(): DispensePayload | null {
     const lines: DispenseLineInput[] = [];
     rx.lines.forEach((l) => {
       const want = parseInt(qty[l.id] ?? "0") || 0;
@@ -244,9 +246,15 @@ function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: () => vo
     });
     if (lines.length === 0) {
       toast.error("Enter quantity to dispense for at least one line");
-      return;
+      return null;
     }
-    dispenseMut.mutate({ lines, pharmacyNotes: notes.trim() || undefined });
+    return { lines, pharmacyNotes: notes.trim() || undefined };
+  }
+
+  function armDispense() {
+    const built = buildDispensePayload();
+    if (!built) return;
+    setDispensePayload(built);
   }
 
   return (
@@ -331,7 +339,7 @@ function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: () => vo
         />
 
         <div className="flex flex-col gap-2">
-          <Button onClick={handleDispense} disabled={!allDispensable || dispenseMut.isPending}>
+          <Button onClick={() => armDispense()} disabled={!allDispensable || dispenseMut.isPending}>
             {dispenseMut.isPending ? (
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
             ) : (
@@ -358,6 +366,22 @@ function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: () => vo
             Close
           </Button>
         </div>
+
+        <ConfirmDialog
+          open={dispensePayload !== null}
+          onOpenChange={(open) => {
+            if (!open) setDispensePayload(null);
+          }}
+          title="Record this dispense?"
+          description={`Writes ${dispensePayload?.lines.length ?? 0} medication line update(s) for ${rx.patientName ?? "patient"}. This cannot be silently undone — reconcile stock if you miscount.`}
+          confirmLabel="Dispense now"
+          pending={dispenseMut.isPending}
+          onConfirm={async () => {
+            if (!dispensePayload) return;
+            await dispenseMut.mutateAsync(dispensePayload);
+            setDispensePayload(null);
+          }}
+        />
       </CardContent>
     </Card>
   );

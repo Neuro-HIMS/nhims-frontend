@@ -106,6 +106,7 @@ export const NAV_ITEMS: NavItem[] = [
     subNav: [
       { label: "Consult Queue", href: "/opd?view=queue" },
       { label: "Consultations", href: "/opd?view=consult" },
+      { label: "Classifications", href: "/opd?view=classifications" },
       { label: "Follow-up", href: "/opd?view=followup" },
     ],
   },
@@ -197,6 +198,7 @@ export const NAV_ITEMS: NavItem[] = [
     subNav: [
       { label: "Worklist", href: "/laboratory?view=worklist" },
       { label: "Results", href: "/laboratory?view=results" },
+      { label: "Catalog & setup", href: "/laboratory?view=catalog" },
       { label: "Quality Control", href: "/laboratory?view=quality" },
     ],
   },
@@ -287,15 +289,23 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/reports",
-    label: "DHIMS2 Reports",
+    label: "Reports",
     icon: BarChart3,
     module: "reports",
     workflowGroup: "finance",
-    allowedRoles: ["HIO", "FACILITY_ADMIN", "SUPER_ADMIN"],
+    allowedRoles: [
+      "HIO",
+      "FACILITY_ADMIN",
+      "SUPER_ADMIN",
+      "MEDICAL_OFFICER",
+      "FINANCE_OFFICER",
+      "RECORDS_OFFICER",
+      "BILLING_OFFICER",
+    ],
     subNav: [
-      { label: "DHIMS2 Summary", href: "/reports?view=dhims2" },
-      { label: "Monthly Report", href: "/reports?view=monthly" },
-      { label: "Exports", href: "/reports?view=exports" },
+      { label: "DHIMS2", href: "/reports?view=dhims2" },
+      { label: "Facility monthly", href: "/reports?view=monthly" },
+      { label: "Exports hub", href: "/reports?view=exports" },
     ],
   },
   {
@@ -322,6 +332,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: "Profile", href: "/facility?view=profile" },
       { label: "Services", href: "/facility?view=services" },
       { label: "Configuration", href: "/facility?view=config" },
+      { label: "Clinical dictionary", href: "/facility?view=conditions" },
     ],
   },
   {

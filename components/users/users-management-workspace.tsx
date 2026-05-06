@@ -17,6 +17,7 @@ import {
 import { StaffAccountsView } from "@/components/users/staff-accounts-view";
 import { UserManagementCreateView } from "@/components/users/user-management-create-view";
 import { extractErrorMessage } from "@/components/users/users-management-utils";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -44,6 +45,9 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  /** Disable account confirmation */
+  const [pendingDisableUser, setPendingDisableUser] = useState<UserListItem | null>(null);
+  const [pendingPasswordResetUser, setPendingPasswordResetUser] = useState<UserListItem | null>(null);
   const [createForm, setCreateForm] = useState({
     firstName: "",
     lastName: "",
@@ -154,8 +158,10 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
       const updated = await usersService.updateStatus(user.id, active);
       setUsers((prev) => prev.map((m) => (m.id === user.id ? updated : m)));
       setMessage(`Account ${active ? "enabled" : "disabled"} for ${user.username}.`);
+      setPendingDisableUser(null);
     } catch (error) {
       setMessage(extractErrorMessage(error, "Unable to update account status."));
+      throw error;
     } finally {
       setIsActionLoading(false);
       setActionUserId(null);
@@ -170,8 +176,10 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
     try {
       const result = await usersService.resetPassword(user.id);
       setMessage(`Temporary password for ${user.username}: ${result.temporaryPassword}`);
+      setPendingPasswordResetUser(null);
     } catch (error) {
       setMessage(extractErrorMessage(error, "Unable to reset password."));
+      throw error;
     } finally {
       setIsActionLoading(false);
       setActionUserId(null);
@@ -224,8 +232,11 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
           onEditAccess={(userId) => router.push(`/users/role-assignment/${userId}`)}
-          onResetPassword={(user) => void handleResetPassword(user)}
-          onToggleStatus={(user, nextActive) => void toggleStatus(user, nextActive)}
+          onResetPassword={(user) => setPendingPasswordResetUser(user)}
+          onToggleStatus={(user, nextActive) => {
+            if (nextActive) void toggleStatus(user, true);
+            else setPendingDisableUser(user);
+          }}
           isActionLoading={isActionLoading}
           actionUserId={actionUserId}
           actionType={actionType}
@@ -233,6 +244,41 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
       )}
 
       {activeView === "access" && <AccessReviewView accessReview={accessReview} />}
+
+      <ConfirmDialog
+        open={pendingDisableUser !== null}
+        onOpenChange={(open) => !open && setPendingDisableUser(null)}
+        title="Disable staff account?"
+        description={
+          pendingDisableUser
+            ? `${pendingDisableUser.firstName} ${pendingDisableUser.lastName} (${pendingDisableUser.username}) will not be able to sign in until re-enabled.`
+            : ""
+        }
+        confirmLabel="Disable account"
+        destructive
+        pending={isActionLoading}
+        onConfirm={async () => {
+          if (!pendingDisableUser) return;
+          await toggleStatus(pendingDisableUser, false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingPasswordResetUser !== null}
+        onOpenChange={(open) => !open && setPendingPasswordResetUser(null)}
+        title="Reset password?"
+        description={
+          pendingPasswordResetUser
+            ? `Issuing a temporary password for ${pendingPasswordResetUser.username} invalidates the previous password immediately. Share the temporary password privately.`
+            : ""
+        }
+        confirmLabel="Generate temporary password"
+        pending={isActionLoading}
+        onConfirm={async () => {
+          if (!pendingPasswordResetUser) return;
+          await handleResetPassword(pendingPasswordResetUser);
+        }}
+      />
     </section>
   );
 }

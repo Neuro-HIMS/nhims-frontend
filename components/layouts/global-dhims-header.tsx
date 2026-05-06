@@ -43,60 +43,55 @@ export function GlobalDhimsHeader({ user }: GlobalDhimsHeaderProps) {
   return (
     <header className="dashboard-shell-header" role="banner">
       {/* ── Top row ─────────────────────────────────────────── */}
-      <div className="flex h-[52px] items-center gap-2 px-3">
-        {/* Logo */}
+      <div className="flex h-[52px] items-center gap-3 px-3">
         <Link
           href="/dashboard"
-          className="shrink-0 rounded bg-white px-2 py-1"
-          aria-label="Go to dashboard"
+          className="shrink-0 rounded-md bg-white/95 px-2 py-1 shadow-sm ring-1 ring-black/5"
+          aria-label="Go to NHIMS dashboard"
+          title="NHIMS home"
         >
           <Image
             src="/assets/nhims-logo.png"
-            alt="NHIMS"
-            width={180}
-            height={52}
-            className="h-[26px] w-auto object-contain"
+            alt=""
+            width={132}
+            height={36}
+            className="h-[18px] w-auto object-contain opacity-95"
             priority
           />
         </Link>
 
-        {/* Vertical divider */}
-        <div className="h-5 w-px shrink-0 bg-white/20" aria-hidden="true" />
+        <div className="h-6 w-px shrink-0 bg-white/20" aria-hidden="true" />
 
-        {/* System title + context */}
-        <div className="min-w-0 flex-1 hidden sm:flex sm:items-center sm:gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold leading-none text-white">
-              Hospital Management Information System
-            </p>
-            <p className="mt-[3px] flex min-w-0 items-center gap-2 truncate text-[11px] leading-none text-white/55">
-              {user.facilityLogoDataUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- data URLs from API for facility branding
-                <img
-                  src={user.facilityLogoDataUrl}
-                  alt=""
-                  className="h-7 w-7 shrink-0 rounded-md border border-white/25 bg-white/10 object-cover"
-                />
-              ) : (
-                <span
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/25 bg-white/10 text-[10px] font-bold text-white"
-                  aria-hidden
-                >
-                  {user.facilityCode.slice(0, 2)}
-                </span>
-              )}
-              <span className="truncate">
-                <span className="font-medium text-white/90">{user.facilityName}</span>
-                {" · "}
-                {activeTab?.label ?? "Workspace"}
-                {" · "}
-                {formatRole(user.role)}
-              </span>
+        {/* Facility-first branding */}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {user.facilityLogoDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- data URLs from API for facility branding
+            <img
+              src={user.facilityLogoDataUrl}
+              alt=""
+              className="h-11 w-11 shrink-0 rounded-lg border border-white/30 bg-white object-cover shadow-sm sm:h-12 sm:w-12"
+            />
+          ) : (
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/35 bg-white/15 text-sm font-bold uppercase tracking-tight text-white shadow-inner sm:h-12 sm:w-12"
+              aria-hidden
+            >
+              {initialsForFacility(user.facilityCode, user.facilityName)}
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-semibold leading-snug text-white sm:text-base">{user.facilityName}</p>
+            <p className="mt-0.5 truncate text-[11px] leading-none text-white/65">
+              <span className="hidden sm:inline">Powered by NHIMS · </span>
+              <span className="font-medium text-white/85">{user.facilityCode}</span>
+              {" · "}
+              <span>{activeTab?.label ?? "Workspace"}</span>
+              {" · "}
+              <span>{formatRole(user.role)}</span>
             </p>
           </div>
         </div>
 
-        {/* Right actions */}
         <div className="flex items-center gap-0.5 ml-auto">
           {/* Online badge */}
           <span className="dashboard-online-badge mr-1.5 hidden md:inline-flex">
@@ -222,4 +217,13 @@ function formatRole(role: string): string {
     .replace(/_/g, " ")
     .toLowerCase()
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function initialsForFacility(code: string, name: string): string {
+  const c = (code ?? "").trim();
+  if (c.length >= 2) return c.slice(0, 2).toUpperCase();
+  const w = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (w.length >= 2) return `${w[0].charAt(0)}${w[1].charAt(0)}`.toUpperCase();
+  if (w.length === 1 && w[0].length >= 2) return w[0].slice(0, 2).toUpperCase();
+  return "FC";
 }

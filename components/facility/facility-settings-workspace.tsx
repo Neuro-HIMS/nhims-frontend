@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, CheckCircle2, ImagePlus, RotateCcw, Save, Search, Trash2 } from "lucide-react";
 
 import { FACILITY_SERVICE_TO_APP_MODULE } from "@/config/facility-service-modules";
+import { FacilityConditionsDictionary } from "@/components/facility/facility-conditions-dictionary";
 import { authService } from "@/services/auth.service";
 import { facilityService } from "@/services/facility.service";
 import { useAuthStore } from "@/store/auth.store";
@@ -35,6 +36,11 @@ const VIEW_CONFIG = [
   { id: "profile", label: "Profile", description: "Identity, branding, and contact details." },
   { id: "services", label: "Services", description: "Service lines and capacity targets." },
   { id: "config", label: "Configuration", description: "Operational defaults and workflow preferences." },
+  {
+    id: "conditions",
+    label: "Clinical dictionary",
+    description: "ICD-style problem list labels for clinician pickers.",
+  },
 ] as const;
 
 const SUB_NAV = VIEW_CONFIG.map((v) => ({
@@ -282,6 +288,8 @@ export function FacilitySettingsWorkspace({
           {activeView === "config" && (
             <FacilityConfigView config={model.config} onChange={(config) => setModel((m) => ({ ...m, config }))} />
           )}
+
+          {activeView === "conditions" && <FacilityConditionsDictionary />}
         </div>
       )}
     </section>
@@ -1059,7 +1067,7 @@ function parseDataUrl(dataUrl: string): { contentType: string; base64: string } 
 }
 
 function isViewId(value: string | null): value is ViewId {
-  return value === "profile" || value === "services" || value === "config";
+  return value === "profile" || value === "services" || value === "config" || value === "conditions";
 }
 
 function parseBoundedInt(raw: string, min: number, max: number, fallback: number): number {

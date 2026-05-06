@@ -8,9 +8,11 @@ import { format } from "date-fns";
 import { CalendarPlus, CheckCircle2, Clock, Loader2, PlayCircle, UserCheck, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { appointmentsService } from "@/services/appointments.service";
 import type { AppointmentDto } from "@/types/appointments.types";
@@ -20,6 +22,7 @@ import {
   visitTypeLabel,
 } from "@/components/appointments/appointment-utils";
 import { minorToGhs, PAYER_LABEL, showApiError } from "@/components/finance/finance-utils";
+import { queryKeys } from "@/lib/query-keys";
 
 export function QueueView() {
   const qc = useQueryClient();
@@ -41,25 +44,51 @@ export function QueueView() {
   }, [today.data]);
 
   const checkIn   = useMutation({ mutationFn: (id: string) => appointmentsService.checkIn(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["appointments"] }); toast.success("Checked in"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Checked in");
+    },
     onError: (e) => toast.error(showApiError(e)) });
   const start     = useMutation({ mutationFn: (id: string) => appointmentsService.start(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["appointments"] }); toast.success("Visit started"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Visit started");
+    },
     onError: (e) => toast.error(showApiError(e)) });
   const complete  = useMutation({ mutationFn: (id: string) => appointmentsService.complete(id, { openBill: true }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["appointments"] }); qc.invalidateQueries({ queryKey: ["finance"] }); toast.success("Completed — bill issued in Finance"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      qc.invalidateQueries({ queryKey: ["finance"] });
+      toast.success("Completed — bill issued in Finance");
+    },
     onError: (e) => toast.error(showApiError(e)) });
   const cancel    = useMutation({ mutationFn: ({ id, reason }: { id: string; reason: string }) => appointmentsService.cancel(id, reason),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["appointments"] }); toast.success("Cancelled"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Cancelled");
+    },
     onError: (e) => toast.error(showApiError(e)) });
   const noShow    = useMutation({ mutationFn: (id: string) => appointmentsService.noShow(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["appointments"] }); toast.success("Marked no-show"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Marked no-show");
+    },
     onError: (e) => toast.error(showApiError(e)) });
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  const [completeFor, setCompleteFor] = useState<AppointmentDto | null>(null);
+  const [noShowFor, setNoShowFor] = useState<AppointmentDto | null>(null);
+  const [cancelFor, setCancelFor] = useState<AppointmentDto | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
 
   const filtered = useMemo(() => {
     const list = today.data ?? [];
@@ -81,6 +110,22 @@ export function QueueView() {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">Scheduling vs clinical queue</p>
+        <p className="mt-1">
+          This list is driven by{" "}
+          <strong className="text-foreground">appointments</strong> (booked slots and status). Nurses and clinicians work from{" "}
+          <Link href="/nurse?view=visits" className="text-primary underline-offset-4 hover:underline">
+            Nurse Station
+          </Link>{" "}
+          and{" "}
+          <Link href="/opd?view=queue" className="text-primary underline-offset-4 hover:underline">
+            OPD
+          </Link>{" "}
+          using <strong className="text-foreground">encounters</strong> for the live visit pathway.
+        </p>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-5">
         <Stat label="Total today"   value={counts.total} />
         <Stat label="Scheduled"     value={counts.scheduled} />
@@ -182,13 +227,12 @@ export function QueueView() {
                       pending={checkIn.isPending || start.isPending || complete.isPending || cancel.isPending || noShow.isPending}
                       onCheckIn={() => checkIn.mutate(a.id)}
                       onStart={() => start.mutate(a.id)}
-                      onComplete={() => complete.mutate(a.id)}
-                      onCancel={() => {
-                        const reason = window.prompt("Cancellation reason?") ?? "";
-                        if (!reason.trim()) return;
-                        cancel.mutate({ id: a.id, reason });
+                      onConfirmComplete={() => setCompleteFor(a)}
+                      onConfirmCancel={() => {
+                        setCancelReason("");
+                        setCancelFor(a);
                       }}
-                      onNoShow={() => noShow.mutate(a.id)}
+                      onConfirmNoShow={() => setNoShowFor(a)}
                     />
                   </td>
                 </tr>
@@ -213,6 +257,67 @@ export function QueueView() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(completeFor)}
+        onOpenChange={(open) => !open && setCompleteFor(null)}
+        title="Complete visit and bill?"
+        description={`Mark ${completeFor?.patientName ?? ""} as completed for today. This will finalise billing flow for this appointment where configured.`}
+        confirmLabel="Complete & bill"
+        pending={complete.isPending}
+        onConfirm={async () => {
+          if (!completeFor) return;
+          await complete.mutateAsync(completeFor.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(noShowFor)}
+        onOpenChange={(open) => !open && setNoShowFor(null)}
+        title="Mark as no-show?"
+        description={`Record that ${noShowFor?.patientName ?? ""} did not attend this scheduled appointment.`}
+        confirmLabel="Mark no-show"
+        destructive
+        pending={noShow.isPending}
+        onConfirm={async () => {
+          if (!noShowFor) return;
+          await noShow.mutateAsync(noShowFor.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(cancelFor)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCancelFor(null);
+            setCancelReason("");
+          }
+        }}
+        title="Cancel appointment?"
+        description="This frees the slot. The cancellation reason is stored with the appointment."
+        confirmLabel="Cancel appointment"
+        destructive
+        pending={cancel.isPending}
+        footerExtra={
+          <Textarea
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="Cancellation reason…"
+            rows={3}
+            className="resize-none text-sm"
+          />
+        }
+        onConfirm={async () => {
+          if (!cancelFor) return;
+          const reason = cancelReason.trim();
+          if (!reason) {
+            toast.error("Provide a cancellation reason");
+            throw new Error("reason");
+          }
+          await cancel.mutateAsync({ id: cancelFor.id, reason });
+          setCancelReason("");
+        }}
+      />
     </div>
   );
 }
@@ -233,15 +338,15 @@ function Th({ children, className = "" }: { children: ReactNode; className?: str
 }
 
 function RowActions({
-  appt, pending, onCheckIn, onStart, onComplete, onCancel, onNoShow,
+  appt, pending, onCheckIn, onStart, onConfirmComplete, onConfirmCancel, onConfirmNoShow,
 }: {
   appt: AppointmentDto;
   pending: boolean;
   onCheckIn: () => void;
   onStart: () => void;
-  onComplete: () => void;
-  onCancel: () => void;
-  onNoShow: () => void;
+  onConfirmComplete: () => void;
+  onConfirmCancel: () => void;
+  onConfirmNoShow: () => void;
 }) {
   return (
     <div className="flex flex-wrap justify-end gap-1">
@@ -250,7 +355,7 @@ function RowActions({
           <Button variant="outline" size="sm" disabled={pending} onClick={onCheckIn}>
             <UserCheck className="mr-1 h-3.5 w-3.5" /> Check in
           </Button>
-          <Button variant="ghost" size="sm" disabled={pending} onClick={onCancel}>
+          <Button variant="ghost" size="sm" disabled={pending} onClick={onConfirmCancel}>
             <XCircle className="mr-1 h-3.5 w-3.5" /> Cancel
           </Button>
         </>
@@ -260,13 +365,13 @@ function RowActions({
           <Button variant="outline" size="sm" disabled={pending} onClick={onStart}>
             <PlayCircle className="mr-1 h-3.5 w-3.5" /> Start
           </Button>
-          <Button variant="ghost" size="sm" disabled={pending} onClick={onNoShow}>
+          <Button variant="ghost" size="sm" disabled={pending} onClick={onConfirmNoShow}>
             No show
           </Button>
         </>
       )}
       {appt.status === "IN_PROGRESS" && (
-        <Button variant="default" size="sm" disabled={pending} onClick={onComplete}>
+        <Button variant="default" size="sm" disabled={pending} onClick={onConfirmComplete}>
           <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Complete &amp; bill
         </Button>
       )}

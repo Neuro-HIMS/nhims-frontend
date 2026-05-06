@@ -1,45 +1,105 @@
 "use client";
 
+import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
+import { reportsService } from "@/services/reports.service";
 
-const SUB_NAV = [
-  { label: "DHIMS2 Summary", view: "dhims2", href: "/reports?view=dhims2" },
-  { label: "Monthly Report", view: "monthly", href: "/reports?view=monthly" },
-  { label: "Exports", view: "exports", href: "/reports?view=exports" },
-];
+const STATIC_FALLBACK_TABS = [
+  { label: "DHIMS2 Summary", category: "DHIMS2", routePath: "/reports?view=dhims2", viewKey: "dhims2" },
+  { label: "Monthly Report", category: "Facility", routePath: "/reports?view=monthly", viewKey: "monthly" },
+  { label: "Exports", category: "Exports", routePath: "/reports?view=exports", viewKey: "exports" },
+] as const;
 
 export function ReportsWorkspace() {
   const searchParams = useSearchParams();
-  const view = searchParams.get("view") ?? "dhims2";
+
+  const defsQuery = useQuery({
+    queryKey: queryKeys.reporting.definitions,
+    queryFn: () => reportsService.listDefinitions(),
+    staleTime: 120_000,
+  });
+
+  const tabs = useMemo(() => {
+    const rows = defsQuery.data ?? [];
+    if (rows.length > 0) {
+      return rows.map((r) => ({
+        label: r.title,
+        href: r.routePath.startsWith("/") ? r.routePath : `/${r.routePath}`,
+        viewKey: parseShellView(r.routePath),
+        category: r.category,
+      }));
+    }
+    return STATIC_FALLBACK_TABS.map((t) => ({
+      label: t.label,
+      href: t.routePath,
+      viewKey: t.viewKey,
+      category: t.category,
+    }));
+  }, [defsQuery.data]);
+
+  const subNavItems = tabs.map((t) => ({
+    label: t.label,
+    view: t.viewKey,
+    href: `/reports?view=${encodeURIComponent(t.viewKey)}`,
+  }));
+
+  const requested = searchParams.get("view") ?? tabs[0]?.viewKey ?? "dhims2";
+  const activeView = tabs.some((t) => t.viewKey === requested) ? requested : tabs[0]?.viewKey ?? "dhims2";
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">DHIMS2 Reports</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Reports</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Health indicator summaries, monthly reports, and DHIMS2 data exports.
+          Assigned reporting shells from NHIMS catalogue — grouped for DHIMS2, facility summaries, and exports.
+          {defsQuery.isError && (
+            <span className="ml-2 text-xs text-muted-foreground"> (Showing cached navigation — catalogue refresh failed)</span>
+          )}
         </p>
       </div>
-      <ModuleSubNav items={SUB_NAV} basePath="/reports" />
+
+      {!defsQuery.isError && defsQuery.data && defsQuery.data.length > 0 && (
+        <Card className="border-dashed bg-muted/20">
+          <CardContent className="py-4 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Catalog categories: </span>
+            {[...new Set(defsQuery.data.map((d) => d.category))].join(" · ") || "—"}
+          </CardContent>
+        </Card>
+      )}
+
+      <ModuleSubNav items={subNavItems} basePath="/reports" />
+
       <div className="pt-2">
-        {view === "dhims2" && <Dhims2View />}
-        {view === "monthly" && <MonthlyView />}
-        {view === "exports" && <ExportsView />}
+        {activeView === "dhims2" && <Dhims2View />}
+        {activeView === "monthly" && <MonthlyView />}
+        {activeView === "exports" && <ExportsView />}
       </div>
     </div>
   );
+}
+
+function parseShellView(routePath: string): string {
+  const m = /[?&]view=([^&#]+)/.exec(routePath);
+  if (!m?.[1]) return "dhims2";
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
 }
 
 function Dhims2View() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">Reporting period: May 2026</p>
+        <p className="text-sm text-muted-foreground">Reporting period: May 2026 · DHIMS2 shell</p>
         <Button variant="outline" size="sm">
           <Download className="mr-1.5 h-4 w-4" />
           Export to DHIMS2
@@ -54,9 +114,15 @@ function Dhims2View() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Indicator</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Value</th>
-                <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Category</th>
+                <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Indicator
+                </th>
+                <th className="pb-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Value
+                </th>
+                <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Category
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -98,7 +164,7 @@ function MonthlyView() {
 }
 
 function ExportsView() {
-  const EXPORTS = [
+  const EXPORT_ROWS = [
     { name: "DHIMS2 Monthly Return", format: "Excel", period: "May 2026", ready: true },
     { name: "OPD Morbidity Report", format: "PDF", period: "May 2026", ready: true },
     { name: "ANC Coverage Report", format: "Excel", period: "May 2026", ready: false },
@@ -107,17 +173,15 @@ function ExportsView() {
 
   return (
     <div className="space-y-3">
-      {EXPORTS.map((exp) => (
+      {EXPORT_ROWS.map((exp) => (
         <div key={exp.name} className="flex items-center justify-between rounded-lg border border-border bg-card p-4">
           <div>
             <p className="font-medium text-foreground">{exp.name}</p>
-            <p className="text-xs text-muted-foreground">{exp.period} · {exp.format}</p>
+            <p className="text-xs text-muted-foreground">
+              {exp.period} · {exp.format}
+            </p>
           </div>
-          <Button
-            variant={exp.ready ? "default" : "outline"}
-            size="sm"
-            disabled={!exp.ready}
-          >
+          <Button variant={exp.ready ? "default" : "outline"} size="sm" disabled={!exp.ready}>
             <Download className="mr-1.5 h-4 w-4" />
             {exp.ready ? "Download" : "Generating…"}
           </Button>

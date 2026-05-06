@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   Users,
   BedDouble,
@@ -16,6 +18,8 @@ import {
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { queryKeys } from "@/lib/query-keys";
+import { clinicalService } from "@/services/clinical.service";
 
 const SUB_NAV = [
   { label: "Overview", view: "overview", href: "/dashboard?view=overview" },
@@ -50,34 +54,93 @@ export function DashboardWorkspace() {
 }
 
 function OverviewView() {
+  const todayEncountersQuery = useQuery({
+    queryKey: queryKeys.clinical.today,
+    queryFn: () => clinicalService.today(),
+    refetchInterval: 60_000,
+  });
+  const labReadyQuery = useQuery({
+    queryKey: [...queryKeys.clinical.labWorklist, "READY", "dashboard"],
+    queryFn: () => clinicalService.labWorklist("READY"),
+    refetchInterval: 60_000,
+  });
+  const pharmacyQueueQuery = useQuery({
+    queryKey: [...queryKeys.clinical.pharmacyQueue, "dashboard-open"],
+    queryFn: async () => {
+      const rows = await clinicalService.pharmacyWorklist(undefined);
+      return rows.filter((p) =>
+        ["ORDERED", "AWAITING_PAYMENT", "READY", "PARTIALLY_DISPENSED"].includes(p.status),
+      );
+    },
+    refetchInterval: 60_000,
+  });
+
+  const encounters = todayEncountersQuery.data ?? [];
+  const clinicalTodayTouchpoints = encounters.filter(
+    (e) => !["CANCELLED", "NO_SHOW"].includes(e.status),
+  ).length;
+
+  const liveValue = (q: typeof todayEncountersQuery, n: number) =>
+    q.isLoading ? "…" : q.isError ? "—" : String(n);
+
   return (
     <div className="space-y-6">
+      <Card className="border-dashed bg-muted/30">
+        <CardContent className="pt-5 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">Live clinical board</p>
+          <p className="mt-1">
+            The first row below uses today&apos;s encounters and worklists from{" "}
+            <code className="rounded bg-muted px-1 text-xs">/clinical</code>. Open the{" "}
+            <Link href="/nurse?view=visits" className="font-medium text-primary underline-offset-4 hover:underline">
+              Nurse queue
+            </Link>
+            ,{" "}
+            <Link href="/opd?view=queue" className="font-medium text-primary underline-offset-4 hover:underline">
+              OPD consult
+            </Link>
+            ,{" "}
+            <Link href="/laboratory" className="font-medium text-primary underline-offset-4 hover:underline">
+              Laboratory
+            </Link>
+            , or{" "}
+            <Link href="/pharmacy" className="font-medium text-primary underline-offset-4 hover:underline">
+              Pharmacy
+            </Link>{" "}
+            for the full workflow. Official DHIMS2 submissions live under{" "}
+            <Link href="/reports?view=dhims2" className="font-medium text-primary underline-offset-4 hover:underline">
+              Reports
+            </Link>
+            .
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="OPD Attendance Today"
-          value="142"
-          delta="+12 vs yesterday"
+          label="Clinical encounters (today)"
+          value={liveValue(todayEncountersQuery, clinicalTodayTouchpoints)}
+          delta="Live • excludes cancelled / no-show"
           icon={<Users className="h-5 w-5" />}
-          trend="up"
+          trend={todayEncountersQuery.isSuccess && clinicalTodayTouchpoints > 0 ? "up" : undefined}
         />
         <StatCard
-          label="Inpatient Admissions"
+          label="Inpatient snapshot"
           value="38"
-          delta="3 pending discharge"
+          delta="Illustrative aggregate — wards summary API not wired here"
           icon={<BedDouble className="h-5 w-5" />}
         />
         <StatCard
-          label="Pending Lab Tests"
-          value="27"
-          delta="4 critical priority"
+          label="Lab READY worklist"
+          value={liveValue(labReadyQuery, labReadyQuery.data?.length ?? 0)}
+          delta="Orders in READY status (includes unpaid cashier queue where applicable)"
           icon={<FlaskConical className="h-5 w-5" />}
-          alert
+          alert={labReadyQuery.isSuccess && (labReadyQuery.data?.length ?? 0) > 0}
         />
         <StatCard
-          label="Pharmacy Queue"
-          value="19"
-          delta="Avg. wait 14 min"
+          label="Pharmacy pipeline"
+          value={liveValue(pharmacyQueueQuery, pharmacyQueueQuery.data?.length ?? 0)}
+          delta="Open Rx: ordered → partially dispensed"
           icon={<Pill className="h-5 w-5" />}
         />
       </div>
@@ -87,7 +150,9 @@ function OverviewView() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Today&apos;s Activity</CardTitle>
-            <CardDescription>Registrations and visits since midnight</CardDescription>
+            <CardDescription>
+              Synthetic sample timeline for layout — replace with audit stream when available
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <table className="w-full text-sm">
@@ -116,7 +181,9 @@ function OverviewView() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Department Load</CardTitle>
-            <CardDescription>Patient distribution across departments</CardDescription>
+            <CardDescription>
+              Demonstration percentages — not wired to live capacity APIs
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -152,10 +219,20 @@ function OverviewView() {
 function IndicatorsView() {
   return (
     <div className="space-y-4">
+      <Card className="border-dashed bg-muted/30">
+        <CardContent className="pt-5 text-sm text-muted-foreground">
+          These KPI rows are placeholders for dashboards fed by NHIMS reporting. Submit and review official DHIMS2
+          returns in{" "}
+          <Link href="/reports?view=dhims2" className="font-medium text-primary underline-offset-4 hover:underline">
+            Reports → DHIMS2
+          </Link>
+          .
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Monthly DHIMS2 Indicators</CardTitle>
-          <CardDescription>Key performance indicators — May 2026</CardDescription>
+          <CardDescription>Sample KPI table — May 2026</CardDescription>
         </CardHeader>
         <CardContent>
           <table className="w-full text-sm">
@@ -191,6 +268,12 @@ function IndicatorsView() {
 function AlertsView() {
   return (
     <div className="space-y-3">
+      <Card className="border-dashed bg-muted/30">
+        <CardContent className="pt-5 text-sm text-muted-foreground">
+          Alerts below illustrate triage-style messaging. Operational alerting will replace this mock list when wired to
+          clinical rules.
+        </CardContent>
+      </Card>
       {ALERTS.map((alert, i) => (
         <div
           key={i}

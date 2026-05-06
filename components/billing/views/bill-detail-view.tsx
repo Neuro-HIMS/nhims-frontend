@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { billingService } from "@/services/billing.service";
 import { ChargeBuilder, type DraftCharge } from "@/components/billing/views/charge-builder";
 import { ghsInputToMinor, METHOD_LABEL, minorToGhs, PAYER_LABEL, showApiError } from "@/components/finance/finance-utils";
@@ -89,6 +90,7 @@ export function BillDetailView({ billId }: { billId: string }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["billing"] });
       toast.success("Charge removed");
+      setRemoveChargeId(null);
     },
     onError: (e) => toast.error(showApiError(e, "Could not remove charge")),
   });
@@ -140,20 +142,19 @@ export function BillDetailView({ billId }: { billId: string }) {
   });
 
   const cancelBill = useMutation({
-    mutationFn: () => {
-      const reason = window.prompt("Reason for cancelling this bill?");
-      if (!reason) return Promise.reject(new Error("cancelled"));
-      return billingService.cancelBill(billId, reason);
-    },
+    mutationFn: (reason: string) => billingService.cancelBill(billId, reason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["billing"] });
       toast.success("Bill cancelled");
+      setCancelBillOpen(false);
+      setCancelBillReason("");
     },
-    onError: (e) => {
-      const msg = (e as Error).message;
-      if (msg !== "cancelled") toast.error(showApiError(e, "Could not cancel bill"));
-    },
+    onError: (e) => toast.error(showApiError(e, "Could not cancel bill")),
   });
+
+  const [cancelBillOpen, setCancelBillOpen] = useState(false);
+  const [cancelBillReason, setCancelBillReason] = useState("");
+  const [removeChargeId, setRemoveChargeId] = useState<string | null>(null);
 
   const groupedItems = useMemo(() => {
     if (!invoice.data) return new Map<string, BillItemDto[]>();
@@ -241,7 +242,7 @@ export function BillDetailView({ billId }: { billId: string }) {
                   </Button>
                 )}
                 {!isClosed && bill.paidMinor === 0 && (
-                  <Button size="sm" variant="ghost" onClick={() => cancelBill.mutate()}>
+                  <Button size="sm" variant="ghost" onClick={() => setCancelBillOpen(true)}>
                     <XCircle className="mr-1.5 h-4 w-4" />
                     Cancel bill
                   </Button>
@@ -284,7 +285,7 @@ export function BillDetailView({ billId }: { billId: string }) {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => removeCharge.mutate(it.id)}
+                              onClick={() => setRemoveChargeId(it.id)}
                               disabled={removeCharge.isPending}
                             >
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -552,6 +553,54 @@ export function BillDetailView({ billId }: { billId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={cancelBillOpen}
+        onOpenChange={(open) => {
+          setCancelBillOpen(open);
+          if (!open) setCancelBillReason("");
+        }}
+        title="Cancel this bill?"
+        description={`${bill.billNumber} · ${bill.patientName}. This reverses unpaid charges for reporting — provide an audit reason.`}
+        confirmLabel="Cancel bill"
+        destructive
+        pending={cancelBill.isPending}
+        footerExtra={
+          <div className="space-y-1">
+            <Label className="text-xs">Reason</Label>
+            <Textarea
+              rows={3}
+              value={cancelBillReason}
+              onChange={(e) => setCancelBillReason(e.target.value)}
+              placeholder="Why is this bill being cancelled?"
+            />
+          </div>
+        }
+        onConfirm={async () => {
+          const r = cancelBillReason.trim();
+          if (!r) {
+            toast.error("Cancellation reason is required");
+            throw new Error("missing reason");
+          }
+          await cancelBill.mutateAsync(r);
+        }}
+      />
+
+      <ConfirmDialog
+        open={removeChargeId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoveChargeId(null);
+        }}
+        title="Remove charge?"
+        description="This line disappears from the open bill immediately. Removing the wrong charge may affect cashier reconciliation."
+        confirmLabel="Remove charge"
+        destructive
+        pending={removeCharge.isPending}
+        onConfirm={async () => {
+          if (!removeChargeId) return;
+          await removeCharge.mutateAsync(removeChargeId);
+        }}
+      />
     </div>
   );
 }

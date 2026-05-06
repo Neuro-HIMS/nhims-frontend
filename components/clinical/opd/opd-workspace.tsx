@@ -5,10 +5,12 @@ import { useSearchParams } from "next/navigation";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { OpdConsultQueue } from "@/components/clinical/opd/opd-consult-queue";
+import { OpdDiagnosisClassificationsView } from "@/components/clinical/opd/opd-diagnosis-classifications-view";
 
 const SUB_NAV = [
   { label: "Consult Queue", view: "queue", href: "/opd?view=queue" },
   { label: "Consultations", view: "consult", href: "/opd?view=consult" },
+  { label: "Classifications", view: "classifications", href: "/opd?view=classifications" },
   { label: "Follow-up", view: "followup", href: "/opd?view=followup" },
 ];
 
@@ -41,6 +43,7 @@ export function OpdWorkspace() {
             </p>
           </div>
         )}
+        {view === "classifications" && <OpdDiagnosisClassificationsView />}
         {view === "followup" && (
           <div className="rounded-lg border border-border bg-card p-5">
             <p className="text-sm font-medium text-foreground">Follow-up planner</p>

@@ -37,7 +37,11 @@ export function RecordsFlowHeader() {
           </p>
           <h1 className="mt-1 text-xl font-semibold text-foreground">Patient Search and Registration</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Search first by ID, NHIS, or name before creating any new record.
+            Search first by ID, NHIS, or name before creating any new record. After booking, the live visit appears in the{" "}
+            <a href="/nurse?view=visits" className="font-medium text-primary underline-offset-4 hover:underline">
+              Nurse Station queue
+            </a>{" "}
+            (clinical encounter), not only here.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4">

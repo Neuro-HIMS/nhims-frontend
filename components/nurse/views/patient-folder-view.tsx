@@ -14,9 +14,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/store/auth.store";
 import { canViewFullFolder, canPlaceOrders, canRecordVitals } from "@/lib/permissions";
 import { FolderHeader } from "@/components/clinical/folder/folder-header";
@@ -109,7 +111,24 @@ export function PatientFolderView() {
     },
   });
 
+  const cancelMut = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => clinicalService.cancel(id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Visit cancelled");
+    },
+    onError: (e: unknown) => {
+      const ax = e as { response?: { data?: ApiError } };
+      toast.error(ax.response?.data?.message ?? "Could not cancel visit");
+    },
+  });
+
   const [tab, setTab] = useState<FolderTab>("overview");
+  const [statusSelectKey, setStatusSelectKey] = useState(0);
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [completeVia, setCompleteVia] = useState<"button" | "dropdown" | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
 
   const visits = useMemo(
     () => (encountersQuery.data ?? []).map(encounterToVisit),
@@ -191,6 +210,23 @@ export function PatientFolderView() {
     );
   }
 
+  function onStatusSelect(value: VisitStatus) {
+    if (!visit) return;
+    if (value === "completed") {
+      setCompleteVia("dropdown");
+      setCompleteDialogOpen(true);
+      setStatusSelectKey((k) => k + 1);
+      return;
+    }
+    if (value === "cancelled") {
+      setCancelReason("");
+      setCancelDialogOpen(true);
+      setStatusSelectKey((k) => k + 1);
+      return;
+    }
+    changeStatus(value);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -200,7 +236,7 @@ export function PatientFolderView() {
         </Button>
         {visit && (
           <div className="flex items-center gap-2">
-            <Select onValueChange={(v) => changeStatus(v as VisitStatus)}>
+            <Select key={statusSelectKey} onValueChange={(v) => onStatusSelect(v as VisitStatus)}>
               <SelectTrigger className="w-56" disabled={transitionMut.isPending}>
                 <ArrowRight className="mr-1.5 h-4 w-4" />
                 <SelectValue placeholder="Update visit status…" />
@@ -215,7 +251,10 @@ export function PatientFolderView() {
               variant="default"
               size="sm"
               disabled={completeMut.isPending || visit.status === "completed"}
-              onClick={() => completeMut.mutate({ id: visit.id, force: false })}
+              onClick={() => {
+                setCompleteVia("button");
+                setCompleteDialogOpen(true);
+              }}
             >
               {completeMut.isPending ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
@@ -283,6 +322,63 @@ export function PatientFolderView() {
           <FolderBilling visit={visit} />
         )}
       </div>
+
+      <ConfirmDialog
+        open={completeDialogOpen && completeVia !== null && Boolean(visit)}
+        onOpenChange={(open) => {
+          setCompleteDialogOpen(open);
+          if (!open) setCompleteVia(null);
+        }}
+        title="Complete this visit?"
+        description={
+          completeVia === "button"
+            ? "This closes the encounter and finalises billing where configured. Incomplete tasks may be blocked."
+            : "Marks the encounter as completed (status transition). Use the toolbar button instead if you need bill auto-close workflow."
+        }
+        confirmLabel="Complete visit"
+        pending={completeVia === "button" ? completeMut.isPending : transitionMut.isPending}
+        onConfirm={async () => {
+          if (!visit || !completeVia) return;
+          if (completeVia === "button") {
+            await completeMut.mutateAsync({ id: visit.id, force: false });
+            return;
+          }
+          await transitionMut.mutateAsync({ id: visit.id, status: "completed" });
+          toast.success("Visit marked complete", {
+            description: NEXT_STATUS_OPTIONS.find((o) => o.value === "completed")?.label ?? "completed",
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={cancelDialogOpen && Boolean(visit)}
+        onOpenChange={(open) => {
+          setCancelDialogOpen(open);
+          if (!open) setCancelReason("");
+        }}
+        title="Cancel this visit?"
+        description="Cancellation is audited. Provide a brief reason visible to supervisors."
+        confirmLabel="Cancel visit"
+        destructive
+        footerExtra={
+          <Textarea
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            rows={3}
+            placeholder="Reason for cancellation…"
+          />
+        }
+        pending={cancelMut.isPending}
+        onConfirm={async () => {
+          if (!visit) return;
+          const trimmed = cancelReason.trim();
+          if (!trimmed) {
+            toast.error("A cancellation reason is required");
+            throw new Error("missing reason");
+          }
+          await cancelMut.mutateAsync({ id: visit.id, reason: trimmed });
+        }}
+      />
     </div>
   );
 }

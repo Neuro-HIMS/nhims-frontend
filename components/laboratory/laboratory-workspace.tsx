@@ -7,12 +7,14 @@ import { ChevronRight, FlaskConical, Loader2, Plus, Save, ShieldCheck, Trash2 } 
 import { toast } from "sonner";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { LaboratoryCatalogSetupView } from "@/components/laboratory/laboratory-catalog-setup";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
@@ -23,6 +25,7 @@ const SUB_NAV = [
   { label: "Worklist", view: "worklist", href: "/laboratory?view=worklist" },
   { label: "Result Entry", view: "results", href: "/laboratory?view=results" },
   { label: "Completed Today", view: "done", href: "/laboratory?view=done" },
+  { label: "Catalog & Setup", view: "catalog", href: "/laboratory?view=catalog" },
 ];
 
 export function LaboratoryWorkspace() {
@@ -43,6 +46,7 @@ export function LaboratoryWorkspace() {
         {view === "worklist" && <WorklistView />}
         {view === "results" && <ResultEntryView />}
         {view === "done" && <CompletedView />}
+        {view === "catalog" && <LaboratoryCatalogSetupView />}
       </div>
     </div>
   );
@@ -113,7 +117,7 @@ function WorklistView() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="READY">Ready (paid/claimed)</SelectItem>
+            <SelectItem value="READY">Ready queue (paid / NHIS claimed / unpaid ORDERED visible)</SelectItem>
             <SelectItem value="ORDERED">Ordered (awaiting payment)</SelectItem>
             <SelectItem value="IN_PROGRESS">In progress</SelectItem>
             <SelectItem value="COMPLETED">Completed (unauthorised)</SelectItem>
@@ -217,16 +221,19 @@ function WorklistView() {
 
               <Separator />
 
+              {selected.status === "ORDERED" && selected.payerType?.toUpperCase() === "CASH" && (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+                  Awaiting cashier payment — order appears here so the lab knows it exists. Start processing once the bill line is marked paid (or patient pays).
+                </p>
+              )}
+
               <div className="flex flex-col gap-2">
-                {(selected.status === "ORDERED" || selected.status === "PAID" || selected.status === "CLAIMED") && (
+                {(selected.status === "PAID" || selected.status === "CLAIMED") && (
                   <Button onClick={() => startMut.mutate(selected.id)} disabled={startMut.isPending}>
                     <FlaskConical className="mr-1.5 h-4 w-4" /> Start Processing
                   </Button>
                 )}
-                {(selected.status === "IN_PROGRESS" ||
-                  selected.status === "PAID" ||
-                  selected.status === "CLAIMED" ||
-                  selected.status === "ORDERED") && (
+                {(selected.status === "IN_PROGRESS" || selected.status === "PAID" || selected.status === "CLAIMED") && (
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -302,6 +309,7 @@ function ResultEntryView() {
       setOrderId("");
       setRows([blankRow()]);
       setSummary("");
+      setConfirmAuthorise(null);
     },
     onError: (e: unknown) => {
       const ax = e as { response?: { data?: ApiError } };
@@ -318,6 +326,7 @@ function ResultEntryView() {
   const order = eligible.find((o) => o.id === orderId) ?? null;
   const [rows, setRows] = useState<RowDraft[]>([blankRow()]);
   const [summary, setSummary] = useState("");
+  const [confirmAuthorise, setConfirmAuthorise] = useState<{ id: string; payload: SubmitLabResultsPayload } | null>(null);
 
   function update(idx: number, key: keyof RowDraft, value: string) {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
@@ -326,7 +335,7 @@ function ResultEntryView() {
     setRows((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)));
   }
 
-  function submit() {
+  function armAuthorise() {
     if (!order) return;
     const cleaned = rows.filter((r) => r.analyte.trim() && r.value.trim());
     if (cleaned.length === 0) {
@@ -344,7 +353,12 @@ function ResultEntryView() {
       })),
       authoriseImmediately: true,
     };
-    submitMut.mutate({ id: order.id, payload });
+    setConfirmAuthorise({ id: order.id, payload });
+  }
+
+  async function runAuthorisedSubmit() {
+    if (!confirmAuthorise) return;
+    await submitMut.mutateAsync(confirmAuthorise);
   }
 
   if (eligibleQuery.isLoading) {
@@ -467,11 +481,23 @@ function ResultEntryView() {
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={submit} disabled={submitMut.isPending}>
+          <Button onClick={() => armAuthorise()} disabled={submitMut.isPending}>
             {submitMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
             Authorise & Report
           </Button>
         </div>
+
+        <ConfirmDialog
+          open={confirmAuthorise !== null}
+          onOpenChange={(open) => {
+            if (!open) setConfirmAuthorise(null);
+          }}
+          title="Authorise results to the clinician?"
+          description={`This publishes ${confirmAuthorise?.payload.rows.length ?? "—"} analytes for ${order.patientName} immediately. Critical flags notify the clinician in the encounter folder.`}
+          confirmLabel="Authorise"
+          pending={submitMut.isPending}
+          onConfirm={() => runAuthorisedSubmit()}
+        />
       </CardContent>
     </Card>
   );

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,7 @@ export function FolderAlerts({ patientUuid }: FolderAlertsProps) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
       toast.success("Alert deactivated");
+      setDeactivateId(null);
     },
     onError: (e: unknown) => {
       const ax = e as { response?: { data?: ApiError } };
@@ -74,6 +76,7 @@ export function FolderAlerts({ patientUuid }: FolderAlertsProps) {
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateMedicalAlertPayload>(EMPTY);
+  const [deactivateId, setDeactivateId] = useState<string | null>(null);
 
   const list = alertsQuery.data ?? [];
 
@@ -211,7 +214,7 @@ export function FolderAlerts({ patientUuid }: FolderAlertsProps) {
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => removeMut.mutate(a.id)}
+                  onClick={() => setDeactivateId(a.id)}
                   disabled={removeMut.isPending}
                   className="text-muted-foreground hover:text-destructive"
                 >
@@ -222,6 +225,24 @@ export function FolderAlerts({ patientUuid }: FolderAlertsProps) {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deactivateId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeactivateId(null);
+        }}
+        title="Deactivate this alert?"
+        description={`The flag “${
+          deactivateId ? list.find((x) => x.id === deactivateId)?.label ?? "selected alert" : ""
+        }” will stop surfacing on new visits.`}
+        confirmLabel="Deactivate"
+        destructive
+        pending={removeMut.isPending}
+        onConfirm={async () => {
+          if (!deactivateId) return;
+          await removeMut.mutateAsync(deactivateId);
+        }}
+      />
     </div>
   );
 }
