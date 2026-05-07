@@ -52,6 +52,7 @@ export const queryKeys = {
       radiologyWorklist: ["clinical", "radiology", "worklist"] as const,
       labCatalogSetup: ["clinical", "catalog", "lab-setup"] as const,
       labWorklist: ["clinical", "lab", "worklist"] as const,
+      labCriticalInbox: ["clinical", "lab", "critical-alerts", "inbox"] as const,
       labOrder: (id: string) => ["clinical", "lab-orders", id] as const,
       prescriptions: (encounterId: string) =>
         ["clinical", "encounters", encounterId, "prescriptions"] as const,

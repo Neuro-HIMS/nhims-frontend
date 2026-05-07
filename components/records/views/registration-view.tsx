@@ -7,9 +7,11 @@ import { toast } from "sonner";
 import { endOfToday } from "date-fns";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -19,10 +21,10 @@ import {
 } from "@/components/ui/select";
 import { BookingForm } from "@/components/booking/booking-form";
 import { HospitalPatientCard } from "@/components/records/views/hospital-patient-card";
-import { GHANA_REGIONS, OCCUPATION_OPTIONS } from "@/components/records/lib/records-data";
+import { BLOOD_GROUP_OPTIONS, GHANA_REGIONS, OCCUPATION_OPTIONS } from "@/components/records/lib/records-data";
 import { RecordsField } from "@/components/records/shared/records-field";
 import { EMPTY_REGISTRATION_FORM, type RegistrationForm } from "@/components/records/lib/records-types";
-import { calculateAgeFromDob, mockValidateNhis } from "@/components/records/lib/records-utils";
+import { calculateAgeFromDob, verifyNhisMembership } from "@/components/records/lib/records-utils";
 import { patientDtoToLegacyPatient } from "@/lib/patient-mapper";
 import { queryKeys } from "@/lib/query-keys";
 import { patientsService } from "@/services/patients.service";
@@ -52,6 +54,9 @@ function registrationFormToPayload(form: RegistrationForm) {
     emergencyName: form.emergencyName,
     emergencyRelation: form.emergencyRelation,
     emergencyPhone: form.emergencyPhone,
+    bloodGroup: form.bloodGroup,
+    knownAllergies: form.knownAllergies,
+    registrationConsentAcknowledged: form.registrationConsentAcknowledged,
   };
 }
 
@@ -101,6 +106,7 @@ export function RegistrationView() {
     Boolean(form.sex) &&
     hasDobOrAge &&
     Boolean(form.phone.trim()) &&
+    form.registrationConsentAcknowledged &&
     !registerMutation.isPending;
 
   function updateForm<K extends keyof RegistrationForm>(key: K, value: RegistrationForm[K]) {
@@ -135,19 +141,50 @@ export function RegistrationView() {
   }
 
   async function validateNhis() {
+    if (!form.nhisNumber.trim()) {
+      toast.error("Enter an NHIS membership number first.");
+      return;
+    }
     setIsValidatingNhis(true);
     setNhisMessage("");
-    const result = await mockValidateNhis(form.nhisNumber);
-    if (result) {
-      updateForm("nhisStatus", result.status);
-      updateForm("nhisExpiry", result.expiryDate);
-      setNhisMessage(`NHIS validated for ${result.fullName}.`);
-    } else {
+    try {
+      const result = await verifyNhisMembership(form.nhisNumber.trim());
+      switch (result.status) {
+        case "VERIFIED":
+          updateForm("nhisStatus", "yes");
+          updateForm("nhisExpiry", result.validUntil ?? "");
+          setNhisMessage(result.memberName ? `NHIS validated for ${result.memberName}.` : "NHIS validated.");
+          break;
+        case "NOT_FOUND":
+          updateForm("nhisStatus", "no");
+          updateForm("nhisExpiry", "");
+          setNhisMessage(result.message ?? "NHIS record not found.");
+          break;
+        case "INVALID_FORMAT":
+          updateForm("nhisStatus", "no");
+          updateForm("nhisExpiry", "");
+          setNhisMessage(result.message ?? "Invalid membership number format.");
+          break;
+        case "PENDING_GATEWAY":
+          updateForm("nhisStatus", "no");
+          updateForm("nhisExpiry", "");
+          setNhisMessage(
+            result.message ??
+              "NHIA verification is not connected. Confirm eligibility before billing as NHIS."
+          );
+          break;
+        default:
+          updateForm("nhisStatus", "no");
+          setNhisMessage("Could not verify NHIS.");
+      }
+    } catch (error: unknown) {
+      const ax = error as { response?: { data?: ApiError } };
       updateForm("nhisStatus", "no");
       updateForm("nhisExpiry", "");
-      setNhisMessage("NHIS record not found or invalid.");
+      setNhisMessage(ax.response?.data?.message ?? "NHIS verification request failed.");
+    } finally {
+      setIsValidatingNhis(false);
     }
-    setIsValidatingNhis(false);
   }
 
   function handleRegister() {
@@ -439,6 +476,54 @@ export function RegistrationView() {
 
       <Card>
         <CardHeader className="pb-3">
+          <CardTitle className="text-base">Clinical & consent</CardTitle>
+          <CardDescription>Blood group and allergies support clinical safety; consent is required for registration.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <RecordsField label="Blood group">
+              <Select
+                value={form.bloodGroup ? form.bloodGroup.toUpperCase() : "__none__"}
+                onValueChange={(value) => updateForm("bloodGroup", value === "__none__" ? "" : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select blood group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BLOOD_GROUP_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value || "none"} value={opt.value || "__none__"}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </RecordsField>
+            <RecordsField label="Known allergies" className="sm:col-span-2">
+              <Textarea
+                value={form.knownAllergies}
+                onChange={(event) => updateForm("knownAllergies", event.target.value)}
+                placeholder="e.g. Penicillin — anaphylaxis; or None known"
+                rows={3}
+                className="resize-y font-clinical"
+              />
+            </RecordsField>
+          </div>
+          <label className="flex cursor-pointer items-start gap-3 rounded-md border border-input bg-muted/30 p-3 text-sm">
+            <Checkbox
+              checked={form.registrationConsentAcknowledged}
+              onCheckedChange={(checked) => updateForm("registrationConsentAcknowledged", checked === true)}
+              className="mt-0.5"
+            />
+            <span>
+              I confirm that the client (or legal guardian) has been informed that demographic and clinical identifiers
+              will be stored for care and NHIS reporting, and that they consent to registration at this facility.
+            </span>
+          </label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base">Emergency Contact</CardTitle>
         </CardHeader>
         <CardContent>
@@ -470,7 +555,8 @@ export function RegistrationView() {
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
           <p className="text-sm text-muted-foreground">
-            Required fields: PATIENT_ID preview, First Name, Last Name, Sex, DOB or Age, and Phone Number.
+            Required: First name, last name, sex, DOB or age, phone, and registration consent. Blood group and allergies
+            are optional but recommended.
           </p>
           <div className="flex gap-2">
             <Button variant="outline" type="button" onClick={resetForm}>

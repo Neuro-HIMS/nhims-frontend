@@ -14,5 +14,9 @@ export default async function WorkspaceLayout({
     redirect("/login");
   }
 
+  if (session.user.mustChangePassword) {
+    redirect("/change-password");
+  }
+
   return <DashboardShell user={session.user}>{children}</DashboardShell>;
 }

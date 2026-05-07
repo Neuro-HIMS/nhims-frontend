@@ -27,10 +27,23 @@ export interface PatientDto {
   emergencyContactPhone: string;
   facilityName: string;
   facilityLogoDataUrl: string | null;
+  bloodGroup?: string;
+  knownAllergies?: string;
+  registrationConsentRecorded?: boolean;
+  registrationConsentAt?: string | null;
 }
 
 export interface NextPatientReferenceDto {
   patientPublicId: string;
+}
+
+/** Mirrors backend {@code NhisVerificationResultDto}. */
+export interface NhisVerificationResultDto {
+  status: "VERIFIED" | "NOT_FOUND" | "PENDING_GATEWAY" | "INVALID_FORMAT";
+  memberName: string | null;
+  scheme: string | null;
+  validUntil: string | null;
+  message: string | null;
 }
 
 /** Body shape matches backend {@code RegisterPatientRequest}. */
@@ -74,6 +87,9 @@ export interface RegisterPatientPayload {
   emergencyName: string;
   emergencyRelation: string;
   emergencyPhone: string;
+  bloodGroup: string;
+  knownAllergies: string;
+  registrationConsentAcknowledged: boolean;
 }
 
 export interface UpdatePatientPayload {
@@ -98,4 +114,6 @@ export interface UpdatePatientPayload {
   emergencyName: string;
   emergencyRelation: string;
   emergencyPhone: string;
+  bloodGroup: string;
+  knownAllergies: string;
 }

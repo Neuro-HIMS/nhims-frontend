@@ -1,8 +1,19 @@
 import Image from "next/image";
+import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/layouts/login-form";
+import { getLandingPathForUser } from "@/lib/access-control";
+import { getServerSession } from "@/lib/auth-server";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const session = await getServerSession();
+  if (session) {
+    if (session.user.mustChangePassword) {
+      redirect("/change-password");
+    }
+    redirect(getLandingPathForUser(session.user));
+  }
+
   return (
     <main className="min-h-screen grid lg:grid-cols-2">
       <section className="login-hero flex min-h-screen flex-col items-center justify-center p-8 lg:p-12">

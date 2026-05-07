@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import {
   Users,
   BedDouble,
@@ -10,16 +10,15 @@ import {
   Pill,
   TrendingUp,
   AlertTriangle,
-  Clock,
-  CheckCircle2,
   Activity,
 } from "lucide-react";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
+import { toast } from "sonner";
 
 const SUB_NAV = [
   { label: "Overview", view: "overview", href: "/dashboard?view=overview" },
@@ -74,6 +73,11 @@ function OverviewView() {
     },
     refetchInterval: 60_000,
   });
+  const labCriticalQuery = useQuery({
+    queryKey: queryKeys.clinical.labCriticalInbox,
+    queryFn: () => clinicalService.labCriticalAlertsInbox(),
+    refetchInterval: 30_000,
+  });
 
   const encounters = todayEncountersQuery.data ?? [];
   const clinicalTodayTouchpoints = encounters.filter(
@@ -83,8 +87,29 @@ function OverviewView() {
   const liveValue = (q: UseQueryResult<unknown>, n: number) =>
     q.isLoading ? "…" : q.isError ? "—" : String(n);
 
+  const criticalLab = labCriticalQuery.data ?? [];
+
   return (
     <div className="space-y-6">
+      {criticalLab.length > 0 && (
+        <Card className="border-[hsl(var(--clinical-emergency))] bg-[hsl(var(--clinical-emergency-bg))]">
+          <CardContent className="flex flex-wrap items-start gap-3 pt-5">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--clinical-emergency))]" />
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="font-medium text-foreground">
+                {criticalLab.length} critical lab result{criticalLab.length === 1 ? "" : "s"} need acknowledgement
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Open the Alerts tab to review patients, orders, and confirm each critical value.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="shrink-0 border-[hsl(var(--clinical-emergency))]" asChild>
+              <Link href="/dashboard?view=alerts">Open alerts</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border-dashed bg-muted/30">
         <CardContent className="pt-5 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">Live clinical board</p>
@@ -145,13 +170,13 @@ function OverviewView() {
         />
       </div>
 
-      {/* Recent activity */}
+      {/* Sample-only widgets — not fed by live APIs (see card descriptions). */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Today&apos;s Activity</CardTitle>
+            <CardTitle className="text-base">Today&apos;s activity (sample)</CardTitle>
             <CardDescription>
-              Synthetic sample timeline for layout — replace with audit stream when available
+              Illustrative timeline for layout — not live audit data
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -164,7 +189,7 @@ function OverviewView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {RECENT_ACTIVITY.map((item, i) => (
+                {SAMPLE_RECENT_ACTIVITY.map((item, i) => (
                   <tr key={i} className="table-row-interactive">
                     <td className="py-2.5 font-clinical text-xs text-muted-foreground">{item.time}</td>
                     <td className="py-2.5 text-foreground">{item.event}</td>
@@ -180,9 +205,9 @@ function OverviewView() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Department Load</CardTitle>
+            <CardTitle className="text-base">Department load (sample)</CardTitle>
             <CardDescription>
-              Demonstration percentages — not wired to live capacity APIs
+              Illustrative occupancy — not wired to live capacity APIs
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -231,8 +256,8 @@ function IndicatorsView() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Monthly DHIMS2 Indicators</CardTitle>
-          <CardDescription>Sample KPI table — May 2026</CardDescription>
+          <CardTitle className="text-base">Monthly DHIMS2 indicators (sample)</CardTitle>
+          <CardDescription>Illustrative KPI rows — May 2026</CardDescription>
         </CardHeader>
         <CardContent>
           <table className="w-full text-sm">
@@ -245,7 +270,7 @@ function IndicatorsView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {INDICATORS.map((row) => (
+              {SAMPLE_DHIMS_INDICATORS.map((row) => (
                 <tr key={row.name} className="table-row-interactive">
                   <td className="py-2.5 font-medium text-foreground">{row.name}</td>
                   <td className="py-2.5 text-right font-clinical text-muted-foreground">{row.target}</td>
@@ -266,39 +291,79 @@ function IndicatorsView() {
 }
 
 function AlertsView() {
+  const qc = useQueryClient();
+  const inboxQuery = useQuery({
+    queryKey: queryKeys.clinical.labCriticalInbox,
+    queryFn: () => clinicalService.labCriticalAlertsInbox(),
+    refetchInterval: 30_000,
+  });
+
+  const ackMut = useMutation({
+    mutationFn: (id: string) => clinicalService.acknowledgeLabCriticalAlert(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.labCriticalInbox });
+      toast.success("Critical lab alert acknowledged");
+    },
+    onError: (e: unknown) => {
+      const ax = e as { response?: { data?: { message?: string } } };
+      toast.error(ax.response?.data?.message ?? "Could not acknowledge");
+    },
+  });
+
+  const rows = inboxQuery.data ?? [];
+
   return (
     <div className="space-y-3">
       <Card className="border-dashed bg-muted/30">
         <CardContent className="pt-5 text-sm text-muted-foreground">
-          Alerts below illustrate triage-style messaging. Operational alerting will replace this mock list when wired to
-          clinical rules.
+          <p className="font-medium text-foreground">Critical laboratory values</p>
+          <p className="mt-1">
+            When a result row is flagged CRITICAL, the ordering clinician (or facility oversight roles) must acknowledge
+            review here. Other operational alerts remain on the roadmap.
+          </p>
         </CardContent>
       </Card>
-      {ALERTS.map((alert, i) => (
+      {inboxQuery.isLoading && (
+        <p className="text-sm text-muted-foreground">Loading critical alerts…</p>
+      )}
+      {inboxQuery.isError && (
+        <p className="text-sm text-destructive">You may not have access to this inbox, or the request failed.</p>
+      )}
+      {!inboxQuery.isLoading && !inboxQuery.isError && rows.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center text-sm text-muted-foreground">No open critical lab alerts.</CardContent>
+        </Card>
+      )}
+      {rows.map((alert) => (
         <div
-          key={i}
-          className={`flex items-start gap-3 rounded-lg border p-4 ${
-            alert.level === "critical"
-              ? "alert-critical border"
-              : alert.level === "warning"
-              ? "border-[hsl(var(--clinical-urgent))] bg-[hsl(var(--clinical-urgent-bg))]"
-              : "notice-info border"
-          }`}
+          key={alert.id}
+          className="flex flex-wrap items-start gap-3 rounded-lg border border-[hsl(var(--clinical-emergency))] bg-[hsl(var(--clinical-emergency-bg))] p-4"
         >
-          {alert.level === "critical" ? (
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--clinical-emergency))]" />
-          ) : alert.level === "warning" ? (
-            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--clinical-urgent))]" />
-          ) : (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          )}
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--clinical-emergency))]" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">{alert.title}</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">{alert.detail}</p>
+            <p className="text-sm font-medium text-foreground">
+              {alert.patientPublicId} · {alert.serviceName}
+            </p>
+            <p className="mt-0.5 font-clinical text-sm text-muted-foreground">{alert.summary}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Order {alert.labOrderId.slice(0, 8)}… ·{" "}
+              <Link
+                href={`/nurse?view=folder&patientId=${alert.patientId}&visitId=${alert.encounterId}`}
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Open encounter folder
+              </Link>
+            </p>
           </div>
-          <Badge variant={alert.level === "critical" ? "destructive" : "outline"} className="shrink-0 text-xs">
-            {alert.module}
-          </Badge>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={ackMut.isPending}
+            onClick={() => ackMut.mutate(alert.id)}
+            className="shrink-0"
+          >
+            Acknowledge
+          </Button>
         </div>
       ))}
     </div>
@@ -346,7 +411,7 @@ function StatCard({
   );
 }
 
-const RECENT_ACTIVITY = [
+const SAMPLE_RECENT_ACTIVITY = [
   { time: "09:47", event: "New patient registered — Kofi Acheampong", module: "Records" },
   { time: "09:31", event: "Lab result reported — Malaria RDT positive", module: "Lab" },
   { time: "09:18", event: "Prescription dispensed — Amoxicillin 500mg", module: "Pharmacy" },
@@ -363,37 +428,10 @@ const DEPT_LOAD = [
   { name: "Laboratory", current: 27, capacity: 60 },
 ];
 
-const INDICATORS = [
+const SAMPLE_DHIMS_INDICATORS = [
   { name: "ANC 1st Visit Coverage", target: "90%", actual: "88%", met: true },
   { name: "Deliveries at Facility", target: "120", actual: "98", met: false },
   { name: "OPD Malaria Cases", target: "—", actual: "214", met: true },
   { name: "Under-5 Outpatient Visits", target: "300", actual: "312", met: true },
   { name: "Family Planning Acceptors", target: "80", actual: "67", met: false },
-];
-
-const ALERTS = [
-  {
-    level: "critical",
-    title: "Critical lab result pending review",
-    detail: "Patient GH-2026-04821 — Glucose 32 mmol/L. Awaiting clinician sign-off.",
-    module: "Laboratory",
-  },
-  {
-    level: "warning",
-    title: "Ward B approaching capacity",
-    detail: "22 of 25 beds occupied. Consider early discharge review for stable patients.",
-    module: "Wards",
-  },
-  {
-    level: "warning",
-    title: "Drug stock low — Artemether 20mg",
-    detail: "Current stock: 48 tablets. Reorder threshold: 100 tablets.",
-    module: "Pharmacy",
-  },
-  {
-    level: "info",
-    title: "DHIMS2 monthly report due in 3 days",
-    detail: "May 2026 report submission window closes on 2026-06-05.",
-    module: "Reports",
-  },
 ];

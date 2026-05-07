@@ -64,6 +64,9 @@ export function FolderHeader({ patientUuid, patientPublicId, visit, visits, onRe
             <span className="status-pill status-pill-pending text-xs">
               {STATUS_LABEL[headerVisit.status]}
             </span>
+            <span className="status-pill text-xs border border-border bg-muted/40">
+              Currently at: {headerVisit.currentStationLabel}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">

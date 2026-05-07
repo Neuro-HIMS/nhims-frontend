@@ -294,6 +294,21 @@ export interface LabOrderDto {
   results: LabResultRowDto[];
 }
 
+export interface LabCriticalAlertDto {
+  id: string;
+  labOrderId: string;
+  encounterId: string;
+  patientId: string;
+  orderingClinicianId: string | null;
+  patientPublicId: string;
+  serviceName: string;
+  summary: string;
+  status: "OPEN" | "ACKED";
+  createdAt: string;
+  acknowledgedAt: string | null;
+  acknowledgedById: string | null;
+}
+
 export type LabSourceOfRequest =
   | "CONSULTING_ROOM"
   | "WARD"
@@ -414,6 +429,8 @@ export interface PrescriptionLineDto {
   currency?: string | null;
   /** Heuristic doses/day × duration — worksheet verification */
   sigSuggestedQuantity?: string | number | null;
+  /** When set, stock lots exist for this catalog-mapped inventory item */
+  pharmacyInventoryItemId?: string | null;
 }
 
 export interface DispenseDto {
@@ -469,6 +486,7 @@ export interface CreatePrescriptionPayload {
 export interface DispenseLineInput {
   lineId: string;
   quantity: number;
+  stockLotId: string;
   notes?: string;
 }
 
@@ -497,6 +515,10 @@ export interface AdmissionDto {
   dischargedAt: string | null;
   dischargeSummary: string;
   dischargedByName: string;
+  dischargeOutcome: string;
+  dischargeIcd11Codes: string;
+  dischargeMedicationSummary: string;
+  followUpPlan: string;
 }
 
 export interface AdmitPayload {
@@ -509,6 +531,10 @@ export interface AdmitPayload {
 
 export interface DischargePayload {
   summary: string;
+  outcome?: string;
+  icd11Codes?: string;
+  dischargeMedicationSummary?: string;
+  followUpPlan?: string;
 }
 
 export type ReferralUrgency = "ROUTINE" | "URGENT" | "STAT";

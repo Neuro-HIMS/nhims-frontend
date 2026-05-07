@@ -1,4 +1,4 @@
-import type { Clinician, NhisLookup, ServiceCatalogItem } from "@/components/records/lib/records-types";
+import type { Clinician, ServiceCatalogItem } from "@/components/records/lib/records-types";
 
 export const RECORDS_NAV = [
   { label: "Client Lookup", view: "search", href: "/records?view=search" },
@@ -22,13 +22,6 @@ export const OCCUPATION_OPTIONS = [
   "Unemployed",
 ];
 
-export const MOCK_NHIS_DIRECTORY: Record<string, NhisLookup> = {
-  "GH/12345678-01": { status: "yes", expiryDate: "2027-04-15", fullName: "Kofi Acheampong" },
-  "GH/98765432-02": { status: "yes", expiryDate: "2026-12-20", fullName: "Abena Osei" },
-  "GH/55443322-03": { status: "yes", expiryDate: "2026-10-01", fullName: "Esi Yeboah" },
-  "NH-00000001": { status: "no", expiryDate: "", fullName: "Status Inactive" },
-};
-
 export const GHANA_REGIONS = [
   "Ahafo",
   "Ashanti",
@@ -46,6 +39,19 @@ export const GHANA_REGIONS = [
   "Volta",
   "Western",
   "Western North",
+];
+
+/** Stored uppercase; empty string means not recorded at registration. */
+export const BLOOD_GROUP_OPTIONS = [
+  { value: "", label: "Not recorded" },
+  { value: "A+", label: "A+" },
+  { value: "A-", label: "A-" },
+  { value: "B+", label: "B+" },
+  { value: "B-", label: "B-" },
+  { value: "AB+", label: "AB+" },
+  { value: "AB-", label: "AB-" },
+  { value: "O+", label: "O+" },
+  { value: "O-", label: "O-" },
 ];
 
 export const SERVICE_CATALOG: ServiceCatalogItem[] = [

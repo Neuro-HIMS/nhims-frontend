@@ -209,7 +209,10 @@ export function VisitsQueueView() {
                           <span className={`status-pill text-xs ${triage.badgeClass}`}>{triage.label}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="status-pill status-pill-pending">{STATUS_LABEL[v.status]}</span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="status-pill status-pill-pending">{STATUS_LABEL[v.status]}</span>
+                            <span className="text-[10px] text-muted-foreground">At: {v.currentStationLabel}</span>
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <Button size="sm" variant="ghost" className="gap-1">

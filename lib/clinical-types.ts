@@ -44,6 +44,8 @@ export type Visit = {
   reason: string;
   priority: TriagePriority;
   status: VisitStatus;
+  /** Human label from backend {@code EncounterDto.currentStation} */
+  currentStationLabel: string;
   source: "records" | "walk-in" | "internal-referral";
   createdAt: string;             // ISO timestamp
 };

@@ -33,6 +33,7 @@ import {
 import type { Patient } from "@/components/records/lib/records-types";
 import { appointmentsService } from "@/services/appointments.service";
 import { financeService } from "@/services/finance.service";
+import { patientsService } from "@/services/patients.service";
 import type {
   AppointmentDto,
   CreateAppointmentPayload,
@@ -109,6 +110,7 @@ export function BookingForm({
   const [notes, setNotes] = useState<string>("");
   const [feeOverride, setFeeOverride] = useState<string>("");
   const [booked, setBooked] = useState<BookingResult | null>(null);
+  const [nhisGateBusy, setNhisGateBusy] = useState(false);
 
   const filteredServices = useMemo(() => {
     const all = services.data ?? [];
@@ -157,7 +159,7 @@ export function BookingForm({
     return `${date}T${safeTime}:00`;
   }
 
-  function submit() {
+  async function submit() {
     if (!serviceId) {
       toast.error("Pick a service from the catalog");
       return;
@@ -165,6 +167,37 @@ export function BookingForm({
     if (!reason.trim()) {
       toast.error("Visit reason is required");
       return;
+    }
+    if (payerType === "NHIS") {
+      const mem = nhisMemberNumber.trim();
+      if (!mem) {
+        toast.error("NHIS member number is required when payer is NHIS");
+        return;
+      }
+      setNhisGateBusy(true);
+      try {
+        const result = await patientsService.verifyNhis(mem);
+        if (result.status === "INVALID_FORMAT") {
+          toast.error(result.message ?? "Invalid NHIS member number format");
+          return;
+        }
+        if (result.status === "NOT_FOUND") {
+          toast.error(result.message ?? "NHIS membership not found — cannot confirm NHIS booking");
+          return;
+        }
+        if (result.status === "PENDING_GATEWAY") {
+          toast.error(
+            result.message ?? "NHIS verification is unavailable. Confirm eligibility before booking as NHIS.",
+          );
+          return;
+        }
+      } catch (e: unknown) {
+        const ax = e as { response?: { data?: ApiError } };
+        toast.error(ax.response?.data?.message ?? "NHIS verification failed");
+        return;
+      } finally {
+        setNhisGateBusy(false);
+      }
     }
     const clinician = (clinicians.data ?? []).find((c) => c.userId === clinicianId);
     bookMut.mutate({
@@ -499,9 +532,9 @@ export function BookingForm({
         </p>
         <Button
           onClick={submit}
-          disabled={bookMut.isPending || !serviceId || !reason.trim()}
+          disabled={bookMut.isPending || nhisGateBusy || !serviceId || !reason.trim()}
         >
-          {bookMut.isPending ? (
+          {bookMut.isPending || nhisGateBusy ? (
             <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
           ) : (
             <CalendarPlus className="mr-1.5 h-4 w-4" />

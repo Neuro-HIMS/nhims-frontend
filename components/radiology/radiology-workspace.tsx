@@ -216,7 +216,7 @@ function WorklistView() {
 
               <DataRow label="Encounter" value={selected.encounterNumber} mono />
               <DataRow label="Ordered by" value={selected.orderedByName} />
-              <DataRow label="Ordered at" value={formatDateTime(selected.orderedAt)} />
+              <DataRow label="Ordered at" value={selected.orderedAt ? formatDateTime(selected.orderedAt) : "—"} />
               <DataRow label="Charge" value={`GH₵ ${minorToGhs(selected.lineTotalMinor)}`} mono />
 
               {selected.clinicalNotes ? (
@@ -327,7 +327,9 @@ function ReportsView() {
         <tbody className="divide-y divide-border">
           {rows.map((o) => (
             <tr key={o.id}>
-              <td className="px-4 py-2.5 text-xs text-muted-foreground">{formatDateTime(o.completedAt)}</td>
+              <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                {o.completedAt ? formatDateTime(o.completedAt) : "—"}
+              </td>
               <td className="px-4 py-2.5">
                 <p className="font-medium">{o.patientName}</p>
                 <p className="patient-id mt-0.5">{o.patientPublicId}</p>

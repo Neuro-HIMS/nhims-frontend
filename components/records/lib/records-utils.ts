@@ -1,5 +1,4 @@
-﻿import { MOCK_NHIS_DIRECTORY } from "@/components/records/lib/records-data";
-import type { NhisLookup } from "@/components/records/lib/records-types";
+﻿import { patientsService } from "@/services/patients.service";
 
 export function calculateAgeFromDob(dob: string): { age: number; unit: "months" | "years" } {
   const birthDate = new Date(dob);
@@ -16,11 +15,6 @@ export function calculateAgeFromDob(dob: string): { age: number; unit: "months" 
   return { age: Math.floor(months / 12), unit: "years" };
 }
 
-export function mockValidateNhis(nhisNumber: string): Promise<NhisLookup | null> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const data = MOCK_NHIS_DIRECTORY[nhisNumber.trim().toUpperCase()];
-      resolve(data ?? null);
-    }, 700);
-  });
+export function verifyNhisMembership(memberNumber: string) {
+  return patientsService.verifyNhis(memberNumber);
 }

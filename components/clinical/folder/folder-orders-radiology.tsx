@@ -133,7 +133,7 @@ export function FolderOrdersRadiology({ visit, canOrder }: FolderOrdersRadiology
                       </span>
                     </p>
                     <p className="patient-id mt-0.5">
-                      {formatDateTime(o.orderedAt)} · {o.orderedByName} · GH₵ {minorToGhs(o.lineTotalMinor)}
+                      {o.orderedAt ? formatDateTime(o.orderedAt) : "—"} · {o.orderedByName} · GH₵ {minorToGhs(o.lineTotalMinor)}
                     </p>
                     {o.clinicalNotes ? <p className="mt-1 text-sm text-muted-foreground">{o.clinicalNotes}</p> : null}
                   </div>

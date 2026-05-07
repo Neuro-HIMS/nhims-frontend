@@ -63,9 +63,8 @@ function mapLoginError(message: string): string {
   if (message.toLowerCase().includes("account expired")) {
     return "Your account has expired. Contact your Facility Administrator.";
   }
-  if (message.toLowerCase().includes("credentials expired") ||
-      message.toLowerCase().includes("password expired")) {
-    return "Your password has expired and must be reset. Contact your Facility Administrator.";
+  if (message.toLowerCase().includes("two-factor") || message.toLowerCase().includes("authentication code")) {
+    return message;
   }
   return "Unable to sign in. Please check your credentials and try again.";
 }

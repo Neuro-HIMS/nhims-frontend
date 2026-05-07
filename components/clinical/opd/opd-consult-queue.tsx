@@ -187,9 +187,16 @@ function QueueSection({
                       <td className="px-4 py-3">
                         <span className={`status-pill text-xs ${triage.badgeClass}`}>{triage.label}</span>
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="status-pill status-pill-pending text-xs">{statusLabel(encounter)}</span>
-                      </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="status-pill status-pill-pending text-xs">
+                              {statusLabel(encounter)}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              At: {visit.currentStationLabel}
+                            </span>
+                          </div>
+                        </td>
                       <td className="px-4 py-3">
                         <Button size="sm" variant="ghost" className="gap-1">
                           <ChevronRight className="h-4 w-4" />

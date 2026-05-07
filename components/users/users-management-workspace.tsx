@@ -175,7 +175,7 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
     setActionType("reset-password");
     try {
       const result = await usersService.resetPassword(user.id);
-      setMessage(`Temporary password for ${user.username}: ${result.temporaryPassword}`);
+      setMessage(result.message);
       setPendingPasswordResetUser(null);
     } catch (error) {
       setMessage(extractErrorMessage(error, "Unable to reset password."));
@@ -269,10 +269,10 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
         title="Reset password?"
         description={
           pendingPasswordResetUser
-            ? `Issuing a temporary password for ${pendingPasswordResetUser.username} invalidates the previous password immediately. Share the temporary password privately.`
+            ? `A new temporary password will be set for ${pendingPasswordResetUser.username}. It will not appear on screen — share it only through a secure channel after the reset completes.`
             : ""
         }
-        confirmLabel="Generate temporary password"
+        confirmLabel="Reset password"
         pending={isActionLoading}
         onConfirm={async () => {
           if (!pendingPasswordResetUser) return;
@@ -306,8 +306,8 @@ function validateCreateForm(form: {
     const hasLower = /[a-z]/.test(form.password);
     const hasDigit = /\d/.test(form.password);
     const hasSpecial = /[^A-Za-z\d]/.test(form.password);
-    if (form.password.length < 8 || !hasUpper || !hasLower || !hasDigit || !hasSpecial) {
-      errors.password = "Use 8+ chars with upper, lower, number, and special symbol.";
+    if (form.password.length < 12 || !hasUpper || !hasLower || !hasDigit || !hasSpecial) {
+      errors.password = "Use 12+ chars with upper, lower, number, and special symbol.";
     }
   }
 

@@ -1,5 +1,20 @@
 /** IPD ward board — mirrors {@link com.nero.hims.ipd.api.dto.IpdBoardDto}. */
 
+export interface NursingTaskStubDto {
+  id: string;
+  label: string;
+  status: string;
+  admissionId: string;
+  patientName: string;
+  detail: string;
+}
+
+export interface IpdNursingOverviewDto {
+  marTasks: NursingTaskStubDto[];
+  tprTasks: NursingTaskStubDto[];
+  notice: string;
+}
+
 export interface IpdBoardDto {
   wards: WardBoardDto[];
 }

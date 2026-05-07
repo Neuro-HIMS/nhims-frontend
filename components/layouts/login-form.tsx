@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,14 +29,33 @@ export function LoginForm() {
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { username: "", password: "" },
+    defaultValues: { username: "", password: "", totpCode: "" },
   });
+
+  useEffect(() => {
+    // If a prior native form submit leaked credentials into query params,
+    // immediately scrub them from the URL and clear the password field.
+    const params = new URLSearchParams(window.location.search);
+    const hasCredentialParams = params.has("username") || params.has("password");
+    if (!hasCredentialParams) return;
+
+    form.reset({
+      username: params.get("username") ?? "",
+      password: "",
+      totpCode: "",
+    });
+    window.history.replaceState({}, document.title, "/login");
+  }, [form]);
 
   async function onSubmit(values: LoginInput) {
     setServerError(null);
     const result = await login(values);
     if (!result.ok) {
       setServerError(result.error);
+      return;
+    }
+    if (result.user.mustChangePassword) {
+      router.replace("/change-password");
       return;
     }
     router.replace(getLandingPathForUser(result.user));
@@ -51,7 +70,13 @@ export function LoginForm() {
         </p>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            method="post"
+            action="/login"
+            className="space-y-4"
+            noValidate
+          >
             {serverError && (
               <div
                 className="alert-critical flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
@@ -117,6 +142,28 @@ export function LoginForm() {
                         )}
                       </button>
                     </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="totpCode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm text-card-foreground">Authenticator code (if enabled)</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="6-digit code"
+                      disabled={isLoading}
+                      className="login-input h-10 rounded-md font-clinical"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

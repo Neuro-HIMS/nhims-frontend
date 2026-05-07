@@ -1,3 +1,4 @@
+import { NAV_ITEMS } from "@/config/navigation";
 import { FACILITY_SERVICE_TO_APP_MODULE } from "@/config/facility-service-modules";
 import type { AppModule, AuthUser, UserRole } from "@/types/auth.types";
 
@@ -46,30 +47,14 @@ const DEFAULT_MODULE_BY_ROLE: Record<UserRole, AppModule> = {
   SUPER_ADMIN: "dashboard",
 };
 
-const ROLE_ACCESS_BY_MODULE: Record<AppModule, UserRole[]> = {
-  dashboard: ["FACILITY_ADMIN", "SUPER_ADMIN", "HIO"],
-  records: ["RECORDS_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  appointments: ["RECORDS_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  emergency: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  opd: ["RECORDS_OFFICER", "NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  nurse: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  wards: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  anc: ["MIDWIFE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  surgery: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  dental: ["MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  "mental-health": ["MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  laboratory: ["LAB_SCIENTIST", "LAB_TECH", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  pharmacy: ["PHARMACIST", "PHARMACY_TECH", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  radiology: ["RADIOGRAPHER", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  physiotherapy: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  "blood-bank": ["LAB_SCIENTIST", "LAB_TECH", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  finance: ["FINANCE_OFFICER", "BILLING_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  billing: ["BILLING_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-  reports: ["HIO", "FACILITY_ADMIN", "SUPER_ADMIN", "MEDICAL_OFFICER", "FINANCE_OFFICER", "RECORDS_OFFICER", "BILLING_OFFICER"],
-  users: ["FACILITY_ADMIN", "SUPER_ADMIN"],
-  facility: ["FACILITY_ADMIN", "SUPER_ADMIN"],
-  "audit-log": ["FACILITY_ADMIN", "SUPER_ADMIN"],
-};
+/** Role lists per module — sourced from primary nav so headers and Role Assignment stay aligned. */
+const ROLE_ACCESS_BY_MODULE: Record<AppModule, UserRole[]> = NAV_ITEMS.reduce(
+  (acc, item) => {
+    acc[item.module] = item.allowedRoles;
+    return acc;
+  },
+  {} as Record<AppModule, UserRole[]>,
+);
 
 export function getLandingPathForUser(user: AuthUser): string {
   if (user.assignedModules.length > 0) {

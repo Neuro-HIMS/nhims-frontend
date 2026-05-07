@@ -95,6 +95,9 @@ export type RegistrationForm = {
   emergencyName: string;
   emergencyRelation: string;
   emergencyPhone: string;
+  bloodGroup: string;
+  knownAllergies: string;
+  registrationConsentAcknowledged: boolean;
 };
 
 export const EMPTY_REGISTRATION_FORM: RegistrationForm = {
@@ -120,12 +123,8 @@ export const EMPTY_REGISTRATION_FORM: RegistrationForm = {
   emergencyName: "",
   emergencyRelation: "",
   emergencyPhone: "",
+  bloodGroup: "",
+  knownAllergies: "",
+  registrationConsentAcknowledged: false,
 };
-
-export type NhisLookup = {
-  status: "yes" | "no";
-  expiryDate: string;
-  fullName: string;
-};
-
 

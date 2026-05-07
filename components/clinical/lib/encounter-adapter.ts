@@ -1,3 +1,4 @@
+import { formatEncounterStation } from "@/components/clinical/lib/station-labels";
 import type { TriagePriority, Visit, VisitStatus } from "@/lib/clinical-types";
 import type {
   EncounterDto,
@@ -40,6 +41,7 @@ export function encounterToVisit(e: EncounterDto): Visit {
     reason: e.reason,
     priority: mapPriority(e.priority),
     status: mapStatus(e.status),
+    currentStationLabel: formatEncounterStation(e.currentStation),
     source: e.appointmentId ? "records" : "walk-in",
     createdAt: e.createdAt ?? new Date().toISOString(),
   };

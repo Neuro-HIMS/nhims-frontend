@@ -56,11 +56,16 @@ export interface AuthUser {
    * When absent (legacy JWT), navigation does not hide tabs by facility toggle.
    */
   enabledHmisModuleKeys?: AppModule[];
+  /** After admin password reset; user must complete /change-password before full workspace access. */
+  mustChangePassword?: boolean;
+  /** True when two-factor (TOTP) is enabled for this account. */
+  totpEnabled?: boolean;
 }
 
 export interface LoginRequest {
   username: string;
   password: string;
+  totpCode?: string;
 }
 
 export interface LoginResponse {

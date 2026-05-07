@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,11 +13,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { minorToGhs } from "@/components/finance/finance-utils";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { clinicalService } from "@/services/clinical.service";
+import { pharmacyInventoryService } from "@/services/pharmacy-inventory.service";
 import { queryKeys } from "@/lib/query-keys";
 import { useAuthStore } from "@/store/auth.store";
 import type { ApiError } from "@/types/api.types";
 import type { DispenseLineInput, DispensePayload, PrescriptionDto } from "@/types/clinical.types";
+import type { PharmacyStockLotDto } from "@/types/pharmacy-inventory.types";
 
 export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: () => void }) {
   const qc = useQueryClient();
@@ -46,6 +55,7 @@ export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: (
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
       void qc.invalidateQueries({ queryKey: queryKeys.clinical.pharmacyQueue });
+      void qc.invalidateQueries({ queryKey: queryKeys.pharmacyInventory.all });
       if (rx.encounterId) {
         void qc.invalidateQueries({ queryKey: queryKeys.clinical.encounter(rx.encounterId) });
       }
@@ -85,8 +95,34 @@ export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: (
   });
 
   const [qty, setQty] = useState<Record<string, string>>({});
+  const [lotByLineId, setLotByLineId] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState(rx.pharmacyNotes ?? "");
   const [dispensePayload, setDispensePayload] = useState<DispensePayload | null>(null);
+
+  const itemIds = useMemo(() => {
+    const s = new Set<string>();
+    rx.lines.forEach((l) => {
+      if (l.pharmacyInventoryItemId) s.add(l.pharmacyInventoryItemId);
+    });
+    return [...s];
+  }, [rx.lines]);
+
+  const lotQueries = useQueries({
+    queries: itemIds.map((itemId) => ({
+      queryKey: queryKeys.pharmacyInventory.lots(itemId),
+      queryFn: () => pharmacyInventoryService.listLots(itemId),
+      staleTime: 30_000,
+    })),
+  });
+
+  const lotsByItemId = useMemo(() => {
+    const m: Record<string, PharmacyStockLotDto[]> = {};
+    itemIds.forEach((id, i) => {
+      const data = lotQueries[i]?.data;
+      if (data) m[id] = data;
+    });
+    return m;
+  }, [itemIds, lotQueries]);
 
   const lineSig = rx.lines.map((l) => `${l.id}:${l.quantity}:${l.dispensedQty}`).join("|");
 
@@ -97,6 +133,7 @@ export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: (
     });
     setQty(m);
     setNotes(rx.pharmacyNotes ?? "");
+    setLotByLineId({});
   }, [rx.id, lineSig, rx.pharmacyNotes]);
 
   const allDispensable = rx.lines.every(
@@ -109,15 +146,24 @@ export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: (
 
   function buildDispensePayload(): DispensePayload | null {
     const lines: DispenseLineInput[] = [];
-    rx.lines.forEach((l) => {
+    for (const l of rx.lines) {
       const raw = qty[l.id] ?? "0";
       const want = Number.parseFloat(raw);
-      if (!Number.isFinite(want) || want <= 0) return;
+      if (!Number.isFinite(want) || want <= 0) continue;
       const remaining = Math.max(0, Number(l.quantity) - Number(l.dispensedQty));
       const dispenseQty = Math.min(want, remaining);
-      if (dispenseQty <= 0) return;
-      lines.push({ lineId: l.id, quantity: dispenseQty });
-    });
+      if (dispenseQty <= 0) continue;
+      if (!l.pharmacyInventoryItemId) {
+        toast.error(`${l.drugName}: link this catalog item in Pharmacy inventory before dispensing.`);
+        return null;
+      }
+      const lotId = lotByLineId[l.id];
+      if (!lotId) {
+        toast.error(`${l.drugName}: select a stock batch (lot) before dispensing.`);
+        return null;
+      }
+      lines.push({ lineId: l.id, quantity: dispenseQty, stockLotId: lotId });
+    }
     if (lines.length === 0) {
       toast.error("Enter quantity to dispense for at least one line");
       return null;
@@ -213,6 +259,11 @@ export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: (
               l.sigSuggestedQuantity != null && l.sigSuggestedQuantity !== ""
                 ? String(l.sigSuggestedQuantity)
                 : null;
+            const invItemId = l.pharmacyInventoryItemId;
+            const lotsForLine = invItemId ? (lotsByItemId[invItemId] ?? []) : [];
+            const availableLots = lotsForLine.filter((x) => Number(x.quantityOnHand) > 0);
+            const lotQueryIdx = invItemId ? itemIds.indexOf(invItemId) : -1;
+            const lotsLoading = lotQueryIdx >= 0 ? Boolean(lotQueries[lotQueryIdx]?.isLoading) : false;
 
             return (
               <div key={l.id} className="rounded-md border border-border bg-card p-3">
@@ -285,6 +336,47 @@ export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: (
                       </span>
                     ) : null}
                   </div>
+                  {!invItemId ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      No pharmacy stock mapping for this catalog item. Link the drug under Pharmacy inventory before
+                      dispensing.
+                    </p>
+                  ) : null}
+                  {invItemId &&
+                  remaining > 0 &&
+                  l.status !== "PENDING" &&
+                  l.status !== "CANCELLED" &&
+                  l.status !== "DISPENSED" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Batch / expiry (lot)</label>
+                      {lotsLoading ? (
+                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                          Loading lots…
+                        </p>
+                      ) : availableLots.length === 0 ? (
+                        <p className="text-xs text-destructive">
+                          No batches with quantity on hand. Receive stock for this item first.
+                        </p>
+                      ) : (
+                        <Select
+                          value={lotByLineId[l.id] ?? ""}
+                          onValueChange={(v) => setLotByLineId((prev) => ({ ...prev, [l.id]: v }))}
+                        >
+                          <SelectTrigger className="h-8 max-w-md text-xs">
+                            <SelectValue placeholder="Select batch…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableLots.map((lot) => (
+                              <SelectItem key={lot.id} value={lot.id}>
+                                {lot.batchNo} · exp {lot.expiryDate ?? "—"} · on hand {lot.quantityOnHand}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

@@ -1,4 +1,4 @@
-import { apiClient } from "@/services/api-client";
+import { apiClient, EXPORT_REQUEST_TIMEOUT_MS } from "@/services/api-client";
 import type { ApiResponse } from "@/types/api.types";
 import type {
   AdjustStockPayload,
@@ -120,6 +120,7 @@ export const pharmacyInventoryService = {
     const res = await apiClient.get("/pharmacy/stock/export/csv", {
       params: { activeItemsOnly },
       responseType: "blob",
+      timeout: EXPORT_REQUEST_TIMEOUT_MS,
     });
     return res.data as Blob;
   },
@@ -127,7 +128,9 @@ export const pharmacyInventoryService = {
   async importStockCsv(file: File): Promise<StockCsvImportResultDto> {
     const body = new FormData();
     body.append("file", file);
-    const res = await apiClient.post<ApiResponse<StockCsvImportResultDto>>("/pharmacy/stock/import/csv", body);
+    const res = await apiClient.post<ApiResponse<StockCsvImportResultDto>>("/pharmacy/stock/import/csv", body, {
+      timeout: EXPORT_REQUEST_TIMEOUT_MS,
+    });
     return res.data.data;
   },
 };

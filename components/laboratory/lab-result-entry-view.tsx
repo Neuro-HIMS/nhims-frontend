@@ -281,6 +281,7 @@ function LabResultEntryDialog({
       clinicalService.submitLabResults(id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.labCriticalInbox });
       setConfirmAuthorise(null);
       toast.success("Results saved — clinician will see them in the folder");
       onOpenChange(false);

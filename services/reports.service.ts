@@ -1,4 +1,4 @@
-import { apiClient } from "@/services/api-client";
+import { apiClient, EXPORT_REQUEST_TIMEOUT_MS } from "@/services/api-client";
 import type { ApiResponse } from "@/types/api.types";
 import type {
   ReportDefinitionDto,
@@ -44,6 +44,7 @@ export const reportsService = {
     const res = await apiClient.get("/reports/export/dhims2.csv", {
       params: { month },
       responseType: "blob",
+      timeout: EXPORT_REQUEST_TIMEOUT_MS,
     });
     triggerBlobDownload(res.data as Blob, `dhims2-${month}.csv`);
   },
@@ -52,6 +53,7 @@ export const reportsService = {
     const res = await apiClient.get("/reports/export/monthly-summary.csv", {
       params: { month },
       responseType: "blob",
+      timeout: EXPORT_REQUEST_TIMEOUT_MS,
     });
     triggerBlobDownload(res.data as Blob, `monthly-summary-${month}.csv`);
   },

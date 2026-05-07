@@ -21,6 +21,7 @@ import type {
   FolderViewDto,
   LabOrderDto,
   LabOrderStatus,
+  LabCriticalAlertDto,
   CreateRadiologyOrderPayload,
   RadiologyOrderDto,
   MedicalAlertDto,
@@ -342,6 +343,18 @@ export const clinicalService = {
     const res = await apiClient.post<ApiResponse<LabOrderDto>>(
       `/clinical/lab-orders/${id}/results`,
       payload,
+    );
+    return res.data.data;
+  },
+
+  async labCriticalAlertsInbox(): Promise<LabCriticalAlertDto[]> {
+    const res = await apiClient.get<ApiResponse<LabCriticalAlertDto[]>>("/clinical/lab/critical-alerts");
+    return res.data.data;
+  },
+
+  async acknowledgeLabCriticalAlert(id: string): Promise<LabCriticalAlertDto> {
+    const res = await apiClient.post<ApiResponse<LabCriticalAlertDto>>(
+      `/clinical/lab/critical-alerts/${id}/acknowledge`,
     );
     return res.data.data;
   },

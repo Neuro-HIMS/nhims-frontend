@@ -14,6 +14,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { RecordsField } from "@/components/records/shared/records-field";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
@@ -22,6 +30,16 @@ import { queryKeys } from "@/lib/query-keys";
 import type { ApiError } from "@/types/api.types";
 import type { AdmitPayload, DischargePayload } from "@/types/clinical.types";
 import type { Visit } from "@/lib/clinical-types";
+
+const DISCHARGE_OUTCOME_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Not specified" },
+  { value: "IMPROVED", label: "Improved" },
+  { value: "STABLE", label: "Stable" },
+  { value: "AMA", label: "Left against medical advice" },
+  { value: "TRANSFERRED", label: "Transferred" },
+  { value: "DECEASED", label: "Deceased" },
+  { value: "OTHER", label: "Other" },
+];
 
 interface FolderAdmissionsProps {
   patientUuid: string;
@@ -75,6 +93,10 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
       toast.success("Patient discharged");
       setDischargeForId(null);
       setDischargeNotes("");
+      setDischargeOutcome("");
+      setDischargeIcd("");
+      setDischargeMeds("");
+      setDischargeFollow("");
     },
     onError: (e: unknown) => {
       const ax = e as { response?: { data?: ApiError } };
@@ -86,6 +108,10 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
   const [form, setForm] = useState(EMPTY_ADMIT);
   const [dischargeForId, setDischargeForId] = useState<string | null>(null);
   const [dischargeNotes, setDischargeNotes] = useState("");
+  const [dischargeOutcome, setDischargeOutcome] = useState("");
+  const [dischargeIcd, setDischargeIcd] = useState("");
+  const [dischargeMeds, setDischargeMeds] = useState("");
+  const [dischargeFollow, setDischargeFollow] = useState("");
 
   const list = admissionsQuery.data ?? [];
   const activeAdmission = list.find((a) => a.status === "ADMITTED");
@@ -115,7 +141,16 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
       toast.error("Discharge summary is required");
       return;
     }
-    dischargeMut.mutate({ id, payload: { summary: dischargeNotes.trim() } });
+    dischargeMut.mutate({
+      id,
+      payload: {
+        summary: dischargeNotes.trim(),
+        outcome: dischargeOutcome.trim() || undefined,
+        icd11Codes: dischargeIcd.trim() || undefined,
+        dischargeMedicationSummary: dischargeMeds.trim() || undefined,
+        followUpPlan: dischargeFollow.trim() || undefined,
+      },
+    });
   }
 
   return (
@@ -239,7 +274,14 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
               }
               headerActions={
                 a.status !== "DISCHARGED" ? (
-                  <Button size="sm" variant="outline" onClick={() => setDischargeForId(a.id)}>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setDischargeForId(a.id);
+                    setDischargeNotes("");
+                    setDischargeOutcome("");
+                    setDischargeIcd("");
+                    setDischargeMeds("");
+                    setDischargeFollow("");
+                  }}>
                     <LogOut className="mr-1.5 h-4 w-4" />
                     Discharge
                   </Button>
@@ -260,6 +302,20 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
                     value={`${a.dischargedByName ? `${a.dischargedByName}\n` : ""}${a.dischargeSummary}`}
                   />
                 ) : null}
+                {a.status === "DISCHARGED" && (a.dischargeOutcome || a.dischargeIcd11Codes || a.dischargeMedicationSummary || a.followUpPlan) ? (
+                  <>
+                    {a.dischargeOutcome ? (
+                      <FolderRecordField label="Discharge outcome" value={a.dischargeOutcome} />
+                    ) : null}
+                    {a.dischargeIcd11Codes ? (
+                      <FolderRecordField label="ICD-11 (discharge)" value={a.dischargeIcd11Codes} />
+                    ) : null}
+                    {a.dischargeMedicationSummary ? (
+                      <FolderRecordField label="Medications on discharge" value={a.dischargeMedicationSummary} />
+                    ) : null}
+                    {a.followUpPlan ? <FolderRecordField label="Follow-up plan" value={a.followUpPlan} /> : null}
+                  </>
+                ) : null}
                 {dischargeForId === a.id && (
                   <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -268,8 +324,44 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
                     <Textarea
                       value={dischargeNotes}
                       onChange={(e) => setDischargeNotes(e.target.value)}
-                      placeholder="Discharge summary, follow-up plan, prescriptions on discharge…"
+                      placeholder="Discharge summary — course in hospital, condition at discharge…"
                       rows={3}
+                    />
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Outcome</Label>
+                      <Select
+                        value={dischargeOutcome || "__none__"}
+                        onValueChange={(v) => setDischargeOutcome(v === "__none__" ? "" : v)}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Outcome" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DISCHARGE_OUTCOME_OPTIONS.map((o) => (
+                            <SelectItem key={o.value || "none"} value={o.value || "__none__"}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Input
+                      value={dischargeIcd}
+                      onChange={(e) => setDischargeIcd(e.target.value)}
+                      placeholder="ICD-11 codes (comma-separated)"
+                      className="font-clinical"
+                    />
+                    <Textarea
+                      value={dischargeMeds}
+                      onChange={(e) => setDischargeMeds(e.target.value)}
+                      placeholder="Medications on discharge"
+                      rows={2}
+                    />
+                    <Textarea
+                      value={dischargeFollow}
+                      onChange={(e) => setDischargeFollow(e.target.value)}
+                      placeholder="Follow-up plan"
+                      rows={2}
                     />
                     <div className="flex justify-end gap-2">
                       <Button
@@ -278,6 +370,10 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
                         onClick={() => {
                           setDischargeForId(null);
                           setDischargeNotes("");
+                          setDischargeOutcome("");
+                          setDischargeIcd("");
+                          setDischargeMeds("");
+                          setDischargeFollow("");
                         }}
                       >
                         Cancel

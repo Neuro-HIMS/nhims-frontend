@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import { ModuleSubNav, type SubNavItem } from "@/components/layouts/module-subnav";
+import { Badge } from "@/components/ui/badge";
 import type { AppModule } from "@/types/auth.types";
 
 export interface ClinicalServiceModuleWorkspaceProps {
@@ -29,7 +30,12 @@ export function ClinicalServiceModuleWorkspace({
   return (
     <div className="space-y-4">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
+          <Badge variant="secondary" className="font-normal">
+            Coming soon
+          </Badge>
+        </div>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
         <p className="text-xs text-muted-foreground">
           Facility service line{" "}

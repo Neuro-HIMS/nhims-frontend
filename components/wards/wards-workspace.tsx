@@ -10,6 +10,15 @@ import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -27,6 +36,16 @@ const SUB_NAV = [
   { label: "Bed Board", view: "beds", href: "/wards?view=beds" },
   { label: "Admissions", view: "admissions", href: "/wards?view=admissions" },
   { label: "Discharge", view: "discharge", href: "/wards?view=discharge" },
+];
+
+const DISCHARGE_OUTCOME_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Not specified" },
+  { value: "IMPROVED", label: "Improved" },
+  { value: "STABLE", label: "Stable" },
+  { value: "AMA", label: "Left against medical advice" },
+  { value: "TRANSFERRED", label: "Transferred" },
+  { value: "DECEASED", label: "Deceased" },
+  { value: "OTHER", label: "Other" },
 ];
 
 export function WardsWorkspace() {
@@ -58,6 +77,12 @@ function BedBoardView() {
     staleTime: 30_000,
   });
 
+  const nursing = useQuery({
+    queryKey: [...queryKeys.ipd.wards, "nursing"],
+    queryFn: () => ipdService.nursingOverview(),
+    staleTime: 120_000,
+  });
+
   if (board.isLoading) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -73,6 +98,14 @@ function BedBoardView() {
 
   return (
     <div className="space-y-6">
+      {nursing.data?.notice && (
+        <Card className="border-dashed">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Inpatient nursing (MAR / TPR)</CardTitle>
+            <CardDescription className="text-xs">{nursing.data.notice}</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
       {wards.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
@@ -175,7 +208,9 @@ function AdmissionsView() {
                 <td className="px-4 py-3 text-sm text-muted-foreground">
                   {a.ward} · {a.bed}
                 </td>
-                <td className="px-4 py-3 font-clinical text-xs text-muted-foreground">{formatDateTime(a.admittedAt)}</td>
+                <td className="px-4 py-3 font-clinical text-xs text-muted-foreground">
+                  {a.admittedAt ? formatDateTime(a.admittedAt) : "—"}
+                </td>
                 <td className="px-4 py-3 text-sm text-foreground">{a.reason || "—"}</td>
                 <td className="px-4 py-3 text-sm text-muted-foreground">{a.admittedByName}</td>
               </tr>
@@ -191,6 +226,10 @@ function DischargeView() {
   const qc = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
   const [summary, setSummary] = useState("");
+  const [outcome, setOutcome] = useState("");
+  const [icd11Codes, setIcd11Codes] = useState("");
+  const [dischargeMedicationSummary, setDischargeMedicationSummary] = useState("");
+  const [followUpPlan, setFollowUpPlan] = useState("");
 
   const admissions = useQuery({
     queryKey: ["clinical", "admissions", "active"],
@@ -199,13 +238,29 @@ function DischargeView() {
   });
 
   const dischargeMut = useMutation({
-    mutationFn: ({ id, summary: s }: { id: string; summary: string }) => clinicalService.discharge(id, { summary: s }),
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: {
+        summary: string;
+        outcome?: string;
+        icd11Codes?: string;
+        dischargeMedicationSummary?: string;
+        followUpPlan?: string;
+      };
+    }) => clinicalService.discharge(id, payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["clinical", "admissions", "active"] });
       void qc.invalidateQueries({ queryKey: queryKeys.ipd.wards });
       toast.success("Patient discharged");
       setOpenId(null);
       setSummary("");
+      setOutcome("");
+      setIcd11Codes("");
+      setDischargeMedicationSummary("");
+      setFollowUpPlan("");
     },
     onError: () => toast.error("Could not discharge"),
   });
@@ -236,11 +291,11 @@ function DischargeView() {
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-foreground">{a.patientName}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {a.ward} · {a.bed} · admitted {formatDateTime(a.admittedAt)}
+                  {a.ward} · {a.bed} · admitted {a.admittedAt ? formatDateTime(a.admittedAt) : "—"}
                 </p>
               </div>
               <Badge variant="outline">{a.reason ? "Reason recorded" : "IPD"}</Badge>
-              <Button size="sm" variant="outline" onClick={() => { setOpenId(a.id); setSummary(""); }}>
+              <Button size="sm" variant="outline" onClick={() => { setOpenId(a.id); setSummary(""); setOutcome(""); setIcd11Codes(""); setDischargeMedicationSummary(""); setFollowUpPlan(""); }}>
                 Discharge
               </Button>
             </div>
@@ -249,18 +304,62 @@ function DischargeView() {
       )}
 
       <Dialog open={openId !== null} onOpenChange={(o) => { if (!o) setOpenId(null); }}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Discharge summary</DialogTitle>
+            <DialogTitle>Discharge</DialogTitle>
           </DialogHeader>
-          <Textarea rows={5} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Clinical summary for the chart…" />
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Clinical discharge summary</Label>
+              <Textarea rows={4} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Course in hospital, key investigations, condition at discharge…" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Outcome</Label>
+              <Select value={outcome || "__none__"} onValueChange={(v) => setOutcome(v === "__none__" ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Outcome" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DISCHARGE_OUTCOME_OPTIONS.map((o) => (
+                    <SelectItem key={o.value || "none"} value={o.value || "__none__"}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">ICD-11 discharge diagnoses (comma-separated)</Label>
+              <Input value={icd11Codes} onChange={(e) => setIcd11Codes(e.target.value)} placeholder="e.g. 1A00, 5A11" className="font-clinical" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Medications on discharge</Label>
+              <Textarea rows={2} value={dischargeMedicationSummary} onChange={(e) => setDischargeMedicationSummary(e.target.value)} placeholder="Drug, dose, duration…" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Follow-up plan</Label>
+              <Textarea rows={2} value={followUpPlan} onChange={(e) => setFollowUpPlan(e.target.value)} placeholder="OPD review date, referrals, warnings…" />
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenId(null)}>
               Cancel
             </Button>
             <Button
               disabled={!summary.trim() || dischargeMut.isPending || !openId}
-              onClick={() => openId && dischargeMut.mutate({ id: openId, summary: summary.trim() })}
+              onClick={() =>
+                openId &&
+                dischargeMut.mutate({
+                  id: openId,
+                  payload: {
+                    summary: summary.trim(),
+                    outcome: outcome.trim() || undefined,
+                    icd11Codes: icd11Codes.trim() || undefined,
+                    dischargeMedicationSummary: dischargeMedicationSummary.trim() || undefined,
+                    followUpPlan: followUpPlan.trim() || undefined,
+                  },
+                })
+              }
             >
               {dischargeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm discharge"}
             </Button>

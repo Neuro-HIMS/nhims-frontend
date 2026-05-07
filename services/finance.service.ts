@@ -207,8 +207,37 @@ export const financeService = {
     servicePeriodStart?: string;
     servicePeriodEnd?: string;
     notes?: string;
+    lines?: {
+      serviceCode?: string;
+      description?: string;
+      tariffCode?: string;
+      quantity: number;
+      unitAmountMinor: number;
+    }[];
   }): Promise<FinanceNhisClaimDto> {
     const res = await apiClient.post<ApiResponse<FinanceNhisClaimDto>>("/finance/nhis/claims", payload);
+    return res.data.data;
+  },
+  async updateClaim(
+    claimId: string,
+    payload: {
+      patientPublicId?: string;
+      claimReference?: string;
+      amountMinor: number;
+      status?: string;
+      servicePeriodStart?: string;
+      servicePeriodEnd?: string;
+      notes?: string;
+      lines?: {
+        serviceCode?: string;
+        description?: string;
+        tariffCode?: string;
+        quantity: number;
+        unitAmountMinor: number;
+      }[];
+    },
+  ): Promise<FinanceNhisClaimDto> {
+    const res = await apiClient.put<ApiResponse<FinanceNhisClaimDto>>(`/finance/nhis/claims/${claimId}`, payload);
     return res.data.data;
   },
   async patchClaimStatus(claimId: string, status: string): Promise<FinanceNhisClaimDto> {

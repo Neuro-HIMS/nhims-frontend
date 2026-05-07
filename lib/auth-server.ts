@@ -16,6 +16,7 @@ interface JwtPayload {
   facilityName: string;
   facilityCode: string;
   email: string;
+  mustChangePassword?: boolean;
 }
 
 export async function getServerSession(): Promise<Session | null> {
@@ -44,6 +45,7 @@ export async function getServerSession(): Promise<Session | null> {
         facilityName: payload.facilityName,
         facilityCode: payload.facilityCode,
         email: payload.email,
+        mustChangePassword: Boolean(payload.mustChangePassword),
       },
       accessToken: token,
       expiresAt: payload.exp * 1000,

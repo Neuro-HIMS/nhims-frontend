@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { BLOOD_GROUP_OPTIONS } from "@/components/records/lib/records-data";
 import { PatientResultCard } from "@/components/records/views/patient-result-card";
 import { patientSummaryToLegacyPatient } from "@/lib/patient-mapper";
 import { queryKeys } from "@/lib/query-keys";
@@ -42,6 +43,8 @@ function dtoToPayload(d: PatientDto): UpdatePatientPayload {
     emergencyName: d.emergencyContactName || "",
     emergencyRelation: d.emergencyContactRelation || "",
     emergencyPhone: d.emergencyContactPhone || "",
+    bloodGroup: d.bloodGroup ?? "",
+    knownAllergies: d.knownAllergies ?? "",
   };
 }
 
@@ -195,6 +198,31 @@ export function PatientRecordsManagementView() {
                 </Select>
               </Field>
               <Field label="NHIS expiry"><DatePickerField value={form.nhisExpiry} onChange={(v) => setForm({ ...form, nhisExpiry: v })} /></Field>
+              <Field label="Blood group">
+                <Select
+                  value={form.bloodGroup ? form.bloodGroup.toUpperCase() : "__none__"}
+                  onValueChange={(v) => setForm({ ...form, bloodGroup: v === "__none__" ? "" : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Blood group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BLOOD_GROUP_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value || "none"} value={opt.value || "__none__"}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Known allergies" className="md:col-span-3">
+                <Textarea
+                  value={form.knownAllergies}
+                  onChange={(e) => setForm({ ...form, knownAllergies: e.target.value })}
+                  rows={3}
+                  className="font-clinical"
+                />
+              </Field>
               <Field label="Emergency contact"><Input value={form.emergencyName} onChange={(e) => setForm({ ...form, emergencyName: e.target.value })} /></Field>
               <Field label="Emergency relation"><Input value={form.emergencyRelation} onChange={(e) => setForm({ ...form, emergencyRelation: e.target.value })} /></Field>
               <Field label="Emergency phone"><Input value={form.emergencyPhone} onChange={(e) => setForm({ ...form, emergencyPhone: e.target.value })} /></Field>

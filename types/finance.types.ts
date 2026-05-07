@@ -5,7 +5,13 @@
 
 // Legacy V4 — kept for back-compat with existing screens.
 export type FinancePriceCategory = "SERVICE" | "MEDICATION" | "SUPPLY" | "LAB" | "OTHER";
-export type FinanceClaimStatus = "DRAFT" | "READY" | "SUBMITTED" | "REJECTED" | "PAID";
+export type FinanceClaimStatus =
+  | "DRAFT"
+  | "READY"
+  | "SUBMITTED"
+  | "REJECTED"
+  | "PAID"
+  | "ACTION_REQUIRED";
 
 export interface FinancePriceItemDto {
   id: string;
@@ -20,6 +26,17 @@ export interface FinancePriceItemDto {
   updatedAt: string;
 }
 
+export interface FinanceNhisClaimLineDto {
+  id: string;
+  lineNo: number;
+  serviceCode: string;
+  description: string;
+  tariffCode: string;
+  quantity: number;
+  unitAmountMinor: number;
+  lineAmountMinor: number;
+}
+
 export interface FinanceNhisClaimDto {
   id: string;
   patientPublicId: string;
@@ -31,6 +48,7 @@ export interface FinanceNhisClaimDto {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  lines: FinanceNhisClaimLineDto[];
 }
 
 export interface FinanceReportSnapshotDto {

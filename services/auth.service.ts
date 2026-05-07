@@ -3,13 +3,25 @@ import type { LoginRequest, LoginResponse, AuthUser } from "@/types/auth.types";
 import type { ApiResponse } from "@/types/api.types";
 
 export const authService = {
+  /** Prime HttpOnly-adjacent CSRF cookie for credentialed mutating requests (no Bearer header). */
+  async warmCsrfCookie(): Promise<void> {
+    await apiClient.get("/auth/csrf");
+  },
+
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const response = await apiClient.post<ApiResponse<LoginResponse>>(
-      "/auth/login",
-      credentials
-    );
+    try {
+      await authService.warmCsrfCookie();
+    } catch {
+      /* ignore — first-load warmup is best-effort */
+    }
+    const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/login", credentials);
     const payload = response.data.data;
     setAccessToken(payload.accessToken);
+    try {
+      await authService.warmCsrfCookie();
+    } catch {
+      /* ignore */
+    }
     return payload;
   },
 
@@ -32,5 +44,27 @@ export const authService = {
     const payload = response.data.data;
     setAccessToken(payload.accessToken);
     return payload;
+  },
+
+  async changePassword(body: { currentPassword: string; newPassword: string }): Promise<LoginResponse> {
+    const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/change-password", body);
+    const payload = response.data.data;
+    setAccessToken(payload.accessToken);
+    return payload;
+  },
+
+  async beginTotpEnrollment(): Promise<{ secret: string; otpAuthUri: string }> {
+    const res = await apiClient.post<ApiResponse<{ secret: string; otpAuthUri: string }>>(
+      "/auth/totp/enroll/begin"
+    );
+    return res.data.data;
+  },
+
+  async completeTotpEnrollment(code: string): Promise<void> {
+    await apiClient.post("/auth/totp/enroll/complete", { code });
+  },
+
+  async disableTotp(password: string): Promise<void> {
+    await apiClient.post("/auth/totp/disable", { password });
   },
 } as const;

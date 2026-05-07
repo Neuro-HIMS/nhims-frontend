@@ -2,6 +2,7 @@ import { apiClient } from "@/services/api-client";
 import type { ApiResponse } from "@/types/api.types";
 import type {
   NextPatientReferenceDto,
+  NhisVerificationResultDto,
   PatientDto,
   PatientSearchParams,
   PatientSummaryDto,
@@ -27,6 +28,13 @@ export const patientsService = {
 
   async update(patientId: string, payload: UpdatePatientPayload): Promise<PatientDto> {
     const response = await apiClient.put<ApiResponse<PatientDto>>(`/patients/${patientId}`, payload);
+    return response.data.data;
+  },
+
+  async verifyNhis(memberNumber: string): Promise<NhisVerificationResultDto> {
+    const response = await apiClient.post<ApiResponse<NhisVerificationResultDto>>("/records/nhis/verify", {
+      memberNumber,
+    });
     return response.data.data;
   },
 
