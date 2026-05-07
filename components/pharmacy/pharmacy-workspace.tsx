@@ -2,33 +2,30 @@
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ChevronRight, Loader2, Pill, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronRight, Loader2, Pill } from "lucide-react";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { PharmacyInventoryShell } from "@/components/pharmacy/inventory/pharmacy-inventory-shell";
+import { DispensePanel } from "@/components/pharmacy/pharmacy-dispense-panel";
+import { PharmacyPatientRxView } from "@/components/pharmacy/pharmacy-patient-rx-view";
+import { PharmacySearchView } from "@/components/pharmacy/pharmacy-search-view";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import type { ApiError } from "@/types/api.types";
-import type {
-  DispenseLineInput,
-  DispensePayload,
-  PrescriptionDto,
-  PrescriptionStatus,
-} from "@/types/clinical.types";
+import type { PrescriptionDto, PrescriptionStatus } from "@/types/clinical.types";
 
 const SUB_NAV = [
   { label: "Dispensing Queue", view: "queue", href: "/pharmacy?view=queue" },
+  { label: "Patient search", view: "search", href: "/pharmacy?view=search" },
+  { label: "Patient prescriptions", view: "patient-rx", href: "/pharmacy?view=patient-rx" },
   { label: "Dispense", view: "dispense", href: "/pharmacy?view=dispense" },
-  { label: "Inventory", view: "inventory", href: "/pharmacy?view=inventory" },
+  { label: "Inventory", view: "inventory", href: "/pharmacy?view=inventory&tab=suppliers" },
 ];
 
 export function PharmacyWorkspace() {
@@ -40,22 +37,24 @@ export function PharmacyWorkspace() {
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Pharmacy</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Dispense prescriptions assigned to your station. You see the prescription only —
-          patient folders are restricted to clinicians, but allergies are surfaced for safe dispensing.
+          Process prescriptions like laboratory orders: queue worklist, patient search, or manual lookup.
+          Client and consultation fields are prefilled from snapshots captured when the prescription was placed.
         </p>
       </div>
       <ModuleSubNav items={SUB_NAV} basePath="/pharmacy" />
       <div className="pt-2">
         {view === "queue" && <QueueView />}
+        {view === "search" && <PharmacySearchView />}
+        {view === "patient-rx" && <PharmacyPatientRxView />}
         {view === "dispense" && <DispenseView />}
-        {view === "inventory" && <InventoryView />}
+        {view === "inventory" && <PharmacyInventoryShell />}
       </div>
     </div>
   );
 }
 
 const FILTERS: { value: "ACTIVE" | PrescriptionStatus | "ALL"; label: string }[] = [
-  { value: "ACTIVE", label: "Active queue" },
+  { value: "ACTIVE", label: "Active queue (ready + awaiting payment)" },
   { value: "ORDERED", label: "Ordered (new)" },
   { value: "AWAITING_PAYMENT", label: "Awaiting payment" },
   { value: "READY", label: "Ready" },
@@ -190,203 +189,6 @@ function QueueView() {
   );
 }
 
-// ── Dispense panel ────────────────────────────────────────────────────
-
-function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: () => void }) {
-  const qc = useQueryClient();
-
-  const dispenseMut = useMutation({
-    mutationFn: (payload: DispensePayload) => clinicalService.dispensePrescription(rx.id, payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Dispensed and recorded in patient folder");
-      onClose();
-    },
-    onError: (e: unknown) => {
-      const ax = e as { response?: { data?: ApiError } };
-      toast.error(ax.response?.data?.message ?? "Could not dispense");
-    },
-  });
-
-  const markReadyMut = useMutation({
-    mutationFn: () => clinicalService.updatePrescriptionStatus(rx.id, "READY"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Marked ready for dispense");
-    },
-    onError: (e: unknown) => {
-      const ax = e as { response?: { data?: ApiError } };
-      toast.error(ax.response?.data?.message ?? "Could not update status");
-    },
-  });
-
-  const [qty, setQty] = useState<Record<string, string>>(() => {
-    const m: Record<string, string> = {};
-    rx.lines.forEach((l) => {
-      m[l.id] = String(Math.max(0, Number(l.quantity) - Number(l.dispensedQty)));
-    });
-    return m;
-  });
-  const [notes, setNotes] = useState(rx.pharmacyNotes ?? "");
-  const [dispensePayload, setDispensePayload] = useState<DispensePayload | null>(null);
-
-  const allDispensable = rx.lines.every(
-    (l) => l.status === "READY" || l.status === "PARTIALLY_DISPENSED" || l.status === "DISPENSED" || l.status === "CANCELLED",
-  );
-
-  function buildDispensePayload(): DispensePayload | null {
-    const lines: DispenseLineInput[] = [];
-    rx.lines.forEach((l) => {
-      const want = parseInt(qty[l.id] ?? "0") || 0;
-      if (want <= 0) return;
-      const remaining = Math.max(0, Number(l.quantity) - Number(l.dispensedQty));
-      const dispenseQty = Math.min(want, remaining);
-      if (dispenseQty <= 0) return;
-      lines.push({ lineId: l.id, quantity: dispenseQty });
-    });
-    if (lines.length === 0) {
-      toast.error("Enter quantity to dispense for at least one line");
-      return null;
-    }
-    return { lines, pharmacyNotes: notes.trim() || undefined };
-  }
-
-  function armDispense() {
-    const built = buildDispensePayload();
-    if (!built) return;
-    setDispensePayload(built);
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Dispense Prescription</CardTitle>
-        <CardDescription>
-          {rx.id.slice(0, 8)}… · {rx.prescribedAt ? formatDateTime(rx.prescribedAt) : ""}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        <div className="rounded-md border border-dashed border-border bg-muted/20 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Patient context (limited)
-          </p>
-          <p className="mt-1 font-medium text-foreground">{rx.patientName || "Walk-in"}</p>
-          <p className="patient-id">{rx.patientPublicId}</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            <ShieldCheck className="mr-1 inline h-3 w-3" /> Full clinical folder is restricted to
-            clinicians.
-          </p>
-        </div>
-
-        <DataRow label="Prescribed by" value={rx.prescribedByName} />
-        <DataRow label="Items" value={String(rx.lines.length)} />
-        <DataRow label="Status" value={rx.status.replace(/_/g, " ").toLowerCase()} />
-
-        <Separator />
-
-        <div className="space-y-2">
-          {rx.lines.map((l) => {
-            const remaining = Math.max(0, Number(l.quantity) - Number(l.dispensedQty));
-            return (
-              <div key={l.id} className="rounded-md border border-border bg-card p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">
-                      {l.drugName} {l.strength}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {[l.form, l.route, l.frequency, l.durationDays ? `${l.durationDays}d` : ""]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    {l.instructions && (
-                      <p className="mt-1 text-xs italic text-foreground">{l.instructions}</p>
-                    )}
-                  </div>
-                  <span className="patient-id shrink-0">
-                    {Number(l.dispensedQty)}/{Number(l.quantity)}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <label className="text-xs text-muted-foreground">Dispense now</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={remaining}
-                    value={qty[l.id] ?? ""}
-                    onChange={(e) => setQty({ ...qty, [l.id]: e.target.value })}
-                    className="h-8 w-24 font-clinical text-sm"
-                    disabled={
-                      remaining === 0 ||
-                      l.status === "PENDING" ||
-                      l.status === "CANCELLED" ||
-                      l.status === "DISPENSED"
-                    }
-                  />
-                  <span className="text-xs text-muted-foreground">of {remaining} remaining</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{l.payerType}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <Textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={2}
-          placeholder="Counselling / out-of-stock notes…"
-        />
-
-        <div className="flex flex-col gap-2">
-          <Button onClick={() => armDispense()} disabled={!allDispensable || dispenseMut.isPending}>
-            {dispenseMut.isPending ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="mr-1.5 h-4 w-4" />
-            )}
-            Dispense &amp; Record
-          </Button>
-          {rx.status === "AWAITING_PAYMENT" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => markReadyMut.mutate()}
-              disabled={markReadyMut.isPending}
-            >
-              {markReadyMut.isPending ? (
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              ) : (
-                <AlertTriangle className="mr-1.5 h-4 w-4" />
-              )}
-              Mark Ready (cashier confirmed payment)
-            </Button>
-          )}
-          <Button variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-
-        <ConfirmDialog
-          open={dispensePayload !== null}
-          onOpenChange={(open) => {
-            if (!open) setDispensePayload(null);
-          }}
-          title="Record this dispense?"
-          description={`Writes ${dispensePayload?.lines.length ?? 0} medication line update(s) for ${rx.patientName ?? "patient"}. This cannot be silently undone — reconcile stock if you miscount.`}
-          confirmLabel="Dispense now"
-          pending={dispenseMut.isPending}
-          onConfirm={async () => {
-            if (!dispensePayload) return;
-            await dispenseMut.mutateAsync(dispensePayload);
-            setDispensePayload(null);
-          }}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
 // ── Manual dispense view ──────────────────────────────────────────────
 
 function DispenseView() {
@@ -461,57 +263,6 @@ function DispenseView() {
   );
 }
 
-// ── Inventory (mock; backend will own this) ───────────────────────────
-
-function InventoryView() {
-  return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Mock inventory — pharmacy stock module is queued for a later phase.
-      </p>
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <Th>Drug</Th>
-              <Th>Form</Th>
-              <Th className="text-right">Stock</Th>
-              <Th className="text-right">Reorder At</Th>
-              <Th>Status</Th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {DRUG_STOCK.map((d) => (
-              <tr key={d.name} className="table-row-interactive">
-                <td className="px-4 py-3 font-medium text-foreground">{d.name}</td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">{d.form}</td>
-                <td className="px-4 py-3 text-right font-clinical text-foreground">{d.stock}</td>
-                <td className="px-4 py-3 text-right font-clinical text-muted-foreground">
-                  {d.reorderAt}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`status-pill text-xs ${d.stock <= d.reorderAt ? "status-pill-inactive" : "status-pill-active"}`}
-                  >
-                    {d.stock <= d.reorderAt ? (
-                      <>
-                        <AlertTriangle className="mr-1 inline h-3 w-3" />
-                        Low Stock
-                      </>
-                    ) : (
-                      "Adequate"
-                    )}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function DataRow({ label, value }: { label: string; value: string }) {
@@ -572,12 +323,3 @@ function Stat({
   );
 }
 
-const DRUG_STOCK = [
-  { name: "Artemether/Lumefantrine 20/120mg", form: "Tablet", stock: 48, reorderAt: 100 },
-  { name: "Amoxicillin 500mg", form: "Capsule", stock: 340, reorderAt: 200 },
-  { name: "Metformin 500mg", form: "Tablet", stock: 210, reorderAt: 150 },
-  { name: "Paracetamol 500mg", form: "Tablet", stock: 1200, reorderAt: 500 },
-  { name: "Lisinopril 5mg", form: "Tablet", stock: 180, reorderAt: 100 },
-  { name: "ORS Sachets", form: "Sachet", stock: 88, reorderAt: 200 },
-  { name: "IV Fluid Normal Saline 500ml", form: "IV Bag", stock: 24, reorderAt: 50 },
-];

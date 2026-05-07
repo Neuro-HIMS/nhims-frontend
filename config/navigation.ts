@@ -1,4 +1,4 @@
-﻿import {
+import {
   LayoutDashboard,
   UserPlus,
   ClipboardList,
@@ -106,7 +106,6 @@ export const NAV_ITEMS: NavItem[] = [
     subNav: [
       { label: "Consult Queue", href: "/opd?view=queue" },
       { label: "Consultations", href: "/opd?view=consult" },
-      { label: "Classifications", href: "/opd?view=classifications" },
       { label: "Follow-up", href: "/opd?view=followup" },
     ],
   },
@@ -197,7 +196,8 @@ export const NAV_ITEMS: NavItem[] = [
     allowedRoles: ["LAB_SCIENTIST", "LAB_TECH", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
     subNav: [
       { label: "Worklist", href: "/laboratory?view=worklist" },
-      { label: "Results", href: "/laboratory?view=results" },
+      { label: "Patient search", href: "/laboratory?view=search" },
+      { label: "Result entry", href: "/laboratory?view=results" },
       { label: "Catalog & setup", href: "/laboratory?view=catalog" },
       { label: "Quality Control", href: "/laboratory?view=quality" },
     ],
@@ -332,7 +332,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: "Profile", href: "/facility?view=profile" },
       { label: "Services", href: "/facility?view=services" },
       { label: "Configuration", href: "/facility?view=config" },
-      { label: "Clinical dictionary", href: "/facility?view=conditions" },
+      { label: "Diagnosis classifications", href: "/facility?view=conditions" },
     ],
   },
   {

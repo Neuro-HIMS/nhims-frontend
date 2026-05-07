@@ -5,12 +5,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical, Loader2, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsField } from "@/components/records/shared/records-field";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
+import {
+  LabMalariaPanelReadonly,
+  malariaPanelHasSignal,
+  parseMalariaPanelJson,
+} from "@/components/laboratory/lab-malaria-panel-form";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import type { ApiError } from "@/types/api.types";
@@ -47,7 +58,7 @@ export function FolderOrdersLab({ visit, canOrder }: FolderOrdersLabProps) {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
       void qc.invalidateQueries({ queryKey: queryKeys.clinical.today });
       void qc.invalidateQueries({ queryKey: queryKeys.clinical.labWorklist });
-      toast.success("Lab order placed — billing line generated");
+      toast.success("Lab order placed — charge added to encounter bill (paid at billing)");
       setShowForm(false);
     },
     onError: (e: unknown) => {
@@ -77,6 +88,7 @@ export function FolderOrdersLab({ visit, canOrder }: FolderOrdersLabProps) {
 
       {showForm && visit && (
         <LabOrderForm
+          visit={visit}
           catalog={catalog}
           loading={catalogQuery.isLoading}
           submitting={placeMut.isPending}
@@ -110,16 +122,34 @@ function SectionHeader({ title, count, action }: { title: string; count: number;
 }
 
 function LabOrderForm({
+  visit,
   catalog,
   loading,
   submitting,
   onCreate,
 }: {
+  visit: Visit;
   catalog: { id: string; serviceCode: string; serviceName: string }[];
   loading: boolean;
   submitting: boolean;
   onCreate: (input: CreateLabOrderPayload) => void;
 }) {
+  const notesQuery = useQuery({
+    queryKey: queryKeys.clinical.consultations(visit.id),
+    queryFn: () => clinicalService.listConsultationNotes(visit.id),
+    enabled: Boolean(visit.id),
+  });
+
+  const diagnosisPreview = useMemo(() => {
+    const rows = notesQuery.data ?? [];
+    const sorted = [...rows].sort((a, b) => (b.authoredAt ?? "").localeCompare(a.authoredAt ?? ""));
+    const n = sorted[0];
+    if (!n) return "No consultation note on file yet — save an order only after consultation if diagnosis is required.";
+    const c = n.provisionalClassification;
+    if (c) return `${c.name}${c.icd11Code ? ` (${c.icd11Code})` : ""}`;
+    return n.provisionalDiagnosis?.trim() || "—";
+  }, [notesQuery.data]);
+
   const [serviceId, setServiceId] = useState<string>("");
   const [priority, setPriority] = useState<"ROUTINE" | "URGENT" | "EMERGENCY" | "STAT">("ROUTINE");
   const [reason, setReason] = useState("");
@@ -140,11 +170,13 @@ function LabOrderForm({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">New Lab Order</CardTitle>
-        <CardDescription>Will appear in the laboratory worklist with a billing line.</CardDescription>
+        <CardDescription>
+          Appears on the laboratory worklist. The fee posts to this encounter&apos;s bill — payment is handled at billing.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <RecordsField label="Test *">
+          <RecordsField label="Test requested *">
             <Select value={serviceId} onValueChange={setServiceId} disabled={loading}>
               <SelectTrigger>
                 <SelectValue placeholder={loading ? "Loading services…" : "Pick a lab service…"} />
@@ -178,8 +210,11 @@ function LabOrderForm({
             </Select>
           </RecordsField>
         </div>
+        <RecordsField label="Diagnosis (from consultation)">
+          <Input readOnly value={notesQuery.isLoading ? "Loading…" : diagnosisPreview} className="bg-muted/40 text-sm" />
+        </RecordsField>
         <RecordsField label="Clinical reason">
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Provisional diagnosis or question…" />
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Clinical question or reason for test…" />
         </RecordsField>
         <RecordsField label="Lab instructions">
           <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={2} placeholder="Sample handling, fasting status, etc." />
@@ -200,6 +235,7 @@ function LabOrderList({ orders }: { orders: LabOrderDto[] }) {
     () => [...orders].sort((a, b) => (b.orderedAt ?? "").localeCompare(a.orderedAt ?? "")),
     [orders],
   );
+
   if (sorted.length === 0) {
     return (
       <Card className="border-dashed">
@@ -211,53 +247,143 @@ function LabOrderList({ orders }: { orders: LabOrderDto[] }) {
     );
   }
   return (
-    <div className="space-y-2">
-      {sorted.map((o) => (
-        <Card key={o.id}>
-          <CardContent className="space-y-2 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {o.serviceName} {o.serviceCode && <span className="text-xs text-muted-foreground">· {o.serviceCode}</span>}
-                </p>
-                <p className="patient-id mt-0.5">
-                  {o.orderedAt ? formatDateTime(o.orderedAt) : ""} · {o.orderedByName} · {o.payerType}
-                </p>
-                {o.reason && <p className="mt-1 text-sm text-muted-foreground">{o.reason}</p>}
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className={priorityClass(o.priority)}>{o.priority}</span>
-                <span className={statusClass(o.status)}>{o.status}</span>
-              </div>
+    <div className="space-y-3">
+      <FolderRecordFeedBanner>
+        Expand an order to view worksheet metadata (specimen, pathology number), malaria panels when used, and the full
+        analyte table returned from the laboratory.
+      </FolderRecordFeedBanner>
+      {sorted.map((order, idx) => {
+        const malariaParsed = parseMalariaPanelJson(order.malariaPanelJson);
+        const malariaSignal = malariaPanelHasSignal(malariaParsed);
+        const analytes = order.results.length > 0;
+        const resultsSubtitle =
+          analytes || malariaSignal
+            ? `${analytes ? `${order.results.length} analyte(s)` : ""}${analytes && malariaSignal ? " · " : ""}${malariaSignal ? "Malaria worksheet" : ""}`
+            : order.status === "AUTHORISED" || order.status === "COMPLETED"
+              ? "No stored results yet"
+              : "Awaiting lab";
+
+        return (
+          <FolderRecordExpandableRow
+            key={order.id}
+            railIndex={sorted.length - idx}
+            icon={FlaskConical}
+            eyebrow="Laboratory order"
+            title={
+              <span>
+                {order.serviceName}{" "}
+                {order.serviceCode ? (
+                  <span className="text-xs font-normal text-muted-foreground">· {order.serviceCode}</span>
+                ) : null}
+              </span>
+            }
+            preview={
+              <span>
+                {order.orderedByName} · {order.payerType} · {resultsSubtitle}
+              </span>
+            }
+            footerTime={order.orderedAt}
+            badges={
+              <>
+                <span className={priorityClass(order.priority)}>{order.priority}</span>
+                <span className={statusClass(order.status)}>{order.status}</span>
+              </>
+            }
+          >
+            <div className="space-y-4">
+              <FolderRecordField label="Diagnosis snapshot" value={order.provisionalDiagnosisLabel?.trim() || null} />
+              <FolderRecordField label="Clinical reason" value={order.reason?.trim() || null} />
+              <FolderRecordField label="Lab instructions" value={order.instructions?.trim() || null} />
+              <FolderRecordField label="Prescriber" value={order.orderedByName} />
+              <FolderRecordField label="Payer" value={order.payerType} />
+              <FolderRecordField label="Panel type" value={order.labResultPanel ?? "NONE"} />
+              <FolderRecordField
+                label="Ordered"
+                value={order.orderedAt ? formatDateTime(order.orderedAt) : null}
+              />
+              <FolderRecordField
+                label="Processing started"
+                value={order.startedAt ? formatDateTime(order.startedAt) : null}
+              />
+              <FolderRecordField label="Specimen type" value={order.specimenType?.trim() || null} />
+              <FolderRecordField
+                label="Source of request"
+                value={order.sourceOfRequest ? formatLabSource(order.sourceOfRequest) : null}
+              />
+              <FolderRecordField
+                label="Sample received in lab"
+                value={order.sampleReceivedAt ? formatDateTime(order.sampleReceivedAt) : null}
+              />
+              <FolderRecordField label="Pathology number" value={order.pathologyNumber?.trim() || null} />
+              <FolderRecordField
+                label="Completed"
+                value={order.completedAt ? formatDateTime(order.completedAt) : null}
+              />
+              <FolderRecordField
+                label="Authorised"
+                value={order.authorisedAt ? formatDateTime(order.authorisedAt) : null}
+              />
+
+              {analytes || malariaSignal ? (
+                <div className="space-y-3 pt-2">
+                  <p className="text-sm font-semibold text-foreground">Authorised results</p>
+                  {malariaSignal ? <LabMalariaPanelReadonly value={malariaParsed} /> : null}
+                  {analytes ? (
+                    <div className="overflow-x-auto rounded-lg border border-border bg-muted/20">
+                      <table className="w-full min-w-[520px] text-xs">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                            <th className="px-3 py-2 font-medium">Analyte</th>
+                            <th className="px-3 py-2 font-medium">Value</th>
+                            <th className="px-3 py-2 font-medium">Reference</th>
+                            <th className="px-3 py-2 font-medium">Flag</th>
+                            <th className="px-3 py-2 font-medium">By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {order.results.map((r) => (
+                            <tr key={r.id} className="border-t border-border">
+                              <td className="px-3 py-2 font-medium">{r.analyte}</td>
+                              <td className="px-3 py-2 font-clinical">
+                                {r.value} {r.units}
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">{r.referenceRange || "—"}</td>
+                              <td className="px-3 py-2">
+                                <span className={flagClass(r.flag)}>{r.flag || "OK"}</span>
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">
+                                <span className="block max-w-[140px] truncate" title={r.recordedByName}>
+                                  {r.recordedByName || "—"}
+                                </span>
+                                {r.recordedAt ? (
+                                  <span className="block text-[10px]">{formatDateTime(r.recordedAt)}</span>
+                                ) : null}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            {o.results.length > 0 && (
-              <div className="rounded-md border border-border bg-muted/30 p-3">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Results
-                </p>
-                <table className="w-full text-xs">
-                  <tbody>
-                    {o.results.map((r) => (
-                      <tr key={r.id} className="border-t border-border first:border-t-0">
-                        <td className="py-1 font-medium">{r.analyte}</td>
-                        <td className="py-1 font-clinical">
-                          {r.value} {r.units}
-                        </td>
-                        <td className="py-1 text-muted-foreground">Ref: {r.referenceRange || "—"}</td>
-                        <td className="py-1">
-                          <span className={flagClass(r.flag)}>{r.flag || "OK"}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ))}
+          </FolderRecordExpandableRow>
+        );
+      })}
     </div>
   );
+}
+
+function formatLabSource(raw: string): string {
+  const m: Record<string, string> = {
+    CONSULTING_ROOM: "Consulting room",
+    WARD: "Ward",
+    ANC: "ANC",
+    WALK_IN: "Walk-in",
+    OTHER: "Other",
+  };
+  return m[raw] ?? raw.replace(/_/g, " ").toLowerCase();
 }
 
 function priorityClass(p: string) {

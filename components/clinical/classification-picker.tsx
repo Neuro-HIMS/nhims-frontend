@@ -53,7 +53,13 @@ export function ClassificationPicker({
   const rows = pageQuery.data?.content ?? [];
   const label =
     selection && selection.id === valueId
-      ? `${selection.code} — ${selection.description}${selection.icd11Code ? ` · ${selection.icd11Code}` : ""}`
+      ? [
+          selection.name,
+          selection.description?.trim(),
+          selection.icd11Code ? `ICD-11 ${selection.icd11Code}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")
       : valueId
         ? "Selected classification"
         : placeholder;
@@ -111,8 +117,10 @@ export function ClassificationPicker({
                           {active ? <Check className="h-4 w-4" /> : <span className="inline-block w-4" />}
                         </span>
                         <span className="min-w-0">
-                          <span className="font-clinical font-medium">{c.code}</span>
-                          <span className="block text-xs text-muted-foreground">{c.description}</span>
+                          <span className="font-medium">{c.name}</span>
+                          {c.description?.trim() ? (
+                            <span className="block text-xs text-muted-foreground">{c.description}</span>
+                          ) : null}
                           {c.icd11Code ? (
                             <span className="block font-clinical text-[11px] text-muted-foreground">
                               ICD-11 {c.icd11Code}

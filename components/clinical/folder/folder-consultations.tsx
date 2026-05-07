@@ -1,25 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { FileText, Loader2, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ClassificationPicker } from "@/components/clinical/classification-picker";
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { RecordsField } from "@/components/records/shared/records-field";
 import { useAuthStore } from "@/store/auth.store";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
-import { formatDateTime } from "@/components/nurse/lib/nurse-data";
 import type { Visit } from "@/lib/clinical-types";
 import type { ApiError } from "@/types/api.types";
 import type {
   ClinicalConditionDto,
   ClassificationSummaryDto,
   ConsultationNoteAdditionalDiagnosisDto,
+  ConsultationNoteDto,
   CreateConsultationNotePayload,
 } from "@/types/clinical.types";
 
@@ -73,7 +79,28 @@ const EMPTY_FORM: ConsultFormState = {
 function summarizeClassification(c: ClassificationSummaryDto | null | undefined): string | null {
   if (!c) return null;
   const icd = c.icd11Code ? ` (${c.icd11Code})` : "";
-  return `${c.code} — ${c.description}${icd}`;
+  const desc = c.description?.trim();
+  if (desc) return `${c.name} — ${desc}${icd}`;
+  return `${c.name}${icd}`;
+}
+
+function isSameDayEditable(note: ConsultationNoteDto): boolean {
+  if (typeof note.editableToday === "boolean") {
+    return note.editableToday;
+  }
+  if (!note.authoredAt) {
+    return false;
+  }
+  const d = new Date(note.authoredAt);
+  if (Number.isNaN(d.getTime())) {
+    return false;
+  }
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
 }
 
 interface FolderConsultationsProps {
@@ -106,9 +133,30 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
       toast.error(ax.response?.data?.message ?? "Could not save note");
     },
   });
+  const updateMut = useMutation({
+    mutationFn: ({
+      noteId,
+      payload,
+    }: {
+      noteId: string;
+      payload: CreateConsultationNotePayload;
+    }) => clinicalService.updateConsultationNote(visit!.id, noteId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Consultation note updated");
+      setForm(EMPTY_FORM);
+      setShowForm(false);
+      setEditingNoteId(null);
+    },
+    onError: (e: unknown) => {
+      const ax = e as { response?: { data?: ApiError } };
+      toast.error(ax.response?.data?.message ?? "Could not update note");
+    },
+  });
 
   const [form, setForm] = useState<ConsultFormState>(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
   function updateForm<K extends keyof ConsultFormState>(key: K, value: ConsultFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -124,12 +172,16 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
       return;
     }
 
-    if (form.principalClassification && !form.principalCase) {
-      toast.error("Select whether the principal diagnosis is a new case or an old case");
+    if (!form.provisionalClassification) {
+      toast.error("Provisional classification is required");
       return;
     }
-    if (!form.principalClassification && form.principalCase) {
-      toast.error("Clear principal new/old selection or pick a principal classification");
+    if (!form.principalClassification) {
+      toast.error("Principal classification is required");
+      return;
+    }
+    if (!form.principalCase) {
+      toast.error("Select whether the principal diagnosis is a new case or an old case");
       return;
     }
 
@@ -165,10 +217,68 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
       authoredRole: role,
     };
 
-    createMut.mutate(payload);
+    if (editingNoteId) {
+      updateMut.mutate({ noteId: editingNoteId, payload });
+    } else {
+      createMut.mutate(payload);
+    }
+  }
+
+  function beginEdit(note: ConsultationNoteDto) {
+    if (!isSameDayEditable(note)) {
+      toast.error("This note can no longer be edited");
+      return;
+    }
+    const toCond = (x: ClassificationSummaryDto | null): ClinicalConditionDto | null =>
+      x
+        ? {
+            id: x.id,
+            name: x.name,
+            description: x.description,
+            icd11Code: x.icd11Code,
+            icdHint: "",
+            active: true,
+            createdAt: "",
+            updatedAt: "",
+          }
+        : null;
+    setForm({
+      chiefComplaint: note.chiefComplaint ?? "",
+      historyOfPresentComplaint: note.historyOfPresentComplaint ?? "",
+      examinationFindings: note.examinationFindings ?? "",
+      assessment: note.assessment ?? "",
+      plan: note.plan ?? "",
+      provisionalDiagnosis: note.provisionalDiagnosis ?? "",
+      provisionalClassification: toCond(note.provisionalClassification),
+      principalClassification: toCond(note.principalClassification),
+      principalCase: note.principalDiagnosisNewCase ? "new" : note.principalDiagnosisOldCase ? "old" : "",
+      additional: (note.additionalDiagnoses ?? []).map((a) => ({
+        key: a.id,
+        classification: a.classificationId
+          ? {
+              id: a.classificationId,
+              name: a.classificationName ?? "",
+              description: a.classificationDescription,
+              icd11Code: a.icd11Code ?? "",
+              icdHint: "",
+              active: true,
+              createdAt: "",
+              updatedAt: "",
+            }
+          : null,
+        freeText: a.freeText ?? "",
+        caseKind: a.newCase ? "new" : a.oldCase ? "old" : "",
+      })),
+    });
+    setEditingNoteId(note.id);
+    setShowForm(true);
   }
 
   const history = notesQuery.data ?? [];
+  const sortedNotes = useMemo(
+    () => [...history].sort((a, b) => (b.authoredAt ?? "").localeCompare(a.authoredAt ?? "")),
+    [history],
+  );
 
   return (
     <div className="space-y-4">
@@ -179,16 +289,28 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
             {history.length} note{history.length === 1 ? "" : "s"} on file
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowForm((s) => !s)} disabled={!visit}>
+        <Button
+          size="sm"
+          onClick={() => {
+            if (showForm) {
+              setShowForm(false);
+              setEditingNoteId(null);
+              setForm(EMPTY_FORM);
+            } else {
+              setShowForm(true);
+            }
+          }}
+          disabled={!visit}
+        >
           <Plus className="mr-1.5 h-4 w-4" />
-          {showForm ? "Cancel" : "Add Note"}
+          {showForm ? "Cancel" : editingNoteId ? "Edit Note" : "Add Note"}
         </Button>
       </div>
 
       {showForm && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">New Clinical Note</CardTitle>
+            <CardTitle className="text-base">{editingNoteId ? "Edit Clinical Note" : "New Clinical Note"}</CardTitle>
             <CardDescription>SOAP-style note attached to visit {visit?.visitNo}.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -230,7 +352,7 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
                 />
               </RecordsField>
 
-              <RecordsField label="Provisional classification (optional)" className="sm:col-span-2">
+              <RecordsField label="Provisional classification *" className="sm:col-span-2">
                 <ClassificationPicker
                   valueId={form.provisionalClassification?.id ?? null}
                   selection={form.provisionalClassification}
@@ -252,24 +374,22 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
                 />
                 <div className="mt-2 flex flex-wrap gap-4 text-sm">
                   <label className="flex items-center gap-2 text-muted-foreground">
-                    <input
-                      type="radio"
-                      className="accent-primary"
-                      name="principal-case"
+                    <Checkbox
                       checked={form.principalCase === "new"}
                       disabled={!form.principalClassification}
-                      onChange={() => updateForm("principalCase", "new")}
+                      onCheckedChange={(v) =>
+                        updateForm("principalCase", v ? "new" : form.principalCase === "new" ? "" : form.principalCase)
+                      }
                     />
                     New case
                   </label>
                   <label className="flex items-center gap-2 text-muted-foreground">
-                    <input
-                      type="radio"
-                      className="accent-primary"
-                      name="principal-case"
+                    <Checkbox
                       checked={form.principalCase === "old"}
                       disabled={!form.principalClassification}
-                      onChange={() => updateForm("principalCase", "old")}
+                      onCheckedChange={(v) =>
+                        updateForm("principalCase", v ? "old" : form.principalCase === "old" ? "" : form.principalCase)
+                      }
                     />
                     Old case
                   </label>
@@ -337,28 +457,22 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
                       />
                       <div className="flex gap-4 text-sm">
                         <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            className="accent-primary"
-                            name={`add-case-${row.key}`}
+                          <Checkbox
                             checked={row.caseKind === "new"}
-                            onChange={() => {
+                            onCheckedChange={(v) => {
                               const copy = [...form.additional];
-                              copy[idx] = { ...row, caseKind: "new" };
+                              copy[idx] = { ...row, caseKind: v ? "new" : row.caseKind === "new" ? "" : row.caseKind };
                               updateForm("additional", copy);
                             }}
                           />
                           New case
                         </label>
                         <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            className="accent-primary"
-                            name={`add-case-${row.key}`}
+                          <Checkbox
                             checked={row.caseKind === "old"}
-                            onChange={() => {
+                            onCheckedChange={(v) => {
                               const copy = [...form.additional];
-                              copy[idx] = { ...row, caseKind: "old" };
+                              copy[idx] = { ...row, caseKind: v ? "old" : row.caseKind === "old" ? "" : row.caseKind };
                               updateForm("additional", copy);
                             }}
                           />
@@ -372,13 +486,13 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
             </div>
 
             <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={createMut.isPending}>
-                {createMut.isPending ? (
+              <Button onClick={handleSave} disabled={createMut.isPending || updateMut.isPending}>
+                {createMut.isPending || updateMut.isPending ? (
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                 ) : (
                   <Save className="mr-1.5 h-4 w-4" />
                 )}
-                Save Note
+                {editingNoteId ? "Update Note" : "Save Note"}
               </Button>
             </div>
           </CardContent>
@@ -391,7 +505,7 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
             <Loader2 className="h-4 w-4 animate-spin" /> Loading notes…
           </CardContent>
         </Card>
-      ) : history.length === 0 ? (
+      ) : sortedNotes.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
             <FileText className="h-7 w-7 text-muted-foreground/50" />
@@ -400,55 +514,73 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
         </Card>
       ) : (
         <div className="space-y-3">
-          {history.map((n) => (
-            <Card key={n.id}>
-              <CardContent className="space-y-2 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    {n.authoredRole.toLowerCase()} · {n.authoredAt ? formatDateTime(n.authoredAt) : "—"} ·{" "}
-                    {n.authoredByName}
-                  </p>
-                  {n.icd10Code ? (
+          <FolderRecordFeedBanner>
+            Each note shows SOAP fields and classifications — expand for the full clinical narrative captured at that time.
+          </FolderRecordFeedBanner>
+          {sortedNotes.map((n, idx) => {
+            const titleBits =
+              summarizeClassification(n.provisionalClassification) ||
+              (n.chiefComplaint?.trim() ? n.chiefComplaint.trim().slice(0, 120) : "Clinical note");
+            const extended =
+              n.chiefComplaint && n.chiefComplaint.trim().length > 120 ? `${titleBits}…` : titleBits;
+            return (
+              <FolderRecordExpandableRow
+                key={n.id}
+                railIndex={sortedNotes.length - idx}
+                icon={FileText}
+                eyebrow={`${n.authoredRole.replace(/_/g, " ").toLowerCase()} · consultation`}
+                title={<span className="font-normal">{extended}</span>}
+                preview={<span>{n.authoredByName}</span>}
+                footerTime={n.authoredAt}
+                headerActions={
+                  isSameDayEditable(n) ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => beginEdit(n)}>
+                      <Pencil className="mr-1 h-4 w-4" />
+                      Edit
+                    </Button>
+                  ) : null
+                }
+                badges={
+                  n.icd10Code ? (
                     <span className="rounded-full border border-border bg-muted px-2 py-0.5 font-clinical text-xs">
-                      Legacy ICD-10 {n.icd10Code}
+                      ICD-10 {n.icd10Code}
                     </span>
-                  ) : null}
-                </div>
-                {n.provisionalDiagnosis ? <NoteRow label="Provisional" value={n.provisionalDiagnosis} /> : null}
-                {summarizeClassification(n.provisionalClassification) ? (
-                  <NoteRow
+                  ) : null
+                }
+              >
+                <div className="space-y-4">
+                  <FolderRecordField label="Chief complaint" value={n.chiefComplaint?.trim() || null} />
+                  <FolderRecordField label="History of presenting complaint" value={n.historyOfPresentComplaint?.trim() || null} />
+                  <FolderRecordField label="Examination findings" value={n.examinationFindings?.trim() || null} />
+                  <FolderRecordField label="Assessment" value={n.assessment?.trim() || null} />
+                  <FolderRecordField label="Plan" value={n.plan?.trim() || null} />
+                  <FolderRecordField label="Provisional (free text)" value={n.provisionalDiagnosis?.trim() || null} />
+                  <FolderRecordField
                     label="Provisional classification"
-                    value={summarizeClassification(n.provisionalClassification) ?? ""}
+                    value={summarizeClassification(n.provisionalClassification)}
                   />
-                ) : null}
-                {summarizeClassification(n.principalClassification) ? (
-                  <NoteRow
+                  <FolderRecordField
                     label={`Principal (${
                       n.principalDiagnosisNewCase ? "new case" : n.principalDiagnosisOldCase ? "old case" : "—"
                     })`}
-                    value={summarizeClassification(n.principalClassification) ?? ""}
+                    value={summarizeClassification(n.principalClassification)}
                   />
-                ) : null}
-                {n.additionalDiagnoses && n.additionalDiagnoses.length > 0 ? (
-                  <div className="text-sm">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Additional diagnoses
-                    </p>
-                    <ul className="mt-1 list-inside list-disc space-y-1 text-foreground">
-                      {n.additionalDiagnoses.map((a: ConsultationNoteAdditionalDiagnosisDto) => (
-                        <li key={a.id}>{formatAdditionalHistoryLine(a)}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {n.chiefComplaint && <NoteRow label="Chief Complaint" value={n.chiefComplaint} />}
-                {n.historyOfPresentComplaint && <NoteRow label="History" value={n.historyOfPresentComplaint} />}
-                {n.examinationFindings && <NoteRow label="Examination" value={n.examinationFindings} />}
-                {n.assessment && <NoteRow label="Assessment" value={n.assessment} />}
-                {n.plan && <NoteRow label="Plan" value={n.plan} />}
-              </CardContent>
-            </Card>
-          ))}
+                  {n.additionalDiagnoses && n.additionalDiagnoses.length > 0 ? (
+                    <FolderRecordField
+                      label="Additional diagnoses"
+                      value={
+                        <ul className="list-inside list-disc space-y-1">
+                          {n.additionalDiagnoses.map((a: ConsultationNoteAdditionalDiagnosisDto) => (
+                            <li key={a.id}>{formatAdditionalHistoryLine(a)}</li>
+                          ))}
+                        </ul>
+                      }
+                    />
+                  ) : null}
+                </div>
+              </FolderRecordExpandableRow>
+            );
+          })}
         </div>
       )}
     </div>
@@ -458,20 +590,11 @@ export function FolderConsultations({ visit, patientId: _patientId, authoredBy: 
 function formatAdditionalHistoryLine(a: ConsultationNoteAdditionalDiagnosisDto): string {
   const kind = a.newCase ? "new case" : a.oldCase ? "old case" : "";
   const base =
-    a.classificationCode && a.classificationDescription
-      ? `${a.classificationCode} — ${a.classificationDescription}`
-      : "";
+    a.classificationName && a.classificationDescription?.trim()
+      ? `${a.classificationName} — ${a.classificationDescription}`
+      : (a.classificationName ?? "");
   const icd = a.icd11Code ? ` (${a.icd11Code})` : "";
   const ft = a.freeText?.trim();
   const text = [base + icd, ft].filter(Boolean).join(ft && base ? "; " : "");
   return `${text || "—"}${kind ? ` · ${kind}` : ""}`;
-}
-
-function NoteRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[140px_1fr] gap-3 text-sm">
-      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-      <span className="whitespace-pre-line text-foreground">{value}</span>
-    </div>
-  );
 }

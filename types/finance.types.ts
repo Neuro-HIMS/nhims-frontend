@@ -69,6 +69,8 @@ export interface ServiceCatalogDto {
   serviceGroup: ServiceGroup | string;
   nhisTariffCode: string;
   description: string;
+  /** NONE | MALARIA_PANEL — LAB catalogue structured results */
+  labResultPanel?: string;
   active: boolean;
   createdAt: string;
   updatedAt: string;

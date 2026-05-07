@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BedDouble, Loader2, LogOut, Plus, Save } from "lucide-react";
+
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -83,6 +89,10 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
 
   const list = admissionsQuery.data ?? [];
   const activeAdmission = list.find((a) => a.status === "ADMITTED");
+  const sorted = useMemo(
+    () => [...list].sort((a, b) => (b.admittedAt ?? "").localeCompare(a.admittedAt ?? "")),
+    [list],
+  );
 
   function handleAdmit() {
     if (!visit) {
@@ -189,54 +199,72 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
         </Card>
       ) : (
         <div className="space-y-3">
-          {list.map((a) => (
-            <Card
+          <FolderRecordFeedBanner>
+            Expand an admission for clinical reason, discharge summary, and to complete a discharge when applicable.
+          </FolderRecordFeedBanner>
+          {sorted.map((a, idx) => (
+            <FolderRecordExpandableRow
               key={a.id}
-              className={
+              railIndex={sorted.length - idx}
+              icon={BedDouble}
+              eyebrow={a.status === "DISCHARGED" ? "Discharged admission" : "Active admission"}
+              title={
+                <span>
+                  {a.ward}
+                  {a.bed ? (
+                    <>
+                      {" "}
+                      · Bed <span className="font-clinical">{a.bed}</span>
+                    </>
+                  ) : null}
+                </span>
+              }
+              preview={a.reason?.trim() ? <span className="line-clamp-2">{a.reason}</span> : null}
+              footerTime={a.status === "DISCHARGED" ? a.dischargedAt ?? a.admittedAt : a.admittedAt}
+              cardClassName={
                 a.status === "DISCHARGED"
                   ? ""
                   : "border-[hsl(var(--clinical-urgent))] bg-[hsl(var(--clinical-urgent-bg))]/40"
               }
+              badges={
+                a.status === "DISCHARGED" ? (
+                  <span className="status-pill status-pill-inactive text-xs">
+                    Discharged{a.dischargedAt ? ` · ${formatDateTime(a.dischargedAt)}` : ""}
+                  </span>
+                ) : (
+                  <span className="status-pill text-xs bg-[hsl(var(--clinical-urgent-bg))] text-[hsl(var(--clinical-urgent))]">
+                    Admitted
+                  </span>
+                )
+              }
+              headerActions={
+                a.status !== "DISCHARGED" ? (
+                  <Button size="sm" variant="outline" onClick={() => setDischargeForId(a.id)}>
+                    <LogOut className="mr-1.5 h-4 w-4" />
+                    Discharge
+                  </Button>
+                ) : null
+              }
             >
-              <CardContent className="space-y-3 py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {a.ward}
-                      {a.bed && (
-                        <>
-                          {" · Bed "}
-                          <span className="font-clinical">{a.bed}</span>
-                        </>
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Admitted {a.admittedAt ? formatDateTime(a.admittedAt) : "—"} by{" "}
-                      {a.admittedByName}
-                    </p>
-                    {a.reason && <p className="mt-1 text-sm text-foreground">{a.reason}</p>}
-                  </div>
-                  {a.status === "DISCHARGED" ? (
-                    <span className="status-pill status-pill-inactive text-xs">
-                      Discharged · {a.dischargedAt ? formatDateTime(a.dischargedAt) : ""}
-                    </span>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => setDischargeForId(a.id)}>
-                      <LogOut className="mr-1.5 h-4 w-4" />
-                      Discharge
-                    </Button>
-                  )}
-                </div>
-                {a.dischargeSummary && (
-                  <div className="rounded-md bg-muted/50 p-3 text-sm">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Discharge Summary {a.dischargedByName && `· ${a.dischargedByName}`}
-                    </p>
-                    <p className="mt-1 whitespace-pre-line text-foreground">{a.dischargeSummary}</p>
-                  </div>
-                )}
+              <div className="space-y-4">
+                <FolderRecordField label="Admitting reason" value={a.reason?.trim() || null} />
+                <FolderRecordField
+                  label="Admitted"
+                  value={
+                    `${a.admittedAt ? formatDateTime(a.admittedAt) : "—"}${a.admittedByName ? ` · ${a.admittedByName}` : ""}`
+                  }
+                />
+                {a.dischargeSummary ? (
+                  <FolderRecordField
+                    label="Discharge summary"
+                    value={`${a.dischargedByName ? `${a.dischargedByName}\n` : ""}${a.dischargeSummary}`}
+                  />
+                ) : null}
                 {dischargeForId === a.id && (
-                  <div className="space-y-2 border-t border-border pt-3">
+                  <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Complete discharge
+                    </p>
                     <Textarea
                       value={dischargeNotes}
                       onChange={(e) => setDischargeNotes(e.target.value)}
@@ -254,21 +282,17 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
                       >
                         Cancel
                       </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleDischarge(a.id)}
-                        disabled={dischargeMut.isPending}
-                      >
+                      <Button size="sm" onClick={() => handleDischarge(a.id)} disabled={dischargeMut.isPending}>
                         {dischargeMut.isPending ? (
                           <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                         ) : null}
-                        Confirm Discharge
+                        Confirm discharge
                       </Button>
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </FolderRecordExpandableRow>
           ))}
         </div>
       )}

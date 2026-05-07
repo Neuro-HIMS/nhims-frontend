@@ -13,6 +13,7 @@ export const appointmentsService = {
     from?: string;
     to?: string;
     clinicianId?: string;
+    visitType?: string;
   }): Promise<AppointmentDto[]> {
     const res = await apiClient.get<ApiResponse<AppointmentDto[]>>("/appointments", { params });
     return res.data.data;

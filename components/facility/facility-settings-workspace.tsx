@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, CheckCircle2, ImagePlus, RotateCcw, Save, Search, Trash2 } from "lucide-react";
 
 import { FACILITY_SERVICE_TO_APP_MODULE } from "@/config/facility-service-modules";
-import { FacilityConditionsDictionary } from "@/components/facility/facility-conditions-dictionary";
+import { FacilityDiagnosisClassificationsSettings } from "@/components/facility/facility-conditions-dictionary";
 import { authService } from "@/services/auth.service";
 import { facilityService } from "@/services/facility.service";
 import { useAuthStore } from "@/store/auth.store";
@@ -38,8 +38,8 @@ const VIEW_CONFIG = [
   { id: "config", label: "Configuration", description: "Operational defaults and workflow preferences." },
   {
     id: "conditions",
-    label: "Clinical dictionary",
-    description: "ICD-style problem list labels for clinician pickers.",
+    label: "Diagnosis classifications",
+    description: "Facility ICD-11 catalogue — search, CSV/XLSX import-export, and codes used in consultations.",
   },
 ] as const;
 
@@ -289,7 +289,7 @@ export function FacilitySettingsWorkspace({
             <FacilityConfigView config={model.config} onChange={(config) => setModel((m) => ({ ...m, config }))} />
           )}
 
-          {activeView === "conditions" && <FacilityConditionsDictionary />}
+          {activeView === "conditions" && <FacilityDiagnosisClassificationsSettings />}
         </div>
       )}
     </section>

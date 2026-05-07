@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, CheckCircle2, Loader2, Save } from "lucide-react";
+
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -15,7 +21,7 @@ import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import type { Visit } from "@/lib/clinical-types";
 import type { ApiError } from "@/types/api.types";
-import type { RecordVitalsPayload } from "@/types/clinical.types";
+import type { RecordVitalsPayload, VitalsDto } from "@/types/clinical.types";
 
 const EMPTY_VITALS = {
   systolic: "",
@@ -91,6 +97,10 @@ export function FolderVitals({ visit }: FolderVitalsProps) {
   }
 
   const history = historyQuery.data ?? [];
+  const historySorted = useMemo(
+    () => [...history].sort((a, b) => (b.recordedAt ?? "").localeCompare(a.recordedAt ?? "")),
+    [history],
+  );
 
   return (
     <div className="space-y-4">
@@ -161,65 +171,76 @@ export function FolderVitals({ visit }: FolderVitalsProps) {
         </CardContent>
       </Card>
 
+      <FolderRecordFeedBanner>
+        Expand a vitals set to see every measurement and nursing observations captured at that time.
+      </FolderRecordFeedBanner>
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Vitals History</CardTitle>
-          <CardDescription>{history.length} record{history.length === 1 ? "" : "s"} on file</CardDescription>
+          <CardDescription>
+            {historySorted.length} record{historySorted.length === 1 ? "" : "s"} on file
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           {historyQuery.isLoading ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : history.length === 0 ? (
+          ) : historySorted.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-8 text-center">
               <CheckCircle2 className="h-7 w-7 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">No vitals recorded yet for this visit.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    <Th>Recorded</Th>
-                    <Th>BP</Th>
-                    <Th>Temp</Th>
-                    <Th>Pulse</Th>
-                    <Th>SpO₂</Th>
-                    <Th>RR</Th>
-                    <Th>Wt</Th>
-                    <Th>Ht</Th>
-                    <Th>BMI</Th>
-                    <Th>By</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {history.map((v) => (
-                    <tr key={v.id}>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {v.recordedAt ? formatDateTime(v.recordedAt) : "—"}
-                      </td>
-                      <td className="px-3 py-2 font-clinical">
-                        {v.systolicMmHg && v.diastolicMmHg ? `${v.systolicMmHg}/${v.diastolicMmHg}` : "—"}
-                      </td>
-                      <td className="px-3 py-2 font-clinical">{format(v.temperatureC)}</td>
-                      <td className="px-3 py-2 font-clinical">{format(v.pulseBpm)}</td>
-                      <td className="px-3 py-2 font-clinical">{format(v.spo2Pct)}</td>
-                      <td className="px-3 py-2 font-clinical">{format(v.respiratoryRateBpm)}</td>
-                      <td className="px-3 py-2 font-clinical">{format(v.weightKg)}</td>
-                      <td className="px-3 py-2 font-clinical">{format(v.heightCm)}</td>
-                      <td className="px-3 py-2 font-clinical">{format(v.bmi)}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{v.recordedByName || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            historySorted.map((v, idx) => (
+              <FolderRecordExpandableRow
+                key={v.id}
+                railIndex={historySorted.length - idx}
+                icon={Activity}
+                eyebrow="Vitals set"
+                title={<span className="font-clinical">{vitalsSummaryLine(v)}</span>}
+                preview={<span>Recorded by {v.recordedByName || "—"}</span>}
+                footerTime={v.recordedAt}
+              >
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <FolderRecordField label="Blood pressure (mmHg)" value={bpDisplay(v)} />
+                    <FolderRecordField label="Temperature (°C)" value={format(v.temperatureC)} />
+                    <FolderRecordField label="Pulse (bpm)" value={format(v.pulseBpm)} />
+                    <FolderRecordField label="SpO₂ (%)" value={format(v.spo2Pct)} />
+                    <FolderRecordField label="Respiratory rate" value={format(v.respiratoryRateBpm)} />
+                    <FolderRecordField label="Weight (kg)" value={format(v.weightKg)} />
+                    <FolderRecordField label="Height (cm)" value={format(v.heightCm)} />
+                    <FolderRecordField label="BMI" value={format(v.bmi)} />
+                  </div>
+                  <FolderRecordField label="Nursing observations" value={v.notes?.trim() || null} />
+                </div>
+              </FolderRecordExpandableRow>
+            ))
           )}
         </CardContent>
       </Card>
     </div>
   );
+}
+
+function vitalsSummaryLine(v: VitalsDto): string {
+  const parts: string[] = [];
+  if (v.systolicMmHg != null && v.diastolicMmHg != null) {
+    parts.push(`BP ${v.systolicMmHg}/${v.diastolicMmHg} mmHg`);
+  }
+  if (v.temperatureC !== null && v.temperatureC !== undefined && v.temperatureC !== "") {
+    parts.push(`Temp ${v.temperatureC}°C`);
+  }
+  if (v.pulseBpm != null) parts.push(`Pulse ${v.pulseBpm} bpm`);
+  if (v.spo2Pct != null) parts.push(`SpO₂ ${v.spo2Pct}%`);
+  return parts.length ? parts.join(" · ") : "Vitals capture";
+}
+
+function bpDisplay(v: VitalsDto): string | null {
+  if (v.systolicMmHg != null && v.diastolicMmHg != null) return `${v.systolicMmHg} / ${v.diastolicMmHg}`;
+  return null;
 }
 
 function numOrNull(s: string): number | null {
@@ -245,8 +266,4 @@ function DualField({ label, left, right }: { label: string; left: React.ReactNod
       </div>
     </div>
   );
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">{children}</th>;
 }

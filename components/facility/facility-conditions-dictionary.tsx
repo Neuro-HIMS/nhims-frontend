@@ -1,13 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Loader2, Save } from "lucide-react";
+import { Download, Loader2, Pencil, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -17,37 +25,68 @@ import { clinicalService } from "@/services/clinical.service";
 import { useAuthStore } from "@/store/auth.store";
 import type { UserRole } from "@/types/auth.types";
 import type { ApiError } from "@/types/api.types";
+import type { ClinicalConditionDto } from "@/types/clinical.types";
 
 const WRITE_ROLES: UserRole[] = ["MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"];
 
-export function FacilityConditionsDictionary() {
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Single source of truth for facility diagnosis classifications (ICD-11 catalogue).
+ * Shown under Facility settings; drives consultation note pickers app-wide.
+ */
+export function FacilityDiagnosisClassificationsSettings() {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role as UserRole | undefined);
   const canWrite = role ? WRITE_ROLES.includes(role) : false;
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const [q, setQ] = useState("");
-  const [showInactive, setShowInactive] = useState(false);
-  const [code, setCode] = useState("");
-  const [description, setDescription] = useState("");
-  const [icdHint, setIcdHint] = useState("");
-  const [icd11, setIcd11] = useState("");
+  const [searchApplied, setSearchApplied] = useState("");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
+  const [activeOnly, setActiveOnly] = useState(true);
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState<ClinicalConditionDto | null>(null);
+
+  const [formName, setFormName] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  const [formIcd11, setFormIcd11] = useState("");
+  const [formHint, setFormHint] = useState("");
+  const [formActive, setFormActive] = useState(true);
 
   const listQuery = useQuery({
-    queryKey: [...queryKeys.clinical.conditions(q, !showInactive)],
-    queryFn: () => clinicalService.conditions({ q: q.trim() || undefined, activeOnly: !showInactive }),
+    queryKey: queryKeys.clinical.conditionsPage(searchApplied, page, activeOnly, PAGE_SIZE),
+    queryFn: () =>
+      clinicalService.conditionsPaged({
+        q: searchApplied.trim() || undefined,
+        page,
+        size: PAGE_SIZE,
+        activeOnly,
+        sort: "name",
+      }),
   });
 
   const createMut = useMutation({
     mutationFn: clinicalService.createCondition,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Condition saved");
-      setCode("");
-      setDescription("");
-      setIcdHint("");
-      setIcd11("");
+      toast.success("Classification created");
+      setEditorOpen(false);
+      resetForm();
     },
-    onError: (e: unknown) => toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Could not save"),
+    onError: (e: unknown) =>
+      toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Could not save"),
   });
 
   const updateMut = useMutation({
@@ -56,198 +95,364 @@ export function FacilityConditionsDictionary() {
       payload,
     }: {
       id: string;
-      payload: { description: string; icdHint?: string; icd11Code?: string; active: boolean };
+      payload: {
+        name: string;
+        description?: string | null;
+        icdHint?: string;
+        icd11Code?: string;
+        active: boolean;
+      };
     }) => clinicalService.updateCondition(id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Condition updated");
+      toast.success("Classification updated");
+      setEditorOpen(false);
+      setEditing(null);
     },
     onError: (e: unknown) =>
       toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Could not update"),
   });
 
-  const rows = listQuery.data ?? [];
-  const sorted = useMemo(() => [...rows].sort((a, b) => a.code.localeCompare(b.code)), [rows]);
+  const importMut = useMutation({
+    mutationFn: (file: File) => clinicalService.importConditions(file),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      const errPreview = res.errors.slice(0, 5).join("; ");
+      if (res.errors.length === 0) {
+        toast.success(`Imported ${res.imported}; skipped ${res.skipped}`);
+      } else {
+        toast.message(`Imported ${res.imported}; skipped ${res.skipped}`, {
+          description: errPreview || undefined,
+        });
+      }
+    },
+    onError: (e: unknown) =>
+      toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Import failed"),
+  });
+
+  function resetForm() {
+    setFormName("");
+    setFormDescription("");
+    setFormIcd11("");
+    setFormHint("");
+    setFormActive(true);
+    setEditing(null);
+  }
+
+  function openCreate() {
+    resetForm();
+    setEditorOpen(true);
+  }
+
+  function openEdit(row: ClinicalConditionDto) {
+    setEditing(row);
+    setFormName(typeof row.name === "string" ? row.name : "");
+    setFormDescription(row.description ?? "");
+    setFormIcd11(row.icd11Code ?? "");
+    setFormHint(row.icdHint ?? "");
+    setFormActive(Boolean(row.active));
+    setEditorOpen(true);
+  }
+
+  const totalPages = listQuery.data?.totalPages ?? 0;
+  const content = listQuery.data?.content ?? [];
+
+  const nameTrimmed = (formName ?? "").trim();
+  const descriptionTrimmed = (formDescription ?? "").trim();
+  const icd11Trimmed = (formIcd11 ?? "").trim();
+  const hintTrimmed = (formHint ?? "").trim();
+
+  async function exportAs(format: "csv" | "xlsx") {
+    try {
+      const blob = await clinicalService.exportConditions({
+        format,
+        q: searchApplied.trim() || undefined,
+        activeOnly,
+      });
+      downloadBlob(blob, format === "xlsx" ? "classifications.xlsx" : "classifications.csv");
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Export failed");
+    }
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <ClipboardList className="h-5 w-5 text-muted-foreground" /> Problem list dictionary
-        </CardTitle>
-        <CardDescription>
-          Short codes surfaced in consultations for consistent diagnoses. Maintain them here rather than scattering free-text ICD
-          guesses.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex flex-1 items-center gap-2">
-            <Input placeholder="Search code or wording…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-sm" />
-            {listQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-          </div>
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Switch checked={showInactive} onCheckedChange={setShowInactive} />
-            Show inactive rows
-          </label>
-        </div>
-
-        {canWrite && (
-          <div className="rounded-lg border border-dashed border-border bg-muted/20 p-4">
-            <p className="text-sm font-medium text-foreground">Add dictionary entry</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-5">
-              <div className="space-y-1 md:col-span-1">
-                <Label className="text-xs">Code *</Label>
-                <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="font-clinical uppercase" />
-              </div>
-              <div className="space-y-1 md:col-span-2">
-                <Label className="text-xs">Label *</Label>
-                <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-              </div>
-              <div className="space-y-1 md:col-span-1">
-                <Label className="text-xs">ICD-11 (optional)</Label>
-                <Input value={icd11} onChange={(e) => setIcd11(e.target.value)} className="font-clinical text-xs" />
-              </div>
-              <div className="space-y-1 md:col-span-1">
-                <Label className="text-xs">Legacy ICD hint</Label>
-                <Input value={icdHint} onChange={(e) => setIcdHint(e.target.value)} className="font-clinical text-xs" />
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Diagnosis classifications (ICD-11)</CardTitle>
+          <CardDescription>
+            Facility-wide catalogue used in consultations. Each row needs a <strong>name</strong>; description and ICD fields are optional.
+            Import CSV/XLSX requires a <code className="rounded bg-muted px-1">name</code> column (legacy files may use{" "}
+            <code className="rounded bg-muted px-1">code</code>).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Search</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Name, description, ICD-11…"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      setSearchApplied(q);
+                      setPage(0);
+                    }
+                  }}
+                  className="w-64"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setSearchApplied(q);
+                    setPage(0);
+                  }}
+                >
+                  Apply
+                </Button>
               </div>
             </div>
-            <Button
-              className="mt-3"
-              size="sm"
-              disabled={createMut.isPending || !code.trim() || !description.trim()}
-              onClick={() =>
-                createMut.mutate({
-                  code: code.trim(),
-                  description: description.trim(),
-                  icdHint: icdHint.trim() || undefined,
-                  icd11Code: icd11.trim() || undefined,
-                  active: true,
-                })
-              }
-            >
-              {createMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Save dictionary row
-            </Button>
+            <label className="flex items-center gap-2 pb-2 text-sm text-muted-foreground">
+              <Switch
+                checked={activeOnly}
+                onCheckedChange={(v) => {
+                  setActiveOnly(v);
+                  setPage(0);
+                }}
+              />
+              Active only
+            </label>
+            {canWrite ? (
+              <div className="ml-auto flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => exportAs("csv")}>
+                  <Download className="mr-1.5 h-4 w-4" />
+                  CSV
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => exportAs("xlsx")}>
+                  <Download className="mr-1.5 h-4 w-4" />
+                  XLSX
+                </Button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) importMut.mutate(f);
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={importMut.isPending}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {importMut.isPending ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="mr-1.5 h-4 w-4" />
+                  )}
+                  Import
+                </Button>
+                <Button type="button" size="sm" onClick={openCreate}>
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Add
+                </Button>
+              </div>
+            ) : null}
           </div>
-        )}
 
-        {!canWrite && (
-          <p className="text-xs text-muted-foreground">
-            Read-only profile — Facility Admin or Medical Officers can extend this dictionary.
-          </p>
-        )}
-
-        <div className="overflow-hidden rounded-md border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="px-3 py-2">Code</th>
-                <th className="px-3 py-2">Label</th>
-                <th className="px-3 py-2">ICD-11</th>
-                <th className="px-3 py-2">Legacy hint</th>
-                <th className="px-3 py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {listQuery.isLoading ? (
-                <tr>
-                  <td className="px-3 py-6 text-muted-foreground" colSpan={5}>
-                    Loading…
-                  </td>
+          <div className="overflow-hidden rounded-md border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">Description</th>
+                  <th className="px-3 py-2">ICD-11</th>
+                  <th className="px-3 py-2">Legacy hint</th>
+                  <th className="px-3 py-2">Status</th>
+                  {canWrite ? <th className="px-3 py-2 w-28">Actions</th> : null}
                 </tr>
-              ) : sorted.length === 0 ? (
-                <tr>
-                  <td className="px-3 py-6 text-muted-foreground" colSpan={5}>
-                    Nothing matches yet — broaden your search or add a row.
-                  </td>
-                </tr>
-              ) : (
-                sorted.map((c) => (
-                  <EditableRow key={c.id} c={c} canWrite={canWrite} pending={updateMut.isPending} onSave={(payload) => updateMut.mutate({ id: c.id, payload })} />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+              </thead>
+              <tbody className="divide-y divide-border">
+                {listQuery.isLoading ? (
+                  <tr>
+                    <td colSpan={canWrite ? 6 : 5} className="px-3 py-8 text-center text-muted-foreground">
+                      <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                      Loading…
+                    </td>
+                  </tr>
+                ) : content.length === 0 ? (
+                  <tr>
+                    <td colSpan={canWrite ? 6 : 5} className="px-3 py-8 text-center text-muted-foreground">
+                      No classifications match — adjust filters or create a row.
+                    </td>
+                  </tr>
+                ) : (
+                  content.map((row) => (
+                    <tr key={row.id} className={!row.active ? "bg-muted/20" : undefined}>
+                      <td className="px-3 py-2 align-top font-medium">{row.name?.trim() || "—"}</td>
+                      <td className="px-3 py-2 align-top text-muted-foreground">{row.description?.trim() || "—"}</td>
+                      <td className="px-3 py-2 align-top font-clinical text-xs">{row.icd11Code || "—"}</td>
+                      <td className="px-3 py-2 align-top font-clinical text-xs text-muted-foreground">
+                        {row.icdHint || "—"}
+                      </td>
+                      <td className="px-3 py-2 align-top">{row.active ? "Active" : "Inactive"}</td>
+                      {canWrite ? (
+                        <td className="px-3 py-2 align-top">
+                          <Button type="button" variant="outline" size="sm" onClick={() => openEdit(row)}>
+                            <Pencil className="mr-1 h-4 w-4" /> Edit
+                          </Button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-function EditableRow({
-  c,
-  canWrite,
-  pending,
-  onSave,
-}: {
-  c: import("@/types/clinical.types").ClinicalConditionDto;
-  canWrite: boolean;
-  pending: boolean;
-  onSave: (p: { description: string; icdHint?: string; icd11Code?: string; active: boolean }) => void;
-}) {
-  const [desc, setDesc] = useState(c.description);
-  const [icd11, setIcd11] = useState(c.icd11Code ?? "");
-  const [hint, setHint] = useState(c.icdHint ?? "");
-  const [active, setActive] = useState(c.active);
-
-  return (
-    <tr className={!active ? "bg-muted/20" : undefined}>
-      <td className="px-3 py-2 align-top font-clinical">{c.code}</td>
-      <td className="px-3 py-2 align-top">
-        {canWrite ? (
-          <Textarea rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} className="text-sm" />
-        ) : (
-          <span>{c.description}</span>
-        )}
-      </td>
-      <td className="px-3 py-2 align-top">
-        {canWrite ? (
-          <Input value={icd11} onChange={(e) => setIcd11(e.target.value)} className="font-clinical text-xs" />
-        ) : (
-          <span className="font-clinical text-xs text-muted-foreground">{c.icd11Code || "—"}</span>
-        )}
-      </td>
-      <td className="px-3 py-2 align-top">
-        {canWrite ? (
-          <Input value={hint} onChange={(e) => setHint(e.target.value)} className="font-clinical text-xs" />
-        ) : (
-          <span className="font-clinical text-xs text-muted-foreground">{c.icdHint || "—"}</span>
-        )}
-      </td>
-      <td className="px-3 py-2 align-top">
-        <div className="flex flex-col gap-2">
-          {active ? (
-            <Badge variant="secondary">Active</Badge>
-          ) : (
-            <Badge variant="outline">Inactive</Badge>
-          )}
-          {canWrite ? (
-            <>
-              <label className="flex items-center gap-2 text-xs">
-                <Switch checked={active} onCheckedChange={(v) => setActive(v)} />
-                Catalog active flag
-              </label>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Page {page + 1}
+              {totalPages > 0 ? ` of ${totalPages}` : ""} · {listQuery.data?.totalElements ?? 0} rows
+            </span>
+            <div className="flex gap-2">
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
-                disabled={pending}
+                disabled={page <= 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={totalPages <= 0 || page >= totalPages - 1}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={editorOpen}
+        onOpenChange={(o) => {
+          setEditorOpen(o);
+          if (!o) resetForm();
+        }}
+      >
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Edit classification" : "New classification"}</DialogTitle>
+            <DialogDescription>
+              <strong>Name</strong> identifies the condition in your catalogue (required). Description and ICD fields are optional.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Name *</Label>
+              <Input
+                value={formName ?? ""}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. Type 2 diabetes mellitus"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description</Label>
+              <Textarea
+                value={formDescription ?? ""}
+                onChange={(e) => setFormDescription(e.target.value)}
+                rows={3}
+                placeholder="Optional short clarification"
+                className="resize-y min-h-[72px]"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">ICD-11 code</Label>
+                <Input value={formIcd11 ?? ""} onChange={(e) => setFormIcd11(e.target.value)} className="font-clinical text-xs" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Legacy ICD hint</Label>
+                <Input value={formHint ?? ""} onChange={(e) => setFormHint(e.target.value)} className="font-clinical text-xs" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2">
+              <Checkbox
+                id="catalogue-active"
+                checked={formActive}
+                onCheckedChange={(v) => setFormActive(v === true)}
+              />
+              <Label htmlFor="catalogue-active" className="cursor-pointer text-sm font-normal leading-snug">
+                Active in catalogue
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEditorOpen(false);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
+            {editing ? (
+              <Button
+                type="button"
+                disabled={updateMut.isPending || !nameTrimmed}
                 onClick={() =>
-                  onSave({
-                    description: desc.trim(),
-                    icdHint: hint.trim(),
-                    icd11Code: icd11.trim(),
-                    active,
+                  updateMut.mutate({
+                    id: editing.id,
+                    payload: {
+                      name: nameTrimmed,
+                      description: descriptionTrimmed || null,
+                      icd11Code: icd11Trimmed || "",
+                      icdHint: hintTrimmed || "",
+                      active: formActive,
+                    },
                   })
                 }
               >
-                Save row
+                {updateMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save changes
               </Button>
-            </>
-          ) : null}
-        </div>
-      </td>
-    </tr>
+            ) : (
+              <Button
+                type="button"
+                disabled={createMut.isPending || !nameTrimmed}
+                onClick={() =>
+                  createMut.mutate({
+                    name: nameTrimmed,
+                    description: descriptionTrimmed || undefined,
+                    icd11Code: icd11Trimmed || undefined,
+                    icdHint: hintTrimmed || undefined,
+                    active: formActive,
+                  })
+                }
+              >
+                {createMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Create
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

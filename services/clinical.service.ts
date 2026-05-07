@@ -21,6 +21,8 @@ import type {
   FolderViewDto,
   LabOrderDto,
   LabOrderStatus,
+  CreateRadiologyOrderPayload,
+  RadiologyOrderDto,
   MedicalAlertDto,
   PrescriptionDto,
   PrescriptionStatus,
@@ -172,6 +174,18 @@ export const clinicalService = {
     return res.data.data;
   },
 
+  async updateConsultationNote(
+    encounterId: string,
+    noteId: string,
+    payload: CreateConsultationNotePayload,
+  ): Promise<ConsultationNoteDto> {
+    const res = await apiClient.put<ApiResponse<ConsultationNoteDto>>(
+      `/clinical/encounters/${encounterId}/consultation-notes/${noteId}`,
+      payload,
+    );
+    return res.data.data;
+  },
+
   // ── Clinical catalog look-up (read-only) ────────────────────────────────
   async catalog(group?: string, activeOnly = true): Promise<ClinicalServiceDto[]> {
     const res = await apiClient.get<ApiResponse<ClinicalServiceDto[]>>("/clinical/catalog/services", {
@@ -188,6 +202,7 @@ export const clinicalService = {
     nhisTariffCode?: string;
     description?: string;
     active?: boolean;
+    labResultPanel?: string;
   }): Promise<ServiceCatalogDto> {
     const res = await apiClient.post<ApiResponse<ServiceCatalogDto>>("/clinical/catalog/services", {
       ...payload,
@@ -204,6 +219,7 @@ export const clinicalService = {
       nhisTariffCode?: string;
       description?: string;
       active?: boolean;
+      labResultPanel?: string | null;
     },
   ): Promise<ServiceCatalogDto> {
     const res = await apiClient.put<ApiResponse<ServiceCatalogDto>>(
@@ -263,8 +279,8 @@ export const clinicalService = {
   },
 
   async createCondition(payload: {
-    code: string;
-    description: string;
+    name: string;
+    description?: string | null;
     icdHint?: string;
     icd11Code?: string;
     active?: boolean;
@@ -275,7 +291,13 @@ export const clinicalService = {
 
   async updateCondition(
     id: string,
-    payload: { description: string; icdHint?: string; icd11Code?: string; active: boolean },
+    payload: {
+      name: string;
+      description?: string | null;
+      icdHint?: string;
+      icd11Code?: string;
+      active: boolean;
+    },
   ): Promise<ClinicalConditionDto> {
     const res = await apiClient.put<ApiResponse<ClinicalConditionDto>>(`/clinical/conditions/${id}`, payload);
     return res.data.data;
@@ -321,6 +343,48 @@ export const clinicalService = {
       `/clinical/lab-orders/${id}/results`,
       payload,
     );
+    return res.data.data;
+  },
+
+  // ── Radiology orders ────────────────────────────────────────────────────
+  async placeRadiologyOrder(encounterId: string, payload: CreateRadiologyOrderPayload): Promise<RadiologyOrderDto> {
+    const res = await apiClient.post<ApiResponse<RadiologyOrderDto>>(
+      `/clinical/encounters/${encounterId}/radiology-orders`,
+      payload,
+    );
+    return res.data.data;
+  },
+
+  async listRadiologyOrdersForEncounter(encounterId: string): Promise<RadiologyOrderDto[]> {
+    const res = await apiClient.get<ApiResponse<RadiologyOrderDto[]>>(
+      `/clinical/encounters/${encounterId}/radiology-orders`,
+    );
+    return res.data.data;
+  },
+
+  async radiologyWorklist(status?: string): Promise<RadiologyOrderDto[]> {
+    const res = await apiClient.get<ApiResponse<RadiologyOrderDto[]>>("/clinical/radiology-orders", {
+      params: status ? { status } : undefined,
+    });
+    return res.data.data;
+  },
+
+  async getRadiologyOrder(id: string): Promise<RadiologyOrderDto> {
+    const res = await apiClient.get<ApiResponse<RadiologyOrderDto>>(`/clinical/radiology-orders/${id}`);
+    return res.data.data;
+  },
+
+  async updateRadiologyOrderStatus(id: string, status: "IN_PROGRESS" | "CANCELLED"): Promise<RadiologyOrderDto> {
+    const res = await apiClient.patch<ApiResponse<RadiologyOrderDto>>(`/clinical/radiology-orders/${id}/status`, {
+      status,
+    });
+    return res.data.data;
+  },
+
+  async submitRadiologyReport(id: string, reportText: string): Promise<RadiologyOrderDto> {
+    const res = await apiClient.post<ApiResponse<RadiologyOrderDto>>(`/clinical/radiology-orders/${id}/report`, {
+      reportText,
+    });
     return res.data.data;
   },
 

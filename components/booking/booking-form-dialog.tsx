@@ -12,7 +12,7 @@ import {
 import { BookingForm } from "@/components/booking/booking-form";
 import { MiniPatientCard } from "@/components/booking/mini-patient-card";
 import type { Patient } from "@/components/records/lib/records-types";
-import type { AppointmentDto } from "@/types/appointments.types";
+import type { AppointmentDto, VisitType } from "@/types/appointments.types";
 
 /**
  * Modal pop-up that hosts the booking form. Opens after the operator
@@ -27,6 +27,7 @@ export function BookingFormDialog({
   patient,
   patientId,
   onBooked,
+  initialVisitType,
 }: {
   open: boolean;
   onOpenChange: (next: boolean) => void;
@@ -34,6 +35,8 @@ export function BookingFormDialog({
   /** Real backend UUID for the patient — bookings need this, not the public ID. */
   patientId: string | null;
   onBooked?: (appt: AppointmentDto) => void;
+  /** When set, pre-selects visit type in the embedded booking form. */
+  initialVisitType?: VisitType;
 }) {
   const ready = Boolean(patient && patientId);
 
@@ -72,6 +75,7 @@ export function BookingFormDialog({
               patient={patient}
               patientId={patientId}
               showPatientHeader={false}
+              initialVisitType={initialVisitType}
               onBooked={onBooked}
             />
           ) : (

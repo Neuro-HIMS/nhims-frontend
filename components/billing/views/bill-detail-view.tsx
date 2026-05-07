@@ -42,6 +42,9 @@ import {
   formatDateTime,
 } from "@/components/billing/lib/billing-utils";
 import type { BillItemDto, PaymentMethod } from "@/types/finance.types";
+import type { PharmacyCashLineDto } from "@/types/billing.types";
+import { queryKeys } from "@/lib/query-keys";
+import { Badge } from "@/components/ui/badge";
 
 const MOMO_METHODS = new Set(["MOMO_MTN", "MOMO_VODAFONE", "MOMO_AIRTELTIGO"]);
 const BANK_METHODS = new Set(["BANK_CARD", "BANK_TRANSFER", "CHEQUE"]);
@@ -127,6 +130,8 @@ export function BillDetailView({ billId }: { billId: string }) {
     },
     onSuccess: (p) => {
       qc.invalidateQueries({ queryKey: ["billing"] });
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.pharmacyQueue });
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.radiologyWorklist });
       toast.success(`Receipt ${p.receiptNumber}`, {
         description: `${METHOD_LABEL[p.method] ?? p.method} · GH₵ ${minorToGhs(p.amountMinor)}`,
       });
@@ -167,6 +172,16 @@ export function BillDetailView({ billId }: { billId: string }) {
     return m;
   }, [invoice.data]);
 
+  const pharmacyByBillItem = useMemo(() => {
+    const rows = invoice.data?.pharmacyCashLines;
+    if (!rows?.length) return new Map<string, PharmacyCashLineDto>();
+    const map = new Map<string, PharmacyCashLineDto>();
+    for (const r of rows) {
+      map.set(r.billItemId, r);
+    }
+    return map;
+  }, [invoice.data?.pharmacyCashLines]);
+
   if (invoice.isLoading) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -187,7 +202,8 @@ export function BillDetailView({ billId }: { billId: string }) {
     );
   }
 
-  const { bill, payments, totalsByGroup } = invoice.data;
+  const { bill, payments, totalsByGroup, pharmacyCashLines = [] } = invoice.data;
+  const pendingRxLines = pharmacyCashLines.filter((r) => r.awaitingCashPayment);
   const isClosed = ["CANCELLED", "WRITTEN_OFF"].includes(bill.status);
   const isPaid = bill.status === "PAID";
   const canEdit = !isClosed && !isPaid && bill.paidMinor === 0;
@@ -226,6 +242,12 @@ export function BillDetailView({ billId }: { billId: string }) {
                 <CardTitle className="text-base">Services rendered</CardTitle>
                 <CardDescription>
                   Lab tests, medications, imaging, consultation, supplies — every line is a bill item.
+                  {pendingRxLines.length > 0 && (
+                    <span className="mt-2 block text-[hsl(var(--clinical-urgent))]">
+                      {pendingRxLines.length} prescription line{pendingRxLines.length === 1 ? "" : "s"} awaiting payment
+                      before pharmacy can dispense.
+                    </span>
+                  )}
                 </CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -273,7 +295,14 @@ export function BillDetailView({ billId }: { billId: string }) {
                         className="flex items-start justify-between gap-3 rounded-md border border-border bg-card px-3 py-2"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground">{it.serviceName}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium text-foreground">{it.serviceName}</p>
+                            {pharmacyByBillItem.get(it.id)?.awaitingCashPayment && (
+                              <Badge variant="outline" className="border-[hsl(var(--clinical-urgent))] text-[hsl(var(--clinical-urgent))]">
+                                Rx awaits payment
+                              </Badge>
+                            )}
+                          </div>
                           <p className="patient-id mt-0.5">
                             {it.serviceCode} · qty {it.quantity} · {PAYER_LABEL[it.payerType] ?? it.payerType}
                           </p>

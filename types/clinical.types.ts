@@ -132,15 +132,16 @@ export interface RecordTriagePayload {
 
 export interface ClassificationSummaryDto {
   id: string;
-  code: string;
-  description: string;
+  name: string;
+  /** Optional extra wording beyond {@link name}. */
+  description: string | null;
   icd11Code: string;
 }
 
 export interface ConsultationNoteAdditionalDiagnosisDto {
   id: string;
   classificationId: string | null;
-  classificationCode: string | null;
+  classificationName: string | null;
   classificationDescription: string | null;
   icd11Code: string | null;
   freeText: string;
@@ -167,6 +168,7 @@ export interface ConsultationNoteDto {
   principalDiagnosisNewCase: boolean;
   principalDiagnosisOldCase: boolean;
   additionalDiagnoses?: ConsultationNoteAdditionalDiagnosisDto[];
+  editableToday: boolean;
   authoredByName: string;
   authoredRole: string;
   authoredAt: string | null;
@@ -195,6 +197,8 @@ export interface CreateConsultationNotePayload {
 }
 
 // ── Clinical service catalog (read-only look-up) ─────────────────────────
+export type LabResultPanelCode = "NONE" | "MALARIA_PANEL";
+
 export interface ClinicalServiceDto {
   id: string;
   serviceCode: string;
@@ -203,13 +207,17 @@ export interface ClinicalServiceDto {
   nhisTariffCode: string;
   description: string;
   active: boolean;
+  /** NONE | MALARIA_PANEL for LAB rows */
+  labResultPanel?: LabResultPanelCode | string;
 }
 
-/** Facility dictionary for ICD-style condition pickers. */
+/** Facility diagnosis classifications catalogue (consultation pickers). */
 export interface ClinicalConditionDto {
   id: string;
-  code: string;
-  description: string;
+  /** Primary condition title — unique per facility (case-insensitive). */
+  name: string;
+  /** Optional short elaboration; may be null/empty. */
+  description: string | null;
   icdHint: string;
   icd11Code: string;
   active: boolean;
@@ -266,6 +274,16 @@ export interface LabOrderDto {
   priority: "ROUTINE" | "URGENT" | "EMERGENCY" | "STAT";
   reason: string;
   instructions: string;
+  consultationNoteId: string | null;
+  provisionalClassificationId: string | null;
+  /** Snapshot from latest consultation when order was placed */
+  provisionalDiagnosisLabel: string;
+  labResultPanel: LabResultPanelCode | string;
+  specimenType: string;
+  sourceOfRequest: string;
+  sampleReceivedAt: string | null;
+  pathologyNumber: string | null;
+  malariaPanelJson: string | null;
   orderedByName: string;
   orderedAt: string | null;
   billItemId: string | null;
@@ -274,6 +292,22 @@ export interface LabOrderDto {
   completedAt: string | null;
   authorisedAt: string | null;
   results: LabResultRowDto[];
+}
+
+export type LabSourceOfRequest =
+  | "CONSULTING_ROOM"
+  | "WARD"
+  | "ANC"
+  | "WALK_IN"
+  | "OTHER";
+
+export interface SubmitLabResultsPathologyPayload {
+  specimenType: string;
+  sourceOfRequest: LabSourceOfRequest | string;
+  /** ISO-8601 offset datetime preferred */
+  sampleReceivedAt: string;
+  /** Structured malaria / RDT worksheet — required when labResultPanel is MALARIA_PANEL */
+  malariaPanel?: Record<string, unknown> | null;
 }
 
 export interface CreateLabOrderPayload {
@@ -294,6 +328,53 @@ export interface SubmitLabResultsPayload {
     comment?: string;
   }>;
   authoriseImmediately?: boolean;
+  pathology: SubmitLabResultsPathologyPayload;
+}
+
+// ── Radiology / imaging orders ───────────────────────────────────────────
+export type RadiologyOrderStatus =
+  | "ORDERED"
+  | "READY"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "CANCELLED";
+
+export interface RadiologyOrderDto {
+  id: string;
+  encounterId: string;
+  encounterNumber: string;
+  patientId: string | null;
+  patientPublicId: string;
+  patientName: string;
+  patientSex: string;
+  patientDob: string;
+  serviceId: string | null;
+  serviceCode: string;
+  serviceName: string;
+  modality: string;
+  studyName: string;
+  status: RadiologyOrderStatus;
+  priority: "ROUTINE" | "URGENT" | "EMERGENCY" | "STAT";
+  clinicalNotes: string;
+  payerType: string;
+  orderedByName: string;
+  orderedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  reportText: string;
+  reportedByName: string;
+  cancellationReason: string;
+  /** Minor units — from linked bill item */
+  lineTotalMinor: number;
+}
+
+export interface CreateRadiologyOrderPayload {
+  serviceId: string;
+  modality?: string;
+  studyName?: string;
+  priority?: "ROUTINE" | "URGENT" | "EMERGENCY" | "STAT";
+  clinicalNotes?: string;
+  payerType?: string;
 }
 
 // ── Prescriptions / Pharmacy ─────────────────────────────────────────────
@@ -328,6 +409,11 @@ export interface PrescriptionLineDto {
   status: PrescriptionLineStatus;
   billItemId: string | null;
   payerType: string;
+  /** Pesewas — from encounter bill line at order time */
+  unitPriceMinor?: number | null;
+  currency?: string | null;
+  /** Heuristic doses/day × duration — worksheet verification */
+  sigSuggestedQuantity?: string | number | null;
 }
 
 export interface DispenseDto {
@@ -345,6 +431,11 @@ export interface PrescriptionDto {
   patientId: string | null;
   patientPublicId: string;
   patientName: string;
+  encounterNumber: string;
+  patientSex: string;
+  patientAgeDisplay: string;
+  dispensaryDiagnosisSnapshot: string;
+  consultationChiefComplaintSnapshot: string;
   status: PrescriptionStatus;
   notes: string;
   pharmacyNotes: string;
@@ -397,6 +488,8 @@ export interface AdmissionDto {
   patientName: string;
   ward: string;
   bed: string;
+  wardStructuredId: string | null;
+  bedStructuredId: string | null;
   reason: string;
   status: AdmissionStatus;
   admittedByName: string;
@@ -410,6 +503,8 @@ export interface AdmitPayload {
   ward: string;
   bed?: string;
   reason?: string;
+  /** When set, ward/bed strings are derived server-side from the IPD catalogue. */
+  bedId?: string | null;
 }
 
 export interface DischargePayload {

@@ -1,31 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
-import { ChevronRight, FlaskConical, Loader2, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronRight, FlaskConical, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { LaboratoryCatalogSetupView } from "@/components/laboratory/laboratory-catalog-setup";
+import { LaboratoryPatientLabsView } from "@/components/laboratory/lab-patient-labs-view";
+import { LabResultEntryView } from "@/components/laboratory/lab-result-entry-view";
+import { LaboratorySearchView } from "@/components/laboratory/laboratory-search-view";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import type { ApiError } from "@/types/api.types";
-import type { LabOrderDto, LabOrderStatus, SubmitLabResultsPayload } from "@/types/clinical.types";
+import type { LabOrderDto, LabOrderStatus } from "@/types/clinical.types";
 
 const SUB_NAV = [
   { label: "Worklist", view: "worklist", href: "/laboratory?view=worklist" },
-  { label: "Result Entry", view: "results", href: "/laboratory?view=results" },
-  { label: "Completed Today", view: "done", href: "/laboratory?view=done" },
-  { label: "Catalog & Setup", view: "catalog", href: "/laboratory?view=catalog" },
+  { label: "Patient search", view: "search", href: "/laboratory?view=search" },
+  { label: "Result entry", view: "results", href: "/laboratory?view=results" },
+  { label: "Completed today", view: "done", href: "/laboratory?view=done" },
+  { label: "Catalog & setup", view: "catalog", href: "/laboratory?view=catalog" },
 ];
 
 export function LaboratoryWorkspace() {
@@ -37,14 +38,15 @@ export function LaboratoryWorkspace() {
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Laboratory</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Process test requests and authorise results. You see only the orders assigned to your station —
-          patient folders are restricted to clinicians.
+          Process test requests and authorise results. Charges post to the encounter bill — patients settle at billing.
         </p>
       </div>
       <ModuleSubNav items={SUB_NAV} basePath="/laboratory" />
       <div className="pt-2">
         {view === "worklist" && <WorklistView />}
-        {view === "results" && <ResultEntryView />}
+        {view === "search" && <LaboratorySearchView />}
+        {view === "patient-labs" && <LaboratoryPatientLabsView />}
+        {view === "results" && <LabResultEntryView />}
         {view === "done" && <CompletedView />}
         {view === "catalog" && <LaboratoryCatalogSetupView />}
       </div>
@@ -54,9 +56,8 @@ export function LaboratoryWorkspace() {
 
 const ACTIVE_STATUSES: LabOrderStatus[] = ["ORDERED", "PAID", "CLAIMED", "IN_PROGRESS"];
 
-// ── Worklist ──────────────────────────────────────────────────────────
-
 function WorklistView() {
+  const router = useRouter();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"READY" | "all" | LabOrderStatus>("READY");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -85,8 +86,7 @@ function WorklistView() {
     () =>
       [...orders].sort(
         (a, b) =>
-          urgencyRank(a) - urgencyRank(b) ||
-          (a.orderedAt ?? "").localeCompare(b.orderedAt ?? ""),
+          urgencyRank(a) - urgencyRank(b) || (a.orderedAt ?? "").localeCompare(b.orderedAt ?? ""),
       ),
     [orders],
   );
@@ -102,6 +102,16 @@ function WorklistView() {
     };
   }, [orders]);
 
+  const canStart =
+    selected &&
+    (selected.status === "ORDERED" || selected.status === "PAID" || selected.status === "CLAIMED");
+  const canEnterResults =
+    selected &&
+    (selected.status === "ORDERED" ||
+      selected.status === "PAID" ||
+      selected.status === "CLAIMED" ||
+      selected.status === "IN_PROGRESS");
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
@@ -113,12 +123,12 @@ function WorklistView() {
 
       <div className="flex items-center gap-3">
         <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="min-w-[280px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="READY">Ready queue (paid / NHIS claimed / unpaid ORDERED visible)</SelectItem>
-            <SelectItem value="ORDERED">Ordered (awaiting payment)</SelectItem>
+            <SelectItem value="READY">Ready queue (includes unpaid — bill line open)</SelectItem>
+            <SelectItem value="ORDERED">Ordered only</SelectItem>
             <SelectItem value="IN_PROGRESS">In progress</SelectItem>
             <SelectItem value="COMPLETED">Completed (unauthorised)</SelectItem>
             <SelectItem value="AUTHORISED">Authorised</SelectItem>
@@ -210,6 +220,13 @@ function WorklistView() {
               <DataRow label="Payer" value={selected.payerType} />
               <DataRow label="Status" value={selected.status} />
 
+              {selected.provisionalDiagnosisLabel ? (
+                <div className="rounded-md border border-border bg-card p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Diagnosis snapshot</p>
+                  <p className="mt-1 text-foreground">{selected.provisionalDiagnosisLabel}</p>
+                </div>
+              ) : null}
+
               {selected.reason && (
                 <div className="rounded-md border border-border bg-card p-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -221,30 +238,25 @@ function WorklistView() {
 
               <Separator />
 
-              {selected.status === "ORDERED" && selected.payerType?.toUpperCase() === "CASH" && (
-                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
-                  Awaiting cashier payment — order appears here so the lab knows it exists. Start processing once the bill line is marked paid (or patient pays).
-                </p>
-              )}
+              <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                The lab fee is added to the encounter bill. Billing clears payment — you may collect and process the sample
+                without waiting for cashier confirmation.
+              </p>
 
               <div className="flex flex-col gap-2">
-                {(selected.status === "PAID" || selected.status === "CLAIMED") && (
+                {canStart && (
                   <Button onClick={() => startMut.mutate(selected.id)} disabled={startMut.isPending}>
-                    <FlaskConical className="mr-1.5 h-4 w-4" /> Start Processing
+                    <FlaskConical className="mr-1.5 h-4 w-4" /> Start processing
                   </Button>
                 )}
-                {(selected.status === "IN_PROGRESS" || selected.status === "PAID" || selected.status === "CLAIMED") && (
+                {canEnterResults && (
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      const u = new URL(window.location.href);
-                      u.searchParams.set("view", "results");
-                      u.searchParams.set("orderId", selected.id);
-                      window.history.pushState(null, "", u.toString());
-                      window.dispatchEvent(new PopStateEvent("popstate"));
-                    }}
+                    onClick={() =>
+                      router.push(`/laboratory?view=results&orderId=${encodeURIComponent(selected.id)}`)
+                    }
                   >
-                    Enter Results
+                    Enter results
                   </Button>
                 )}
                 <Button variant="ghost" onClick={() => setSelectedId(null)}>
@@ -265,245 +277,6 @@ function WorklistView() {
     </div>
   );
 }
-
-// ── Result entry ──────────────────────────────────────────────────────
-
-interface RowDraft {
-  analyte: string;
-  value: string;
-  units: string;
-  referenceRange: string;
-  flag: string;
-  comment: string;
-}
-
-function blankRow(): RowDraft {
-  return { analyte: "", value: "", units: "", referenceRange: "", flag: "", comment: "" };
-}
-
-function ResultEntryView() {
-  const qc = useQueryClient();
-  const searchParams = useSearchParams();
-  const initialOrderId = searchParams.get("orderId") ?? "";
-
-  const eligibleQuery = useQuery({
-    queryKey: [...queryKeys.clinical.labWorklist, "READY+IN_PROGRESS"],
-    queryFn: async () => {
-      // Fetch ready and in-progress in parallel and merge.
-      const [ready, inProgress] = await Promise.all([
-        clinicalService.labWorklist("READY"),
-        clinicalService.labWorklist("IN_PROGRESS"),
-      ]);
-      const seen = new Set<string>();
-      const all = [...ready, ...inProgress];
-      return all.filter((o) => (seen.has(o.id) ? false : (seen.add(o.id), true)));
-    },
-  });
-
-  const submitMut = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: SubmitLabResultsPayload }) =>
-      clinicalService.submitLabResults(id, payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Results authorised — clinician will see them in the patient folder");
-      setOrderId("");
-      setRows([blankRow()]);
-      setSummary("");
-      setConfirmAuthorise(null);
-    },
-    onError: (e: unknown) => {
-      const ax = e as { response?: { data?: ApiError } };
-      toast.error(ax.response?.data?.message ?? "Could not submit results");
-    },
-  });
-
-  const eligible = eligibleQuery.data ?? [];
-  const [orderId, setOrderId] = useState(initialOrderId || "");
-  useEffect(() => {
-    if (!orderId && eligible[0]) setOrderId(eligible[0].id);
-  }, [orderId, eligible]);
-
-  const order = eligible.find((o) => o.id === orderId) ?? null;
-  const [rows, setRows] = useState<RowDraft[]>([blankRow()]);
-  const [summary, setSummary] = useState("");
-  const [confirmAuthorise, setConfirmAuthorise] = useState<{ id: string; payload: SubmitLabResultsPayload } | null>(null);
-
-  function update(idx: number, key: keyof RowDraft, value: string) {
-    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
-  }
-  function removeRow(idx: number) {
-    setRows((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)));
-  }
-
-  function armAuthorise() {
-    if (!order) return;
-    const cleaned = rows.filter((r) => r.analyte.trim() && r.value.trim());
-    if (cleaned.length === 0) {
-      toast.error("Enter at least one analyte + value before authorising");
-      return;
-    }
-    const payload: SubmitLabResultsPayload = {
-      rows: cleaned.map((r) => ({
-        analyte: r.analyte.trim(),
-        value: r.value.trim(),
-        units: r.units.trim(),
-        referenceRange: r.referenceRange.trim(),
-        flag: r.flag.trim(),
-        comment: summary.trim() || r.comment.trim(),
-      })),
-      authoriseImmediately: true,
-    };
-    setConfirmAuthorise({ id: order.id, payload });
-  }
-
-  async function runAuthorisedSubmit() {
-    if (!confirmAuthorise) return;
-    await submitMut.mutateAsync(confirmAuthorise);
-  }
-
-  if (eligibleQuery.isLoading) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" /> Loading ready orders…
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!order) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
-          <FlaskConical className="h-7 w-7 text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">No active orders to enter results for.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Enter Test Results</CardTitle>
-        <CardDescription>
-          Select an order, capture the result rows, and authorise. Authorising returns the patient to the doctor.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-foreground">Select Lab Order</label>
-          <Select
-            value={orderId}
-            onValueChange={(v) => {
-              setOrderId(v);
-              setRows([blankRow()]);
-              setSummary("");
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {eligible.map((o) => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.patientName} — {o.serviceName} ({o.priority})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="rounded-md border border-dashed border-border bg-muted/20 p-3 text-sm">
-          <p className="font-medium text-foreground">{order.serviceName}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Patient: {order.patientName} ({order.patientPublicId}) · ordered by {order.orderedByName}
-          </p>
-          {order.reason && <p className="mt-2 text-foreground">Question: {order.reason}</p>}
-          <p className="mt-2 text-xs text-muted-foreground">
-            <ShieldCheck className="mr-1 inline h-3 w-3" /> No folder access from this station.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          {rows.map((r, idx) => (
-            <div key={idx} className="grid items-end gap-2 sm:grid-cols-[1.4fr_1fr_0.7fr_1fr_0.7fr_auto]">
-              <Input
-                placeholder="Analyte"
-                value={r.analyte}
-                onChange={(e) => update(idx, "analyte", e.target.value)}
-              />
-              <Input
-                placeholder="Value"
-                value={r.value}
-                onChange={(e) => update(idx, "value", e.target.value)}
-                className="font-clinical"
-              />
-              <Input
-                placeholder="Units"
-                value={r.units}
-                onChange={(e) => update(idx, "units", e.target.value)}
-              />
-              <Input
-                placeholder="Ref range"
-                value={r.referenceRange}
-                onChange={(e) => update(idx, "referenceRange", e.target.value)}
-              />
-              <Select value={r.flag || "OK"} onValueChange={(v) => update(idx, "flag", v === "OK" ? "" : v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OK">Normal</SelectItem>
-                  <SelectItem value="HIGH">High</SelectItem>
-                  <SelectItem value="LOW">Low</SelectItem>
-                  <SelectItem value="CRITICAL">Critical</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="ghost" size="icon" onClick={() => removeRow(idx)} disabled={rows.length === 1}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" onClick={() => setRows((prev) => [...prev, blankRow()])}>
-            <Plus className="mr-1.5 h-4 w-4" /> Add row
-          </Button>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-foreground">Comment / Interpretation</label>
-          <Textarea
-            value={summary}
-            onChange={(e) => setSummary(e.target.value)}
-            rows={2}
-            placeholder="Optional comment for the clinician…"
-          />
-        </div>
-
-        <div className="flex justify-end">
-          <Button onClick={() => armAuthorise()} disabled={submitMut.isPending}>
-            {submitMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
-            Authorise & Report
-          </Button>
-        </div>
-
-        <ConfirmDialog
-          open={confirmAuthorise !== null}
-          onOpenChange={(open) => {
-            if (!open) setConfirmAuthorise(null);
-          }}
-          title="Authorise results to the clinician?"
-          description={`This publishes ${confirmAuthorise?.payload.rows.length ?? "—"} analytes for ${order.patientName} immediately. Critical flags notify the clinician in the encounter folder.`}
-          confirmLabel="Authorise"
-          pending={submitMut.isPending}
-          onConfirm={() => runAuthorisedSubmit()}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── Completed view ────────────────────────────────────────────────────
 
 function CompletedView() {
   const completedQuery = useQuery({
@@ -585,8 +358,6 @@ function CompletedView() {
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────
-
 function urgencyRank(o: LabOrderDto): number {
   return o.priority === "STAT" ? 0 : o.priority === "EMERGENCY" ? 1 : o.priority === "URGENT" ? 2 : 3;
 }
@@ -614,8 +385,8 @@ function UrgencyPill({ priority }: { priority: LabOrderDto["priority"] }) {
         priority === "STAT" || priority === "EMERGENCY"
           ? "bg-[hsl(var(--clinical-emergency))] text-white"
           : priority === "URGENT"
-          ? "bg-[hsl(var(--clinical-urgent))] text-white"
-          : "status-pill-pending"
+            ? "bg-[hsl(var(--clinical-urgent))] text-white"
+            : "status-pill-pending"
       }`}
     >
       {priority}
@@ -628,16 +399,18 @@ function StatusPill({ status }: { status: LabOrderStatus }) {
     status === "AUTHORISED" || status === "COMPLETED"
       ? "status-pill-active"
       : status === "IN_PROGRESS"
-      ? "bg-[hsl(var(--notice-info-bg))] text-[hsl(var(--notice-info-foreground))]"
-      : status === "CANCELLED"
-      ? "status-pill-inactive"
-      : "status-pill-pending";
+        ? "bg-[hsl(var(--notice-info-bg))] text-[hsl(var(--notice-info-foreground))]"
+        : status === "CANCELLED"
+          ? "status-pill-inactive"
+          : "status-pill-pending";
   return <span className={`status-pill text-xs ${cls}`}>{status}</span>;
 }
 
 function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={`px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className ?? ""}`}>
+    <th
+      className={`px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className ?? ""}`}
+    >
       {children}
     </th>
   );
@@ -648,10 +421,10 @@ function Stat({ label, value, accent }: { label: string; value: number; accent?:
     accent === "warn"
       ? "border-[hsl(var(--clinical-urgent))] bg-[hsl(var(--clinical-urgent-bg))] text-[hsl(var(--clinical-urgent))]"
       : accent === "ok"
-      ? "border-[hsl(var(--clinical-routine))] bg-[hsl(var(--clinical-routine-bg))] text-[hsl(var(--clinical-routine))]"
-      : accent === "info"
-      ? "border-[hsl(var(--notice-info-border))] bg-[hsl(var(--notice-info-bg))] text-[hsl(var(--notice-info-foreground))]"
-      : "border-border bg-card text-foreground";
+        ? "border-[hsl(var(--clinical-routine))] bg-[hsl(var(--clinical-routine-bg))] text-[hsl(var(--clinical-routine))]"
+        : accent === "info"
+          ? "border-[hsl(var(--notice-info-border))] bg-[hsl(var(--notice-info-bg))] text-[hsl(var(--notice-info-foreground))]"
+          : "border-border bg-card text-foreground";
   return (
     <div className={`rounded-lg border px-3 py-2.5 ${cls}`}>
       <p className="text-xs font-medium uppercase tracking-wider opacity-80">{label}</p>

@@ -28,10 +28,21 @@ export interface InvoiceGroupTotal {
   itemCount: number;
 }
 
+/** Prescription rows linked to this bill — cash lines stay pending until paid. */
+export interface PharmacyCashLineDto {
+  billItemId: string;
+  prescriptionId: string;
+  prescriptionLineId: string;
+  drugName: string;
+  awaitingCashPayment: boolean;
+  patientShareMinor: number;
+}
+
 export interface InvoiceDetailDto {
   bill: BillDto;
   payments: PaymentDto[];
   totalsByGroup: Record<string, InvoiceGroupTotal>;
+  pharmacyCashLines: PharmacyCashLineDto[];
 }
 
 export interface ChargeInput {

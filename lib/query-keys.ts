@@ -47,6 +47,9 @@ export const queryKeys = {
       consultations: (encounterId: string) =>
         ["clinical", "encounters", encounterId, "consultations"] as const,
       labOrders: (encounterId: string) => ["clinical", "encounters", encounterId, "lab-orders"] as const,
+      radiologyOrders: (encounterId: string) =>
+        ["clinical", "encounters", encounterId, "radiology-orders"] as const,
+      radiologyWorklist: ["clinical", "radiology", "worklist"] as const,
       labCatalogSetup: ["clinical", "catalog", "lab-setup"] as const,
       labWorklist: ["clinical", "lab", "worklist"] as const,
       labOrder: (id: string) => ["clinical", "lab-orders", id] as const,
@@ -71,7 +74,7 @@ export const queryKeys = {
   
     // ── IPD
     ipd: {
-      wards: ["ipd", "wards"] as const,
+      wards: ["ipd", "board"] as const,
       ward: (wardId: string) => ["ipd", "ward", wardId] as const,
       admission: (admissionId: string) => ["ipd", "admission", admissionId] as const,
       mar: (admissionId: string) => ["ipd", "mar", admissionId] as const,
@@ -98,6 +101,16 @@ export const queryKeys = {
       inventory: ["pharmacy", "inventory"] as const,
       drug: (id: string) => ["pharmacy", "drug", id] as const,
     },
+
+    pharmacyInventory: {
+      all: ["pharmacy-inventory"] as const,
+      suppliers: (q: string, country: string, active: string) =>
+        ["pharmacy-inventory", "suppliers", q, country, active] as const,
+      items: (active: string) => ["pharmacy-inventory", "items", active] as const,
+      overview: (activeOnly: string) => ["pharmacy-inventory", "overview", activeOnly] as const,
+      lots: (itemId: string) => ["pharmacy-inventory", "lots", itemId] as const,
+      movements: (itemId: string) => ["pharmacy-inventory", "movements", itemId] as const,
+    },
   
     // ── Billing / NHIS
     billing: {
@@ -109,6 +122,9 @@ export const queryKeys = {
     // ── Reports hub (definitions from backend catalogue)
     reporting: {
       definitions: ["reports", "definitions"] as const,
+      dhims2: (month: string) => ["reports", "run", "dhims2", month] as const,
+      monthly: (month: string) => ["reports", "run", "monthly", month] as const,
+      exports: ["reports", "run", "exports"] as const,
     },
 
     // ── DHIMS2

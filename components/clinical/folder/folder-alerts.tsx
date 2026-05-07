@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -12,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsField } from "@/components/records/shared/records-field";
-import { formatDateTime } from "@/components/nurse/lib/nurse-data";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import type { ApiError } from "@/types/api.types";
@@ -79,6 +83,10 @@ export function FolderAlerts({ patientUuid }: FolderAlertsProps) {
   const [deactivateId, setDeactivateId] = useState<string | null>(null);
 
   const list = alertsQuery.data ?? [];
+  const sorted = useMemo(
+    () => [...list].sort((a, b) => (b.recordedAt ?? "").localeCompare(a.recordedAt ?? "")),
+    [list],
+  );
 
   function handleSave() {
     if (!form.label.trim()) {
@@ -192,25 +200,21 @@ export function FolderAlerts({ patientUuid }: FolderAlertsProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {list.map((a) => (
-            <Card key={a.id}>
-              <CardContent className="flex items-start justify-between gap-3 py-3">
-                <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${severityIcon(a.severity)}`} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {a.label}
-                      <span className="ml-2 text-xs font-normal uppercase tracking-wider text-muted-foreground">
-                        {a.category.toLowerCase()} · {a.severity.toLowerCase()}
-                      </span>
-                    </p>
-                    {a.notes && <p className="mt-0.5 text-sm text-muted-foreground">{a.notes}</p>}
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {a.recordedAt ? formatDateTime(a.recordedAt) : ""} · {a.recordedByName}
-                    </p>
-                  </div>
-                </div>
+        <div className="space-y-3">
+          <FolderRecordFeedBanner>
+            Expand an alert for category, severity, and full free-text details recorded at save time.
+          </FolderRecordFeedBanner>
+          {sorted.map((a, idx) => (
+            <FolderRecordExpandableRow
+              key={a.id}
+              railIndex={sorted.length - idx}
+              icon={AlertTriangle}
+              eyebrow={`${a.category.replace(/_/g, " ")} alert`}
+              title={<span>{a.label}</span>}
+              preview={<span className="uppercase">{a.severity.toLowerCase()} severity</span>}
+              footerTime={a.recordedAt}
+              badges={<span className={`status-pill text-xs ${severityPill(a.severity)}`}>{a.severity}</span>}
+              headerActions={
                 <Button
                   size="sm"
                   variant="ghost"
@@ -220,8 +224,16 @@ export function FolderAlerts({ patientUuid }: FolderAlertsProps) {
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
-              </CardContent>
-            </Card>
+              }
+            >
+              <div className="space-y-3">
+                <FolderRecordField label="Label" value={a.label} />
+                <FolderRecordField label="Category" value={a.category.replace(/_/g, " ")} />
+                <FolderRecordField label="Severity" value={a.severity} />
+                <FolderRecordField label="Details" value={a.notes?.trim() || null} />
+                <FolderRecordField label="Recorded by" value={a.recordedByName} />
+              </div>
+            </FolderRecordExpandableRow>
           ))}
         </div>
       )}
@@ -247,8 +259,8 @@ export function FolderAlerts({ patientUuid }: FolderAlertsProps) {
   );
 }
 
-function severityIcon(s: string) {
-  if (s === "CRITICAL" || s === "HIGH") return "text-[hsl(var(--clinical-emergency))]";
-  if (s === "MEDIUM") return "text-[hsl(var(--clinical-urgent))]";
-  return "text-muted-foreground";
+function severityPill(s: string) {
+  if (s === "CRITICAL" || s === "HIGH") return "bg-[hsl(var(--clinical-emergency))] text-white";
+  if (s === "MEDIUM") return "bg-[hsl(var(--clinical-urgent-bg))] text-[hsl(var(--clinical-urgent))]";
+  return "status-pill-pending";
 }

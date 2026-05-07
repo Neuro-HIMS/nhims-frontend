@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, Loader2, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsField } from "@/components/records/shared/records-field";
-import { formatDateTime } from "@/components/nurse/lib/nurse-data";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import type { ApiError } from "@/types/api.types";
@@ -75,6 +79,10 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
   const [form, setForm] = useState<CreateReferralPayload>(EMPTY_REF);
 
   const list = refsQuery.data ?? [];
+  const sorted = useMemo(
+    () => [...list].sort((a, b) => (b.referredAt ?? "").localeCompare(a.referredAt ?? "")),
+    [list],
+  );
 
   function handleSave() {
     if (!visit) {
@@ -201,32 +209,39 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {list.map((r) => (
-            <Card key={r.id}>
-              <CardContent className="flex flex-wrap items-start justify-between gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">
-                    {r.fromDepartment}{" "}
-                    <ArrowRightLeft className="inline h-3.5 w-3.5 text-muted-foreground" />{" "}
-                    {r.toDepartment}
-                  </p>
-                  <p className="mt-0.5 text-sm text-foreground">{r.reason}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {r.referredAt ? formatDateTime(r.referredAt) : ""} · {r.referredByName}
-                  </p>
-                  {r.response && (
-                    <p className="mt-1 text-xs italic text-muted-foreground">
-                      Response: {r.response}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-1">
+        <div className="space-y-3">
+          <FolderRecordFeedBanner>
+            Expand a referral for the full clinical reason and any documented response.
+          </FolderRecordFeedBanner>
+          {sorted.map((r, idx) => (
+            <FolderRecordExpandableRow
+              key={r.id}
+              railIndex={sorted.length - idx}
+              icon={ArrowRightLeft}
+              eyebrow="Internal referral"
+              title={
+                <span>
+                  {r.fromDepartment}{" "}
+                  <ArrowRightLeft className="inline h-3.5 w-3.5 text-muted-foreground" /> {r.toDepartment}
+                </span>
+              }
+              preview={<span className="line-clamp-2">{r.reason}</span>}
+              footerTime={r.referredAt}
+              badges={
+                <>
                   <span className={urgencyClass(r.urgency)}>{r.urgency}</span>
                   <span className={statusClass(r.status)}>{r.status.toLowerCase()}</span>
-                </div>
-              </CardContent>
-            </Card>
+                </>
+              }
+            >
+              <div className="space-y-3">
+                <FolderRecordField label="From department" value={r.fromDepartment} />
+                <FolderRecordField label="To department" value={r.toDepartment} />
+                <FolderRecordField label="Reason" value={r.reason} />
+                <FolderRecordField label="Referred by" value={r.referredByName} />
+                <FolderRecordField label="Response / outcome" value={r.response?.trim() || null} />
+              </div>
+            </FolderRecordExpandableRow>
           ))}
         </div>
       )}

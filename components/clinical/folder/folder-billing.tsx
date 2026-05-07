@@ -2,12 +2,17 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Receipt } from "lucide-react";
+import { Loader2, Package, Receipt } from "lucide-react";
+
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
 import { clinicalService } from "@/services/clinical.service";
-import type { BillItemDto } from "@/types/finance.types";
 import type { Visit } from "@/lib/clinical-types";
 
 interface FolderBillingProps {
@@ -102,59 +107,60 @@ export function FolderBilling({ visit }: FolderBillingProps) {
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="px-0 py-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <Th>Service</Th>
-                  <Th>Group</Th>
-                  <Th className="text-right">Qty</Th>
-                  <Th className="text-right">Unit</Th>
-                  <Th className="text-right">Line</Th>
-                  <Th className="text-right">NHIS</Th>
-                  <Th>Payer</Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {items.map((b) => (
-                  <BillRow key={b.id} item={b} currency={bill.currency} />
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+        <div className="space-y-3">
+          <FolderRecordFeedBanner>
+            Expand each line for quantity, unit price, NHIS coverage split, and payer type as stored on the bill.
+          </FolderRecordFeedBanner>
+          {items.map((item, idx) => (
+            <FolderRecordExpandableRow
+              key={item.id}
+              railIndex={items.length - idx}
+              icon={Package}
+              eyebrow="Bill line"
+              title={<span>{item.serviceName}</span>}
+              preview={
+                <span className="font-clinical">
+                  {item.serviceGroup} · Qty {item.quantity} · {bill.currency}{" "}
+                  {minor(item.lineTotalMinor).toFixed(2)} line total
+                </span>
+              }
+              badges={<span className="status-pill text-xs status-pill-pending">{item.payerType}</span>}
+            >
+              <div className="space-y-3">
+                <FolderRecordField label="Service code" value={item.serviceCode?.trim() || null} />
+                <FolderRecordField label="Service group" value={item.serviceGroup} />
+                <FolderRecordField label="Quantity" value={String(item.quantity)} />
+                <FolderRecordField
+                  label="Unit price"
+                  value={`${bill.currency} ${minor(item.unitPriceMinor).toFixed(2)}`}
+                />
+                <FolderRecordField
+                  label="Line total"
+                  value={`${bill.currency} ${minor(item.lineTotalMinor).toFixed(2)}`}
+                />
+                <FolderRecordField
+                  label="NHIS covered"
+                  value={
+                    minor(item.nhisCoveredMinor) > 0
+                      ? `${bill.currency} ${minor(item.nhisCoveredMinor).toFixed(2)}`
+                      : null
+                  }
+                />
+                <FolderRecordField
+                  label="Discount (line)"
+                  value={
+                    minor(item.discountMinor) > 0
+                      ? `${bill.currency} ${minor(item.discountMinor).toFixed(2)}`
+                      : null
+                  }
+                />
+                <FolderRecordField label="Payer type" value={String(item.payerType)} />
+              </div>
+            </FolderRecordExpandableRow>
+          ))}
+        </div>
       )}
     </div>
-  );
-}
-
-function BillRow({ item, currency }: { item: BillItemDto; currency: string }) {
-  return (
-    <tr>
-      <td className="px-3 py-2">
-        <p className="font-medium text-foreground">{item.serviceName}</p>
-        {item.serviceCode && (
-          <p className="patient-id mt-0.5 text-[10px] uppercase">{item.serviceCode}</p>
-        )}
-      </td>
-      <td className="px-3 py-2 text-xs text-muted-foreground">{item.serviceGroup}</td>
-      <td className="px-3 py-2 text-right font-clinical">{item.quantity}</td>
-      <td className="px-3 py-2 text-right font-clinical">
-        {currency} {minor(item.unitPriceMinor).toFixed(2)}
-      </td>
-      <td className="px-3 py-2 text-right font-clinical font-semibold">
-        {currency} {minor(item.lineTotalMinor).toFixed(2)}
-      </td>
-      <td className="px-3 py-2 text-right font-clinical text-muted-foreground">
-        {minor(item.nhisCoveredMinor) > 0
-          ? `${currency} ${minor(item.nhisCoveredMinor).toFixed(2)}`
-          : "—"}
-      </td>
-      <td className="px-3 py-2">
-        <span className="status-pill text-xs status-pill-pending">{item.payerType}</span>
-      </td>
-    </tr>
   );
 }
 
@@ -188,15 +194,5 @@ function Stat({
         {currency} {value.toFixed(2)}
       </p>
     </div>
-  );
-}
-
-function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return (
-    <th
-      className={`px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className ?? ""}`}
-    >
-      {children}
-    </th>
   );
 }

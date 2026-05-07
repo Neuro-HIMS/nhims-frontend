@@ -53,6 +53,7 @@ export function BookingForm({
   patientId,
   onBooked,
   showPatientHeader = true,
+  initialVisitType = "OPD",
 }: {
   patient: Patient;
   /** Real backend UUID for the patient — bookings need this, not the public ID. */
@@ -60,6 +61,8 @@ export function BookingForm({
   onBooked?: (appt: AppointmentDto) => void;
   /** Hide the embedded mini patient card when the parent already shows it. */
   showPatientHeader?: boolean;
+  /** Pre-select visit type (e.g. follow-up planner). */
+  initialVisitType?: VisitType;
 }) {
   const qc = useQueryClient();
   const router = useRouter();
@@ -91,7 +94,7 @@ export function BookingForm({
 
   const [date, setDate] = useState<string>(today);
   const [time, setTime] = useState<string>(inAnHour);
-  const [visitType, setVisitType] = useState<VisitType>("OPD");
+  const [visitType, setVisitType] = useState<VisitType>(initialVisitType);
   const [serviceId, setServiceId] = useState<string>("");
   const [payerType, setPayerType] = useState<string>(patient.nhisStatus === "active" ? "NHIS" : "CASH");
   const [clientStatus, setClientStatus] = useState<"new" | "old">("new");

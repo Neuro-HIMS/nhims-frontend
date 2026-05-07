@@ -11,11 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
-import type { ClinicalServiceDto } from "@/types/clinical.types";
+import type { ClinicalServiceDto, LabResultPanelCode } from "@/types/clinical.types";
 import type { ApiError } from "@/types/api.types";
 
 /**
@@ -46,7 +47,13 @@ export function LaboratoryCatalogSetupView() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(EMPTY_CREATE);
   const [editOpen, setEditOpen] = useState<ClinicalServiceDto | null>(null);
-  const [editForm, setEditForm] = useState({ serviceName: "", nhisTariffCode: "", description: "", active: true });
+  const [editForm, setEditForm] = useState({
+    serviceName: "",
+    nhisTariffCode: "",
+    description: "",
+    active: true,
+    labResultPanel: "NONE" as LabResultPanelCode,
+  });
 
   const rows = listQuery.data ?? [];
 
@@ -57,6 +64,7 @@ export function LaboratoryCatalogSetupView() {
       nhisTariffCode: row.nhisTariffCode ?? "",
       description: row.description ?? "",
       active: row.active,
+      labResultPanel: ((row.labResultPanel as LabResultPanelCode) || "NONE") as LabResultPanelCode,
     });
   }
 
@@ -68,6 +76,7 @@ export function LaboratoryCatalogSetupView() {
         nhisTariffCode: editForm.nhisTariffCode.trim(),
         description: editForm.description.trim(),
         active: editForm.active,
+        labResultPanel: editForm.labResultPanel,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.labCatalogSetup });
@@ -136,6 +145,21 @@ export function LaboratoryCatalogSetupView() {
               <Label className="text-xs">Description</Label>
               <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label className="text-xs">Structured result panel</Label>
+              <Select
+                value={form.labResultPanel}
+                onValueChange={(v) => setForm({ ...form, labResultPanel: v as LabResultPanelCode })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">None (generic analyte rows)</SelectItem>
+                  <SelectItem value="MALARIA_PANEL">Malaria / RDT worksheet</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="sm:col-span-2 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setCreating(false)}>
                 Cancel
@@ -149,6 +173,7 @@ export function LaboratoryCatalogSetupView() {
                     nhisTariffCode: form.nhisTariffCode.trim() || undefined,
                     description: form.description.trim() || undefined,
                     active: true,
+                    labResultPanel: form.labResultPanel,
                   })
                 }
               >
@@ -167,6 +192,7 @@ export function LaboratoryCatalogSetupView() {
               <th className="px-4 py-2">Code</th>
               <th className="px-4 py-2">Name</th>
               <th className="px-4 py-2">NHIS tariff</th>
+              <th className="px-4 py-2">Panel</th>
               <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2" />
             </tr>
@@ -174,13 +200,13 @@ export function LaboratoryCatalogSetupView() {
           <tbody className="divide-y divide-border">
             {listQuery.isLoading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                   <Loader2 className="inline h-5 w-5 animate-spin" /> Loading LAB catalogue…
                 </td>
               </tr>
             ) : labRows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                   No LAB services in this slice — add one above.
                 </td>
               </tr>
@@ -190,6 +216,9 @@ export function LaboratoryCatalogSetupView() {
                   <td className="px-4 py-2.5 font-clinical">{r.serviceCode}</td>
                   <td className="px-4 py-2.5">{r.serviceName}</td>
                   <td className="px-4 py-2.5 font-clinical text-xs text-muted-foreground">{r.nhisTariffCode || "—"}</td>
+                  <td className="px-4 py-2.5 font-clinical text-xs text-muted-foreground">
+                    {(r.labResultPanel as string) || "NONE"}
+                  </td>
                   <td className="px-4 py-2.5">
                     {r.active ? (
                       <Badge variant="secondary" className="text-xs">
@@ -239,6 +268,21 @@ export function LaboratoryCatalogSetupView() {
                 <Label className="text-xs">Description</Label>
                 <Textarea rows={2} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Structured result panel</Label>
+                <Select
+                  value={editForm.labResultPanel}
+                  onValueChange={(v) => setEditForm({ ...editForm, labResultPanel: v as LabResultPanelCode })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">None</SelectItem>
+                    <SelectItem value="MALARIA_PANEL">Malaria / RDT worksheet</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-2">
                 <Switch checked={editForm.active} onCheckedChange={(active) => setEditForm({ ...editForm, active })} />
                 <span className="text-xs text-muted-foreground">Catalog entry active (inactive hides from selectors)</span>
@@ -254,4 +298,10 @@ export function LaboratoryCatalogSetupView() {
   );
 }
 
-const EMPTY_CREATE = { serviceCode: "", serviceName: "", nhisTariffCode: "", description: "" };
+const EMPTY_CREATE = {
+  serviceCode: "",
+  serviceName: "",
+  nhisTariffCode: "",
+  description: "",
+  labResultPanel: "NONE" as LabResultPanelCode,
+};

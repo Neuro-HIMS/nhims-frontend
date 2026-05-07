@@ -1,8 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import { ChevronRight, History } from "lucide-react";
+import { CalendarClock, History } from "lucide-react";
 
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { STATUS_LABEL, TRIAGE_LABELS } from "@/components/nurse/lib/nurse-data";
@@ -37,61 +42,66 @@ export function FolderVisits({ visits, currentVisitId, onSelect }: FolderVisitsP
   }
 
   return (
-    <Card>
-      <CardContent className="px-0 py-0">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <Th>Date / Time</Th>
-              <Th>Visit No.</Th>
-              <Th>Service / Department</Th>
-              <Th>Reason</Th>
-              <Th>Priority</Th>
-              <Th>Status</Th>
-              <Th />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {list.map((v) => {
-              const triage = TRIAGE_LABELS[v.priority];
-              const isCurrent = v.id === currentVisitId;
-              return (
-                <tr
-                  key={v.id}
-                  className={`table-row-interactive ${isCurrent ? "bg-[hsl(var(--notice-info-bg))]" : ""}`}
-                  onClick={() => onSelect?.(v.id)}
-                >
-                  <td className="px-3 py-2.5 text-foreground">
-                    <p className="font-clinical">{v.appointmentDate}</p>
-                    <p className="patient-id mt-0.5">{v.appointmentTime}</p>
-                  </td>
-                  <td className="px-3 py-2.5 font-clinical text-xs">{v.visitNo}</td>
-                  <td className="px-3 py-2.5">
-                    <p className="text-foreground">{v.serviceName}</p>
-                    <p className="patient-id mt-0.5">{v.department}</p>
-                  </td>
-                  <td className="px-3 py-2.5 text-foreground">{v.reason}</td>
-                  <td className="px-3 py-2.5">
-                    <span className={`status-pill text-xs ${triage.badgeClass}`}>{triage.label}</span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className="status-pill status-pill-pending text-xs">{STATUS_LABEL[v.status]}</span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Button size="sm" variant="ghost">
-                      {isCurrent ? "Current" : <ChevronRight className="h-4 w-4" />}
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </CardContent>
-    </Card>
+    <div className="space-y-3">
+      <FolderRecordFeedBanner>
+        Pick <strong>Open folder</strong> to load that encounter into the chart. Expand a row for scheduling, sponsor,
+        and clinician details captured on the visit.
+      </FolderRecordFeedBanner>
+      {list.map((v, idx) => {
+        const triage = TRIAGE_LABELS[v.priority];
+        const isCurrent = v.id === currentVisitId;
+        return (
+          <FolderRecordExpandableRow
+            key={v.id}
+            railIndex={list.length - idx}
+            icon={CalendarClock}
+            eyebrow="Encounter / visit"
+            title={
+              <span>
+                <span className="font-clinical">{v.visitNo}</span>
+                <span className="text-muted-foreground"> · </span>
+                {v.serviceName}
+              </span>
+            }
+            preview={
+              <span>
+                {v.appointmentDate} · {v.appointmentTime} · {v.department}
+              </span>
+            }
+            cardClassName={isCurrent ? "border-[hsl(var(--notice-info-border))] bg-[hsl(var(--notice-info-bg))]/35" : undefined}
+            badges={
+              <>
+                <span className={`status-pill text-xs ${triage.badgeClass}`}>{triage.label}</span>
+                <span className="status-pill status-pill-pending text-xs">{STATUS_LABEL[v.status]}</span>
+                {isCurrent ? (
+                  <span className="status-pill text-xs border-[hsl(var(--notice-info-border))] bg-background">
+                    Current chart
+                  </span>
+                ) : null}
+              </>
+            }
+            headerActions={
+              <Button size="sm" variant={isCurrent ? "secondary" : "outline"} onClick={() => onSelect?.(v.id)}>
+                {isCurrent ? "Loaded" : "Open folder"}
+              </Button>
+            }
+          >
+            <div className="space-y-3">
+              <FolderRecordField label="Visit number" value={v.visitNo} />
+              <FolderRecordField label="Patient" value={`${v.patientName} (${v.patientSex})`} />
+              <FolderRecordField label="Scheduled" value={`${v.appointmentDate} · ${v.appointmentTime}`} />
+              <FolderRecordField label="Visit type" value={v.visitType.toUpperCase()} />
+              <FolderRecordField label="Department" value={v.department} />
+              <FolderRecordField label="Assigned clinician" value={v.clinicianName || null} />
+              <FolderRecordField label="Reason for visit" value={v.reason?.trim() || null} />
+              <FolderRecordField label="Sponsor / payer snapshot" value={v.sponsor?.trim() || null} />
+              <FolderRecordField label="Scheme" value={v.scheme?.trim() || null} />
+              <FolderRecordField label="Fee recorded" value={v.fee != null ? `${v.fee.toFixed(2)}` : null} />
+              <FolderRecordField label="Workflow status" value={STATUS_LABEL[v.status]} />
+            </div>
+          </FolderRecordExpandableRow>
+        );
+      })}
+    </div>
   );
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">{children}</th>;
 }

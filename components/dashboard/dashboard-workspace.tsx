@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   Users,
   BedDouble,
@@ -80,7 +80,7 @@ function OverviewView() {
     (e) => !["CANCELLED", "NO_SHOW"].includes(e.status),
   ).length;
 
-  const liveValue = (q: typeof todayEncountersQuery, n: number) =>
+  const liveValue = (q: UseQueryResult<unknown>, n: number) =>
     q.isLoading ? "…" : q.isError ? "—" : String(n);
 
   return (
@@ -133,7 +133,7 @@ function OverviewView() {
         <StatCard
           label="Lab READY worklist"
           value={liveValue(labReadyQuery, labReadyQuery.data?.length ?? 0)}
-          delta="Orders in READY status (includes unpaid cashier queue where applicable)"
+          delta="Orders on lab queue (bill line may still be open)"
           icon={<FlaskConical className="h-5 w-5" />}
           alert={labReadyQuery.isSuccess && (labReadyQuery.data?.length ?? 0) > 0}
         />

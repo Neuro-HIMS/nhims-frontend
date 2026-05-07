@@ -1,15 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Download } from "lucide-react";
+import { format } from "date-fns";
+import { Download, Loader2 } from "lucide-react";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { queryKeys } from "@/lib/query-keys";
 import { reportsService } from "@/services/reports.service";
+import { toast } from "sonner";
 
 const STATIC_FALLBACK_TABS = [
   { label: "DHIMS2 Summary", category: "DHIMS2", routePath: "/reports?view=dhims2", viewKey: "dhims2" },
@@ -19,6 +22,7 @@ const STATIC_FALLBACK_TABS = [
 
 export function ReportsWorkspace() {
   const searchParams = useSearchParams();
+  const [month, setMonth] = useState(() => format(new Date(), "yyyy-MM"));
 
   const defsQuery = useQuery({
     queryKey: queryKeys.reporting.definitions,
@@ -74,12 +78,27 @@ export function ReportsWorkspace() {
         </Card>
       )}
 
+      <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-card px-4 py-3">
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Reporting period</p>
+          <Input
+            type="month"
+            className="h-9 w-[11rem] font-clinical"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+          />
+        </div>
+        <p className="pb-1 text-xs text-muted-foreground">
+          Aggregates use UTC month boundaries and your signed-in facility.
+        </p>
+      </div>
+
       <ModuleSubNav items={subNavItems} basePath="/reports" />
 
       <div className="pt-2">
-        {activeView === "dhims2" && <Dhims2View />}
-        {activeView === "monthly" && <MonthlyView />}
-        {activeView === "exports" && <ExportsView />}
+        {activeView === "dhims2" && <Dhims2View month={month} />}
+        {activeView === "monthly" && <MonthlyView month={month} />}
+        {activeView === "exports" && <ExportsView month={month} />}
       </div>
     </div>
   );
@@ -95,119 +114,209 @@ function parseShellView(routePath: string): string {
   }
 }
 
-function Dhims2View() {
+function Dhims2View({ month }: { month: string }) {
+  const q = useQuery({
+    queryKey: queryKeys.reporting.dhims2(month),
+    queryFn: () => reportsService.runDhims2(month),
+    staleTime: 60_000,
+  });
+
+  async function download() {
+    try {
+      await reportsService.downloadDhims2Csv(month);
+    } catch {
+      toast.error("Could not download CSV.");
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">Reporting period: May 2026 · DHIMS2 shell</p>
-        <Button variant="outline" size="sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {q.data?.periodLabel ? `${q.data.periodLabel} · DHIMS2 aggregates` : "DHIMS2 aggregates"}
+        </p>
+        <Button variant="outline" size="sm" onClick={download} disabled={!month}>
           <Download className="mr-1.5 h-4 w-4" />
-          Export to DHIMS2
+          Export CSV
         </Button>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">DHIMS2 Aggregate Indicators</CardTitle>
-          <CardDescription>Auto-aggregated from facility data</CardDescription>
+          <CardTitle className="text-base">DHIMS2 aggregate indicators</CardTitle>
+          <CardDescription>Facility-derived counts plus placeholders for indicators not yet linked to clinical coding.</CardDescription>
         </CardHeader>
         <CardContent>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Indicator
-                </th>
-                <th className="pb-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Value
-                </th>
-                <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Category
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {DHIMS2_INDICATORS.map((row) => (
-                <tr key={row.name}>
-                  <td className="py-2.5 font-medium text-foreground">{row.name}</td>
-                  <td className="py-2.5 text-right font-clinical text-foreground">{row.value}</td>
-                  <td className="py-2.5 text-sm text-muted-foreground">{row.category}</td>
+          {q.isLoading ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" /> Loading aggregates…
+            </div>
+          ) : q.isError ? (
+            <p className="py-8 text-center text-sm text-destructive">Could not load DHIMS2 run.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Indicator
+                  </th>
+                  <th className="pb-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Value
+                  </th>
+                  <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Category
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {(q.data?.indicators ?? []).map((row) => (
+                  <tr key={row.code}>
+                    <td className="py-2.5 font-medium text-foreground">{row.label}</td>
+                    <td className="py-2.5 text-right font-clinical text-foreground">
+                      {row.value === null ? "—" : row.value}
+                    </td>
+                    <td className="py-2.5 text-sm text-muted-foreground">{row.category}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function MonthlyView() {
+function MonthlyView({ month }: { month: string }) {
+  const q = useQuery({
+    queryKey: queryKeys.reporting.monthly(month),
+    queryFn: () => reportsService.runMonthly(month),
+    staleTime: 60_000,
+  });
+
+  async function download() {
+    try {
+      await reportsService.downloadMonthlyCsv(month);
+    } catch {
+      toast.error("Could not download CSV.");
+    }
+  }
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Monthly Summary — May 2026</CardTitle>
-        <CardDescription>Facility performance overview for submission</CardDescription>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle className="text-base">
+            Monthly summary{q.data?.periodLabel ? ` · ${q.data.periodLabel}` : ""}
+          </CardTitle>
+          <CardDescription>Facility performance snapshot for the selected month.</CardDescription>
+        </div>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={download} disabled={!month}>
+          <Download className="mr-1.5 h-4 w-4" />
+          CSV
+        </Button>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {MONTHLY_METRICS.map((m) => (
-            <div key={m.label} className="rounded-lg border border-border p-3">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{m.label}</p>
-              <p className="mt-1 text-2xl font-semibold font-clinical text-foreground">{m.value}</p>
-              {m.note && <p className="mt-0.5 text-xs text-muted-foreground">{m.note}</p>}
-            </div>
-          ))}
-        </div>
+        {q.isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading summary…
+          </div>
+        ) : q.isError ? (
+          <p className="py-8 text-center text-sm text-destructive">Could not load monthly summary.</p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {(q.data?.metrics ?? []).map((m) => (
+              <div key={m.code} className="rounded-lg border border-border p-3">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                <p className="mt-1 text-2xl font-semibold font-clinical text-foreground">
+                  {m.value === null ? "—" : m.value}
+                </p>
+                {m.note ? <p className="mt-0.5 text-xs text-muted-foreground">{m.note}</p> : null}
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function ExportsView() {
-  const EXPORT_ROWS = [
-    { name: "DHIMS2 Monthly Return", format: "Excel", period: "May 2026", ready: true },
-    { name: "OPD Morbidity Report", format: "PDF", period: "May 2026", ready: true },
-    { name: "ANC Coverage Report", format: "Excel", period: "May 2026", ready: false },
-    { name: "NHIS Claims Bundle", format: "XML", period: "May 2026", ready: true },
-  ];
+function exportKindFromRoute(routePath: string): "dhims2" | "monthly" | null {
+  const p = routePath.toLowerCase();
+  if (p.includes("dhims2")) return "dhims2";
+  if (p.includes("monthly")) return "monthly";
+  return null;
+}
+
+function ExportsView({ month }: { month: string }) {
+  const exportsQuery = useQuery({
+    queryKey: queryKeys.reporting.exports,
+    queryFn: () => reportsService.listExportDefinitions(),
+    staleTime: 120_000,
+  });
+
+  async function run(kind: "dhims2" | "monthly") {
+    try {
+      if (kind === "dhims2") await reportsService.downloadDhims2Csv(month);
+      else await reportsService.downloadMonthlyCsv(month);
+    } catch {
+      toast.error("Download failed.");
+    }
+  }
+
+  const catalogue = exportsQuery.data ?? [];
 
   return (
     <div className="space-y-3">
-      {EXPORT_ROWS.map((exp) => (
-        <div key={exp.name} className="flex items-center justify-between rounded-lg border border-border bg-card p-4">
-          <div>
-            <p className="font-medium text-foreground">{exp.name}</p>
-            <p className="text-xs text-muted-foreground">
-              {exp.period} · {exp.format}
-            </p>
-          </div>
-          <Button variant={exp.ready ? "default" : "outline"} size="sm" disabled={!exp.ready}>
+      <div className="rounded-lg border border-border bg-muted/15 p-4">
+        <p className="text-sm font-medium text-foreground">Standard CSV extracts</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Same payloads as the DHIMS2 and Monthly tabs — suitable for spreadsheets or upstream NHIMS tooling.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="sm" variant="default" onClick={() => run("dhims2")}>
             <Download className="mr-1.5 h-4 w-4" />
-            {exp.ready ? "Download" : "Generating…"}
+            DHIMS2 CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => run("monthly")}>
+            <Download className="mr-1.5 h-4 w-4" />
+            Monthly summary CSV
           </Button>
         </div>
-      ))}
+      </div>
+
+      {exportsQuery.isLoading ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading export catalogue…
+        </div>
+      ) : catalogue.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No export shells are assigned for your role yet — use the standard extracts above.
+        </p>
+      ) : (
+        catalogue.map((exp) => {
+          const kind = exportKindFromRoute(exp.routePath);
+          return (
+            <div
+              key={exp.id}
+              className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <p className="font-medium text-foreground">{exp.title}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{exp.description || exp.code}</p>
+              </div>
+              <Button
+                variant={kind ? "default" : "outline"}
+                size="sm"
+                disabled={!kind}
+                onClick={() => kind && run(kind)}
+              >
+                <Download className="mr-1.5 h-4 w-4" />
+                {kind ? "Download" : "No generator"}
+              </Button>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
-
-const DHIMS2_INDICATORS = [
-  { name: "OPD New Attendances", value: "142", category: "OPD" },
-  { name: "OPD Re-attendances", value: "89", category: "OPD" },
-  { name: "Malaria (Confirmed) Cases", value: "31", category: "Disease Surveillance" },
-  { name: "Malaria (Suspected) Cases", value: "12", category: "Disease Surveillance" },
-  { name: "ANC 1st Visit", value: "8", category: "Maternal Health" },
-  { name: "ANC 4th+ Visit", value: "5", category: "Maternal Health" },
-  { name: "Deliveries at Facility", value: "3", category: "Maternal Health" },
-  { name: "Under-5 OPD Visits", value: "48", category: "Child Health" },
-  { name: "Family Planning Acceptors", value: "14", category: "Reproductive Health" },
-];
-
-const MONTHLY_METRICS = [
-  { label: "Total OPD Visits", value: "231", note: "New + Re-attendances" },
-  { label: "IPD Admissions", value: "38", note: "" },
-  { label: "Lab Tests Performed", value: "312", note: "" },
-  { label: "Deliveries", value: "3", note: "This month" },
-  { label: "NHIS Claims Submitted", value: "187", note: "GHS 48,200 total" },
-  { label: "Vaccine Coverage", value: "92%", note: "Under-1 BCG" },
-];

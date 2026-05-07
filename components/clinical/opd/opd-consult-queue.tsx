@@ -13,12 +13,14 @@ import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import type { EncounterDto } from "@/types/clinical.types";
 
+export type OpdQueueSections = "both" | "consult" | "diagnostics";
+
 /**
  * OPD queues: consultants see patients awaiting or in consultation, plus
  * a second list for those at lab/pharmacy so visits do not “disappear”
  * after ordering tests or Rx.
  */
-export function OpdConsultQueue() {
+export function OpdConsultQueue({ sections = "both" }: { sections?: OpdQueueSections }) {
   const router = useRouter();
   const today = todayDateIso();
 
@@ -73,29 +75,33 @@ export function OpdConsultQueue() {
 
   return (
     <div className="space-y-6">
-      <QueueSection
-        title={`Consult queue · ${today}`}
-        description="Patients vitalled and ready for the doctor, or already in consultation. Open folder for SOAP notes and orders."
-        loading={loading}
-        emptyTitle="No patients waiting"
-        emptyHint="Once a nurse takes vitals the patient will appear here automatically."
-        rows={consultRows}
-        statusLabel={(e) =>
-          e.status === "IN_CONSULTATION" ? "In consultation" : "Awaiting doctor"
-        }
-        onOpen={open}
-      />
+      {(sections === "both" || sections === "consult") && (
+        <QueueSection
+          title={`Consult queue · ${today}`}
+          description="Patients vitalled and ready for the doctor, or already in consultation. Open folder for SOAP notes and orders."
+          loading={loading}
+          emptyTitle="No patients waiting"
+          emptyHint="Once a nurse takes vitals the patient will appear here automatically."
+          rows={consultRows}
+          statusLabel={(e) =>
+            e.status === "IN_CONSULTATION" ? "In consultation" : "Awaiting doctor"
+          }
+          onOpen={open}
+        />
+      )}
 
-      <QueueSection
-        title="At lab / pharmacy (same visit)"
-        description="Patients sent for investigations or dispensing still appear here so you can reopen the folder and continue care after results."
-        loading={loading}
-        emptyTitle="No patients in diagnostics"
-        emptyHint="When you place lab or pharmacy orders, the encounter moves here until the station completes its work."
-        rows={diagRows}
-        statusLabel={(e) => (e.status === "AT_LAB" ? "At lab" : "At pharmacy")}
-        onOpen={open}
-      />
+      {(sections === "both" || sections === "diagnostics") && (
+        <QueueSection
+          title="At lab / pharmacy (same visit)"
+          description="Patients sent for investigations or dispensing still appear here so you can reopen the folder and continue care after results."
+          loading={loading}
+          emptyTitle="No patients in diagnostics"
+          emptyHint="When you place lab or pharmacy orders, the encounter moves here until the station completes its work."
+          rows={diagRows}
+          statusLabel={(e) => (e.status === "AT_LAB" ? "At lab" : "At pharmacy")}
+          onOpen={open}
+        />
+      )}
     </div>
   );
 }

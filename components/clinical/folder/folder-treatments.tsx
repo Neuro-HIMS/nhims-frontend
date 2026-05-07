@@ -4,6 +4,11 @@ import { useMemo, useState } from "react";
 import { Pill, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +16,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsField } from "@/components/records/shared/records-field";
 import { useEncountersStore } from "@/store/encounters.store";
-import { formatDateTime } from "@/components/nurse/lib/nurse-data";
 import type { TreatmentEntry, Visit } from "@/lib/clinical-types";
 
 const ROUTES = ["Oral (PO)", "Intravenous (IV)", "Intramuscular (IM)", "Subcutaneous (SC)", "Topical", "Inhalation", "Rectal"];
@@ -142,58 +146,51 @@ export function FolderTreatments({ patientId, visit, prescribedBy }: FolderTreat
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="px-0 py-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <Th>Drug</Th>
-                  <Th>Dose</Th>
-                  <Th>Route</Th>
-                  <Th>Frequency</Th>
-                  <Th>Days</Th>
-                  <Th>Status</Th>
-                  <Th>Ordered</Th>
-                  <Th />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {list.map((t) => (
-                  <tr key={t.id}>
-                    <td className="px-3 py-2 text-foreground">
-                      <p className="font-medium">{t.drug}</p>
-                      {t.instructions && <p className="mt-0.5 text-xs text-muted-foreground">{t.instructions}</p>}
-                    </td>
-                    <td className="px-3 py-2 font-clinical">{t.dose}</td>
-                    <td className="px-3 py-2">{t.route}</td>
-                    <td className="px-3 py-2">{t.frequency}</td>
-                    <td className="px-3 py-2 font-clinical">{t.durationDays || "—"}</td>
-                    <td className="px-3 py-2">
-                      <StatusPill status={t.status} />
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {formatDateTime(t.prescribedAt)}<br />
-                      <span className="text-muted-foreground">by {t.prescribedBy}</span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Select value={t.status} onValueChange={(v) => setTreatmentStatus(t.id, v as TreatmentEntry["status"])}>
-                        <SelectTrigger className="h-8 w-32 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ordered">Ordered</SelectItem>
-                          <SelectItem value="administered">Administered</SelectItem>
-                          <SelectItem value="withheld">Withheld</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+        <div className="space-y-3">
+          <FolderRecordFeedBanner>
+            Expand an entry for dose, route, duration, instructions, and dispensing status.
+          </FolderRecordFeedBanner>
+          {list.map((t, idx) => (
+            <FolderRecordExpandableRow
+              key={t.id}
+              railIndex={list.length - idx}
+              icon={Pill}
+              eyebrow="Treatment order"
+              title={<span className="font-medium">{t.drug}</span>}
+              preview={
+                <span className="font-clinical">
+                  {t.dose} · {t.route} · {t.frequency}
+                  {t.durationDays ? ` · ${t.durationDays} day(s)` : ""}
+                </span>
+              }
+              footerTime={t.prescribedAt}
+              badges={<StatusPill status={t.status} />}
+              headerActions={
+                <Select value={t.status} onValueChange={(v) => setTreatmentStatus(t.id, v as TreatmentEntry["status"])}>
+                  <SelectTrigger className="h-8 w-[140px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ordered">Ordered</SelectItem>
+                    <SelectItem value="administered">Administered</SelectItem>
+                    <SelectItem value="withheld">Withheld</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              }
+            >
+              <div className="space-y-3">
+                <FolderRecordField label="Drug" value={t.drug} />
+                <FolderRecordField label="Dose" value={t.dose} />
+                <FolderRecordField label="Route" value={t.route} />
+                <FolderRecordField label="Frequency" value={t.frequency} />
+                <FolderRecordField label="Duration (days)" value={t.durationDays ? String(t.durationDays) : null} />
+                <FolderRecordField label="Instructions" value={t.instructions?.trim() || null} />
+                <FolderRecordField label="Ordered by" value={t.prescribedBy} />
+              </div>
+            </FolderRecordExpandableRow>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -207,8 +204,4 @@ function StatusPill({ status }: { status: TreatmentEntry["status"] }) {
       ? "status-pill-inactive"
       : "status-pill-pending";
   return <span className={`status-pill text-xs ${cls}`}>{status}</span>;
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">{children}</th>;
 }

@@ -5,6 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Pill, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  FolderRecordExpandableRow,
+  FolderRecordFeedBanner,
+  FolderRecordField,
+} from "@/components/clinical/folder/folder-record-expandable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -61,6 +66,7 @@ export function FolderOrdersRx({ visit, canOrder }: FolderOrdersRxProps) {
       clinicalService.placePrescription(visit!.id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.clinical.pharmacyQueue });
       toast.success("Prescription saved — sent to pharmacy queue");
       setShowForm(false);
     },
@@ -405,50 +411,59 @@ function PrescriptionList({ prescriptions }: { prescriptions: PrescriptionDto[] 
     );
   }
   return (
-    <div className="space-y-2">
-      {sorted.map((rx) => (
-        <Card key={rx.id}>
-          <CardContent className="space-y-2 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {rx.lines.length} drug{rx.lines.length === 1 ? "" : "s"} prescribed
-                </p>
-                <p className="patient-id mt-0.5">
-                  {rx.prescribedAt ? formatDateTime(rx.prescribedAt) : ""} · {rx.prescribedByName}
-                </p>
-                {rx.notes && <p className="mt-1 text-sm text-muted-foreground">{rx.notes}</p>}
+    <div className="space-y-3">
+      <FolderRecordFeedBanner>
+        Expand a prescription for each drug line (form, route, quantity, dispensed progress) and clinician notes.
+      </FolderRecordFeedBanner>
+      {sorted.map((rx, idx) => {
+        const drugSummary = rx.lines
+          .map((l) => l.drugName + (l.strength ? ` ${l.strength}` : ""))
+          .filter(Boolean)
+          .slice(0, 3)
+          .join(" · ");
+        return (
+          <FolderRecordExpandableRow
+            key={rx.id}
+            railIndex={sorted.length - idx}
+            icon={Pill}
+            eyebrow="Prescription"
+            title={<span>{rx.lines.length} medication line{rx.lines.length === 1 ? "" : "s"}</span>}
+            preview={<span className="line-clamp-2">{drugSummary || "Rx bundle"}</span>}
+            footerTime={rx.prescribedAt}
+            badges={<span className={statusClass(rx.status)}>{prettyStatus(rx.status)}</span>}
+          >
+            <div className="space-y-4">
+              <FolderRecordField label="Prescribed by" value={rx.prescribedByName} />
+              <FolderRecordField label="Prescription notes" value={rx.notes?.trim() || null} />
+              <FolderRecordField label="Pharmacy notes" value={rx.pharmacyNotes?.trim() || null} />
+              <div className="space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Drug lines</p>
+                {rx.lines.map((l) => (
+                  <div key={l.id} className="rounded-lg border border-border bg-muted/15 p-3">
+                    <p className="text-sm font-medium text-foreground">
+                      {l.drugName}{" "}
+                      {l.strength ? <span className="text-muted-foreground">{l.strength}</span> : null}
+                    </p>
+                    <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                      <FolderRecordField
+                        label="Sig"
+                        value={[l.form, l.route, l.frequency].filter(Boolean).join(" · ") || null}
+                      />
+                      <FolderRecordField label="Duration (days)" value={l.durationDays ? String(l.durationDays) : null} />
+                      <FolderRecordField
+                        label="Dispensed / ordered"
+                        value={`${Number(l.dispensedQty)} / ${Number(l.quantity)}`}
+                      />
+                      <FolderRecordField label="Line status" value={<span className={lineStatusClass(l.status)}>{prettyStatus(l.status)}</span>} />
+                      <FolderRecordField label="Instructions" value={l.instructions?.trim() || null} />
+                    </div>
+                  </div>
+                ))}
               </div>
-              <span className={statusClass(rx.status)}>{prettyStatus(rx.status)}</span>
             </div>
-            <div className="rounded-md border border-border bg-muted/30 p-3">
-              <table className="w-full text-xs">
-                <tbody>
-                  {rx.lines.map((l) => (
-                    <tr key={l.id} className="border-t border-border first:border-t-0">
-                      <td className="py-1.5 font-medium">
-                        {l.drugName} {l.strength && <span className="text-muted-foreground">{l.strength}</span>}
-                      </td>
-                      <td className="py-1.5 text-muted-foreground">
-                        {[l.form, l.route, l.frequency].filter(Boolean).join(" · ")}
-                      </td>
-                      <td className="py-1.5 text-right font-clinical">
-                        {Number(l.dispensedQty)}/{Number(l.quantity)}
-                      </td>
-                      <td className="py-1.5 text-right">
-                        <span className={lineStatusClass(l.status)}>{prettyStatus(l.status)}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {rx.pharmacyNotes && (
-              <p className="text-xs italic text-muted-foreground">Pharmacy: {rx.pharmacyNotes}</p>
-            )}
-          </CardContent>
-        </Card>
-      ))}
+          </FolderRecordExpandableRow>
+        );
+      })}
     </div>
   );
 }
