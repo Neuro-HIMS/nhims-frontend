@@ -253,6 +253,9 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
                 <FolderRecordField label="Reason" value={r.reason} />
                 <FolderRecordField label="Referred by" value={r.referredByName} />
                 <FolderRecordField label="Response / outcome" value={r.response?.trim() || null} />
+                <Button variant="outline" size="sm" onClick={() => clinicalService.openReferralLetterPdf(r.id)}>
+                  Download referral letter (PDF)
+                </Button>
               </div>
             </FolderRecordExpandableRow>
           ))}

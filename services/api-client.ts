@@ -1,12 +1,15 @@
 import axios from "axios";
-import Cookies from "js-cookie";
 
 import type { ApiResponse } from "@/types/api.types";
 import type { LoginResponse } from "@/types/auth.types";
 
-const ACCESS_TOKEN_KEY = "hmis_access_token";
 const REFRESH_TOKEN_KEY = "hmis_refresh_token";
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api";
+
+/**
+ * Same-origin `/api` (Next rewrite → Java backend) so HttpOnly `hmis_access` is set on the app host.
+ * Override with `NEXT_PUBLIC_API_URL` only if you use a dedicated API origin (SSR session may be limited).
+ */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "/api";
 
 /** Default REST timeout; CSV/export/import should override with {@link EXPORT_REQUEST_TIMEOUT_MS}. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -17,21 +20,6 @@ export const apiClient = axios.create({
   withCredentials: true,
   timeout: DEFAULT_REQUEST_TIMEOUT_MS,
 });
-
-export function getAccessToken(): string | undefined {
-  return Cookies.get(ACCESS_TOKEN_KEY);
-}
-
-export function setAccessToken(token: string): void {
-  Cookies.set(ACCESS_TOKEN_KEY, token, {
-    sameSite: "strict",
-    secure: process.env.NODE_ENV === "production",
-  });
-}
-
-export function clearAccessToken(): void {
-  Cookies.remove(ACCESS_TOKEN_KEY);
-}
 
 export function setRefreshToken(token: string | null | undefined): void {
   if (typeof sessionStorage === "undefined") return;
@@ -52,13 +40,36 @@ function readCookie(name: string): string | undefined {
 
 type RetriableConfig = { _hmisRetried?: boolean; url?: string; headers?: Record<string, string> };
 
-apiClient.interceptors.request.use((config) => {
-  const token = getAccessToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+/** Cookie sessions need XSRF-TOKEN before mutating API calls; prime if missing (single-flight). */
+let csrfPrimePromise: Promise<void> | null = null;
+
+async function ensureCsrfTokenCookie(): Promise<void> {
+  if (typeof document === "undefined") return;
+  if (readCookie("XSRF-TOKEN")) return;
+  if (!csrfPrimePromise) {
+    csrfPrimePromise = axios
+      .get(`${API_BASE_URL}/auth/csrf`, { withCredentials: true, timeout: DEFAULT_REQUEST_TIMEOUT_MS })
+      .then(() => undefined)
+      .finally(() => {
+        csrfPrimePromise = null;
+      });
   }
+  await csrfPrimePromise;
+}
+
+apiClient.interceptors.request.use(async (config) => {
   const method = (config.method ?? "get").toLowerCase();
   if (!["get", "head", "options", "trace"].includes(method)) {
+    const url = String(config.url ?? "");
+    const skipPrime =
+      url.includes("/auth/login") ||
+      url.includes("/auth/refresh") ||
+      url.includes("/auth/forgot-password") ||
+      url.includes("/auth/reset-password") ||
+      url.includes("/auth/logout");
+    if (!skipPrime) {
+      await ensureCsrfTokenCookie();
+    }
     const csrf = readCookie("XSRF-TOKEN");
     if (csrf) {
       config.headers["X-XSRF-TOKEN"] = csrf;
@@ -68,7 +79,6 @@ apiClient.interceptors.request.use((config) => {
 });
 
 function forceLoginRedirect(): void {
-  clearAccessToken();
   clearRefreshToken();
   if (typeof window !== "undefined") {
     const path = window.location.pathname;
@@ -112,11 +122,10 @@ apiClient.interceptors.response.use(
         { withCredentials: true, headers: { "Content-Type": "application/json" } },
       );
       const lr = data.data;
-      setAccessToken(lr.accessToken);
       setRefreshToken(lr.refreshToken);
       const retryCfg = error.config;
       if (retryCfg.headers) {
-        retryCfg.headers.Authorization = `Bearer ${lr.accessToken}`;
+        delete (retryCfg.headers as Record<string, unknown>).Authorization;
       }
       return apiClient.request(retryCfg);
     } catch {

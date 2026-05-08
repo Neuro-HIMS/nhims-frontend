@@ -1,26 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Loader2, Shield } from "lucide-react";
+import { useState } from "react";
+import Link from "next/link";
+import { Loader2, RefreshCw, Shield } from "lucide-react";
 import { toast } from "sonner";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChangePasswordSettingsCard } from "@/components/settings/change-password-settings-card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authService } from "@/services/auth.service";
 import { useAuthStore } from "@/store/auth.store";
+import { extractErrorMessage } from "@/components/users/users-management-utils";
 
 const TIER2_TOTP_ROLES = new Set(["SUPER_ADMIN", "FACILITY_ADMIN", "HIO"]);
 
 export default function SecuritySettingsPage() {
   const user = useAuthStore((s) => s.user);
-  const eligible = useMemo(() => (user ? TIER2_TOTP_ROLES.has(user.role) : false), [user]);
+  const setUser = useAuthStore((s) => s.setUser);
+  const eligible = Boolean(user && TIER2_TOTP_ROLES.has(user.role));
   const [secret, setSecret] = useState<string | null>(null);
   const [uri, setUri] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [disablePwd, setDisablePwd] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sessionBusy, setSessionBusy] = useState(false);
 
   async function handleBegin() {
     setBusy(true);
@@ -52,7 +57,7 @@ export default function SecuritySettingsPage() {
         const me = await authService.getCurrentUser();
         useAuthStore.getState().setUser(me);
       } catch {
-        /* session refresh optional */
+        /* optional */
       }
     } catch {
       toast.error("Verification failed. Check the code and try again.");
@@ -84,17 +89,61 @@ export default function SecuritySettingsPage() {
     }
   }
 
+  async function handleReissueSession() {
+    setSessionBusy(true);
+    try {
+      const lr = await authService.reissueSession();
+      setUser(lr.user);
+      toast.success("Session refreshed with latest permissions and facility branding.");
+    } catch (e) {
+      toast.error(extractErrorMessage(e, "Could not refresh session."));
+    } finally {
+      setSessionBusy(false);
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Security</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Authenticator (TOTP) for privileged accounts.</p>
+        <h2 className="text-lg font-semibold text-foreground">Security</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Password, session, and two-factor settings for your account.
+        </p>
       </div>
+
+      <ChangePasswordSettingsCard />
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base">Session</CardTitle>
+          </div>
+          <CardDescription>
+            Reload your JWT and profile from the server after an administrator changes your role, modules, or facility
+            branding.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="outline" disabled={sessionBusy} onClick={() => void handleReissueSession()}>
+            {sessionBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Refresh session &amp; permissions
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Forgot your password?{" "}
+            <Link href="/login" className="font-medium text-primary underline-offset-4 hover:underline">
+              Sign out
+            </Link>{" "}
+            and use &quot;Forgot password&quot; on the sign-in page.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">Two-factor authentication</CardTitle>
+            <CardTitle className="text-base">Two-factor authentication (TOTP)</CardTitle>
           </div>
           <CardDescription>
             Tier-2 administrator accounts (Super Admin, Facility Admin, HIO) can bind a time-based one-time password
@@ -107,7 +156,7 @@ export default function SecuritySettingsPage() {
               Your role is not eligible for self-service TOTP management on this deployment.
             </p>
           )}
-          {eligible && !user?.totpEnabled && (
+          {eligible && user && !user.totpEnabled && (
             <div className="space-y-3">
               {!secret && (
                 <Button type="button" disabled={busy} onClick={() => void handleBegin()}>
@@ -125,7 +174,7 @@ export default function SecuritySettingsPage() {
                       <code className="block break-all text-xs">{uri}</code>
                     </>
                   )}
-                  <div className="pt-3 space-y-2">
+                  <div className="space-y-2 pt-3">
                     <Label htmlFor="totp-verify">6-digit code</Label>
                     <Input
                       id="totp-verify"
@@ -134,6 +183,7 @@ export default function SecuritySettingsPage() {
                       value={code}
                       onChange={(e) => setCode(e.target.value)}
                       placeholder="123456"
+                      className="max-w-xs"
                     />
                     <Button type="button" disabled={busy} onClick={() => void handleComplete()}>
                       Confirm and enable TOTP
@@ -146,7 +196,7 @@ export default function SecuritySettingsPage() {
           {eligible && user?.totpEnabled && (
             <div className="space-y-3">
               <p className="text-sm text-foreground">Two-factor authentication is enabled for your account.</p>
-              <div className="space-y-2">
+              <div className="space-y-2 max-w-md">
                 <Label htmlFor="totp-disable-pw">Password (to disable)</Label>
                 <Input
                   id="totp-disable-pw"

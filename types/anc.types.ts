@@ -7,7 +7,10 @@ export interface AncClientRowDto {
   lmp: string | null;
   edd: string | null;
   activePregnancyId: string | null;
-  pregnancyRiskNotes: boolean;
+  /** True when manual risk notes exist or automated risk is MEDIUM/HIGH. */
+  elevatedRisk: boolean;
+  riskLevel: string | null;
+  riskEvalSummary: string | null;
 }
 
 export interface AncVisitRowDto {

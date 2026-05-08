@@ -22,12 +22,12 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
 
   useEffect(() => {
     let cancelled = false;
-    void authService
-      .getCurrentUser()
+    void authService.getCurrentUser()
       .then((fresh) => {
         if (!cancelled) setUser(fresh);
       })
       .catch(() => {});
+    void authService.warmCsrfCookie().catch(() => {});
     return () => {
       cancelled = true;
     };

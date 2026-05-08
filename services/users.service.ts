@@ -32,8 +32,8 @@ export const usersService = {
     return response.data.data;
   },
 
-  async resetPassword(userId: string): Promise<{ message: string }> {
-    const response = await apiClient.post<ApiResponse<{ message: string }>>(
+  async resetPassword(userId: string): Promise<{ message: string; passwordResetToken: string }> {
+    const response = await apiClient.post<ApiResponse<{ message: string; passwordResetToken: string }>>(
       `/users/${userId}/reset-password`
     );
     return response.data.data;

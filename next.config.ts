@@ -1,8 +1,14 @@
 import type { NextConfig } from "next";
 
+const backendOrigin = process.env.BACKEND_API_ORIGIN ?? "http://localhost:8080";
+
 const nextConfig: NextConfig = {
   // Strict mode catches common React issues early
   reactStrictMode: true,
+
+  async rewrites() {
+    return [{ source: "/api/:path*", destination: `${backendOrigin}/api/:path*` }];
+  },
 
   // Optimise images from the Java backend if it serves any
   images: {
@@ -18,8 +24,11 @@ const nextConfig: NextConfig = {
   // Expose only safe env vars to the browser
   env: {
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME ?? "HMIS",
-    NEXT_PUBLIC_API_BASE_URL:
-      process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1",
+    /** Defaults to same-origin `/api` (rewritten to BACKEND_API_ORIGIN). Browser axios base URL. */
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "/api",
+    NEXT_PUBLIC_ACCESS_COOKIE_NAME: process.env.NEXT_PUBLIC_ACCESS_COOKIE_NAME ?? "hmis_access",
+    NEXT_PUBLIC_ENABLE_PLACEHOLDER_SPECIALTY_ROUTES:
+      process.env.NEXT_PUBLIC_ENABLE_PLACEHOLDER_SPECIALTY_ROUTES ?? "false",
   },
 };
 

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import type { AppModule, Session } from "@/types/auth.types";
 
-const ACCESS_TOKEN_KEY = "hmis_access_token";
+const ACCESS_COOKIE = process.env.NEXT_PUBLIC_ACCESS_COOKIE_NAME?.trim() || "hmis_access";
 
 interface JwtPayload {
   exp: number;
@@ -21,7 +21,7 @@ interface JwtPayload {
 
 export async function getServerSession(): Promise<Session | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get(ACCESS_TOKEN_KEY)?.value;
+  const token = cookieStore.get(ACCESS_COOKIE)?.value;
 
   if (!token) return null;
 
@@ -47,7 +47,6 @@ export async function getServerSession(): Promise<Session | null> {
         email: payload.email,
         mustChangePassword: Boolean(payload.mustChangePassword),
       },
-      accessToken: token,
       expiresAt: payload.exp * 1000,
     };
   } catch {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
 
@@ -17,31 +17,32 @@ import {
 import { auditApiService } from "@/services/audit.service";
 import type { AuditEventDto } from "@/types/audit.types";
 
-const SUB_NAV = [
-  { label: "User Events", view: "users", href: "/audit-log?view=users" },
-  { label: "Security Events", view: "security", href: "/audit-log?view=security" },
-  { label: "System Events", view: "system", href: "/audit-log?view=system" },
-];
+/** Old tab ids → canonical {@link AuditEventDto.resourceType} or `all`. */
+const LEGACY_AUDIT_VIEWS: Record<string, string> = {
+  security: "AUTH",
+  users: "PATIENT",
+  system: "all",
+};
 
-const SECURITY_ACTIONS = new Set([
-  "LOGIN_SUCCESS",
-  "LOGIN_FAILURE",
-  "LOGOUT",
-  "PASSWORD_RESET",
-  "USER_ACCESS_UPDATE",
-]);
-
-const USER_ACTIONS = new Set([
-  "PATIENT_REGISTER",
-  "PATIENT_VIEW",
-  "PRESCRIPTION_PLACED",
-  "PRESCRIPTION_DISPENSED",
-  "LAB_CRITICAL_VALUE",
-]);
+function humanizeResourceType(rt: string): string {
+  if (rt === "AUTH") return "Authentication";
+  if (rt === "USER") return "Users & access";
+  if (rt === "PATIENT") return "Patient records";
+  return rt.charAt(0) + rt.slice(1).toLowerCase().replace(/_/g, " ");
+}
 
 export function AuditLogWorkspace() {
   const searchParams = useSearchParams();
-  const view = searchParams.get("view") ?? "users";
+  const router = useRouter();
+  const rawView = searchParams.get("view") ?? "all";
+
+  useEffect(() => {
+    if (rawView && LEGACY_AUDIT_VIEWS[rawView]) {
+      router.replace(`/audit-log?view=${encodeURIComponent(LEGACY_AUDIT_VIEWS[rawView])}`);
+    }
+  }, [rawView, router]);
+
+  const view = (LEGACY_AUDIT_VIEWS[rawView] ?? rawView ?? "all").trim() || "all";
 
   const eventsQuery = useQuery({
     queryKey: ["audit", "events"],
@@ -49,13 +50,26 @@ export function AuditLogWorkspace() {
     staleTime: 30_000,
   });
 
+  const subNavItems = useMemo(() => {
+    const fromData = (eventsQuery.data ?? [])
+      .map((e) => e.resourceType)
+      .filter((t): t is string => Boolean(t && t.length > 0));
+    const seed = ["AUTH", "USER", "PATIENT"];
+    const types = Array.from(new Set([...seed, ...fromData])).sort((a, b) => a.localeCompare(b));
+    return [
+      { label: "All events", view: "all", href: "/audit-log?view=all" },
+      ...types.map((rt) => ({
+        label: humanizeResourceType(rt),
+        view: rt,
+        href: `/audit-log?view=${encodeURIComponent(rt)}`,
+      })),
+    ];
+  }, [eventsQuery.data]);
+
   const rows = useMemo(() => {
     const all = eventsQuery.data ?? [];
-    if (view === "security") return all.filter((e) => SECURITY_ACTIONS.has(e.action));
-    if (view === "users") return all.filter((e) => USER_ACTIONS.has(e.action));
-    return all.filter(
-      (e) => !SECURITY_ACTIONS.has(e.action) && !USER_ACTIONS.has(e.action),
-    );
+    if (view === "all") return all;
+    return all.filter((e) => (e.resourceType ?? "").toUpperCase() === view.toUpperCase());
   }, [eventsQuery.data, view]);
 
   return (
@@ -63,10 +77,11 @@ export function AuditLogWorkspace() {
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Audit Log</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Traceability of user actions, security events, and clinical operations (facility-scoped).
+          Traceability of user actions, security events, and clinical operations (facility-scoped). Tabs follow{" "}
+          <span className="font-medium">resource type</span> values from the feed.
         </p>
       </div>
-      <ModuleSubNav items={SUB_NAV} basePath="/audit-log" />
+      <ModuleSubNav items={subNavItems} basePath="/audit-log" />
       <div className="pt-2">
         {eventsQuery.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -120,11 +135,11 @@ function EventsTable({
           />
         </div>
         <Select value={actionFilter} onValueChange={setActionFilter}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-52">
             <SelectValue placeholder="Action" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All actions ({category})</SelectItem>
+            <SelectItem value="all">All actions ({category === "all" ? "feed" : category})</SelectItem>
             {actions.map((a) => (
               <SelectItem key={a} value={a}>
                 {a}

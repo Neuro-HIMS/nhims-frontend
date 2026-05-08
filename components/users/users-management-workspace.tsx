@@ -11,6 +11,7 @@ import { AccessReviewView } from "@/components/users/access-review-view";
 import {
   defaultModulesForRole,
   isViewId,
+  PLACEHOLDER_CLINICAL_MODULES,
   SUB_NAV,
   type ViewId,
 } from "@/components/users/users-management-constants";
@@ -48,6 +49,7 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
   /** Disable account confirmation */
   const [pendingDisableUser, setPendingDisableUser] = useState<UserListItem | null>(null);
   const [pendingPasswordResetUser, setPendingPasswordResetUser] = useState<UserListItem | null>(null);
+  const [issuedPasswordResetToken, setIssuedPasswordResetToken] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     firstName: "",
     lastName: "",
@@ -170,12 +172,14 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
   }
 
   async function handleResetPassword(user: UserListItem) {
+    setIssuedPasswordResetToken(null);
     setIsActionLoading(true);
     setActionUserId(user.id);
     setActionType("reset-password");
     try {
       const result = await usersService.resetPassword(user.id);
       setMessage(result.message);
+      setIssuedPasswordResetToken(result.passwordResetToken);
       setPendingPasswordResetUser(null);
     } catch (error) {
       setMessage(extractErrorMessage(error, "Unable to reset password."));
@@ -205,9 +209,26 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
       <ModuleSubNav items={SUB_NAV} basePath="/users" />
 
       {message && (
-        <div className="notice-info flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-          <CheckCircle2 className="h-4 w-4" />
-          <span>{message}</span>
+        <div className="notice-info flex flex-col gap-2 rounded-md border px-3 py-2 text-sm">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{message}</span>
+          </div>
+          {issuedPasswordResetToken && (
+            <div className="ml-6 space-y-1 rounded-md bg-muted/50 p-2">
+              <p className="text-xs font-medium text-muted-foreground">One-time reset token — copy and send securely:</p>
+              <code className="block break-all text-xs">{issuedPasswordResetToken}</code>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-1"
+                onClick={() => void navigator.clipboard.writeText(issuedPasswordResetToken)}
+              >
+                Copy token
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -269,7 +290,7 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
         title="Reset password?"
         description={
           pendingPasswordResetUser
-            ? `A new temporary password will be set for ${pendingPasswordResetUser.username}. It will not appear on screen — share it only through a secure channel after the reset completes.`
+            ? `A one-time password reset token will be shown for ${pendingPasswordResetUser.username} after you confirm. Copy it and share it only through a secure channel. The user completes reset on the sign-in page (Forgot password).`
             : ""
         }
         confirmLabel="Reset password"

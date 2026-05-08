@@ -12,10 +12,7 @@ export function HospitalPatientCard({ patient }: { patient: PatientDto }) {
   const hasLogo = Boolean(patient.facilityLogoDataUrl);
 
   return (
-    <div
-      className="relative mx-auto w-full max-w-lg overflow-hidden rounded-2xl border border-slate-600/80 shadow-2xl"
-      style={{ aspectRatio: "1.586 / 1" }}
-    >
+    <div className="relative mx-auto aspect-[1586/1000] w-full max-w-lg overflow-hidden rounded-2xl border border-slate-600/80 shadow-2xl">
       <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
       <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />

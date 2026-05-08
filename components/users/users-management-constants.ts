@@ -1,6 +1,16 @@
 import { NAV_ITEMS, WORKSPACE_APP_MODULES } from "@/config/navigation";
 import type { AppModule, UserRole } from "@/types/auth.types";
 
+/** Matches backend {@code PLACEHOLDER_CLINICAL_MODULES} — not assignable until product ships real workflows. */
+export const PLACEHOLDER_CLINICAL_MODULES: ReadonlySet<AppModule> = new Set([
+  "surgery",
+  "dental",
+  "mental-health",
+  "physiotherapy",
+  "blood-bank",
+  "emergency",
+]);
+
 export const VIEW_CONFIG = [
   { id: "management", label: "User Management" },
   { id: "staff", label: "Staff Accounts" },
@@ -31,6 +41,7 @@ export const ROLE_OPTIONS: UserRole[] = [
 export const MODULE_OPTIONS = NAV_ITEMS.map((item) => ({ module: item.module, label: item.label }));
 
 export function defaultModulesForRole(role: UserRole): AppModule[] {
+  const strip = (mods: AppModule[]) => mods.filter((m) => !PLACEHOLDER_CLINICAL_MODULES.has(m));
   const map: Record<UserRole, AppModule[]> = {
     RECORDS_OFFICER: ["records", "appointments", "opd"],
     NURSE: ["nurse", "wards"],
@@ -52,8 +63,8 @@ export function defaultModulesForRole(role: UserRole): AppModule[] {
     FINANCE_OFFICER: ["finance"],
     BILLING_OFFICER: ["billing"],
     HIO: ["reports", "dashboard"],
-    FACILITY_ADMIN: [...WORKSPACE_APP_MODULES],
-    SUPER_ADMIN: [...WORKSPACE_APP_MODULES],
+    FACILITY_ADMIN: strip([...WORKSPACE_APP_MODULES]),
+    SUPER_ADMIN: strip([...WORKSPACE_APP_MODULES]),
   };
   return map[role];
 }

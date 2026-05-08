@@ -347,6 +347,36 @@ export const clinicalService = {
     return res.data.data;
   },
 
+  openLabSpecimenLabelPdf(orderId: string): void {
+    void (async () => {
+      const res = await apiClient.get<Blob>(`/clinical/lab-orders/${orderId}/label.pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    })();
+  },
+
+  openPharmacyDispenseLabelPdf(prescriptionId: string, dispenseId: string): void {
+    void (async () => {
+      const res = await apiClient.get<Blob>(`/clinical/prescriptions/${prescriptionId}/dispense-label.pdf`, {
+        params: { dispenseId },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    })();
+  },
+
+  openReferralLetterPdf(referralId: string): void {
+    void (async () => {
+      const res = await apiClient.get<Blob>(`/clinical/referrals/${referralId}.pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    })();
+  },
+
   async labCriticalAlertsInbox(): Promise<LabCriticalAlertDto[]> {
     const res = await apiClient.get<ApiResponse<LabCriticalAlertDto[]>>("/clinical/lab/critical-alerts");
     return res.data.data;

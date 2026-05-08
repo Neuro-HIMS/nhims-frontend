@@ -244,6 +244,9 @@ function WorklistView() {
               </p>
 
               <div className="flex flex-col gap-2">
+                <Button variant="outline" size="sm" onClick={() => clinicalService.openLabSpecimenLabelPdf(selected.id)}>
+                  Print specimen label (PDF)
+                </Button>
                 {canStart && (
                   <Button onClick={() => startMut.mutate(selected.id)} disabled={startMut.isPending}>
                     <FlaskConical className="mr-1.5 h-4 w-4" /> Start processing

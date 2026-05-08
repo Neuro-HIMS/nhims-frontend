@@ -52,7 +52,7 @@ export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: (
 
   const dispenseMut = useMutation({
     mutationFn: (payload: DispensePayload) => clinicalService.dispensePrescription(rx.id, payload),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
       void qc.invalidateQueries({ queryKey: queryKeys.clinical.pharmacyQueue });
       void qc.invalidateQueries({ queryKey: queryKeys.pharmacyInventory.all });
@@ -60,6 +60,11 @@ export function DispensePanel({ rx, onClose }: { rx: PrescriptionDto; onClose: (
         void qc.invalidateQueries({ queryKey: queryKeys.clinical.encounter(rx.encounterId) });
       }
       toast.success("Dispensed and recorded in patient folder");
+      const list = updated.dispenses ?? [];
+      const last = list[list.length - 1];
+      if (last?.id) {
+        clinicalService.openPharmacyDispenseLabelPdf(rx.id, last.id);
+      }
     },
     onError: (e: unknown) => {
       const ax = e as { response?: { data?: ApiError } };

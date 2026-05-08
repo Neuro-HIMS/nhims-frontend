@@ -133,8 +133,7 @@ export function GlobalDhimsHeader({ user }: GlobalDhimsHeaderProps) {
                 aria-label="User menu"
               >
                 <span
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold"
-                  style={{ background: "hsl(var(--accent))", color: "white" }}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[hsl(var(--accent))] text-xs font-bold text-white"
                   aria-hidden="true"
                 >
                   {initials}

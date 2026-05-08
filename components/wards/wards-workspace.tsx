@@ -365,7 +365,9 @@ function BedBoardView() {
   const board = useQuery({
     queryKey: queryKeys.ipd.wards,
     queryFn: () => ipdService.board(),
-    staleTime: 30_000,
+    staleTime: 10_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 15_000,
   });
 
   const nursing = useQuery({
@@ -412,7 +414,7 @@ function BedBoardView() {
                 {ward.beds.filter((b) => b.occupied).length}/{ward.beds.length} occupied
               </span>
             </div>
-            <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2">
               {ward.beds.map((bed) => (
                 <div
                   key={bed.id}

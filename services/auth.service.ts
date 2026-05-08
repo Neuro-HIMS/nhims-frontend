@@ -1,4 +1,4 @@
-import { apiClient, setAccessToken, clearAccessToken, setRefreshToken, clearRefreshToken } from "./api-client";
+import { apiClient, setRefreshToken, clearRefreshToken } from "./api-client";
 import type { LoginRequest, LoginResponse, AuthUser } from "@/types/auth.types";
 import type { ApiResponse } from "@/types/api.types";
 
@@ -16,7 +16,6 @@ export const authService = {
     }
     const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/login", credentials);
     const payload = response.data.data;
-    setAccessToken(payload.accessToken);
     setRefreshToken(payload.refreshToken);
     try {
       await authService.warmCsrfCookie();
@@ -36,7 +35,6 @@ export const authService = {
       refreshToken: raw,
     });
     const payload = response.data.data;
-    setAccessToken(payload.accessToken);
     setRefreshToken(payload.refreshToken);
     return payload;
   },
@@ -52,9 +50,15 @@ export const authService = {
 
   async logout(): Promise<void> {
     try {
+      await authService.warmCsrfCookie();
+    } catch {
+      /* best-effort — logout should still clear client state */
+    }
+    try {
       await apiClient.post("/auth/logout");
+    } catch {
+      /* ignore — session may already be invalid or network error */
     } finally {
-      clearAccessToken();
       clearRefreshToken();
     }
   },
@@ -68,7 +72,6 @@ export const authService = {
   async reissueSession(): Promise<LoginResponse> {
     const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/reissue");
     const payload = response.data.data;
-    setAccessToken(payload.accessToken);
     setRefreshToken(payload.refreshToken);
     return payload;
   },
@@ -76,7 +79,6 @@ export const authService = {
   async changePassword(body: { currentPassword: string; newPassword: string }): Promise<LoginResponse> {
     const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/change-password", body);
     const payload = response.data.data;
-    setAccessToken(payload.accessToken);
     setRefreshToken(payload.refreshToken);
     return payload;
   },

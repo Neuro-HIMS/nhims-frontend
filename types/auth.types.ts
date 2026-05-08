@@ -83,6 +83,5 @@ export type AuthResult =
 
 export interface Session {
   user: AuthUser;
-  accessToken: string;
   expiresAt: number;
 }

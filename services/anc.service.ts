@@ -12,6 +12,8 @@ export interface AncPregnancyDto {
   gravida: number | null;
   parity: number | null;
   riskNotes: string;
+  riskLevel: string;
+  riskEvalSummary: string;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -27,6 +29,17 @@ export interface AncVisitDto {
   notes: string;
   encounterId: string | null;
   createdAt: string;
+  fundalHeightCm: number | null;
+  presentation: string;
+  fhrBpm: number | null;
+  urineProtein: string;
+  urineGlucose: string;
+  oedema: string;
+  iptpSpDose: number | null;
+  ifaReceived: boolean | null;
+  itnUse: boolean | null;
+  hivResult: string;
+  syphilisResult: string;
 }
 
 export const ancService = {
@@ -59,9 +72,35 @@ export const ancService = {
 
   async addVisit(
     pregnancyId: string,
-    body: { visitDate: string; gestationWeeks?: number; weightKg?: string; bp?: string; notes?: string; encounterId?: string }
+    body: {
+      visitDate: string;
+      gestationWeeks?: number;
+      weightKg?: string;
+      bp?: string;
+      notes?: string;
+      encounterId?: string;
+      presentation?: string;
+      fundalHeightCm?: number;
+      fhrBpm?: number;
+      urineProtein?: string;
+      urineGlucose?: string;
+      oedema?: string;
+      iptpSpDose?: number;
+      ifaReceived?: boolean;
+      itnUse?: boolean;
+      hivResult?: string;
+      syphilisResult?: string;
+    },
   ): Promise<AncVisitDto> {
     const res = await apiClient.post<ApiResponse<AncVisitDto>>(`/anc/pregnancies/${pregnancyId}/visits`, body);
+    return res.data.data;
+  },
+
+  async recordDelivery(
+    pregnancyId: string,
+    body?: { deliveryMode?: string; outcomeNotes?: string },
+  ): Promise<AncPregnancyDto> {
+    const res = await apiClient.post<ApiResponse<AncPregnancyDto>>(`/anc/pregnancies/${pregnancyId}/delivery`, body ?? {});
     return res.data.data;
   },
 };

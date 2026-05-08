@@ -9,7 +9,7 @@ import type { UserListItem } from "@/types/users.types";
 import { authService } from "@/services/auth.service";
 import { usersService } from "@/services/users.service";
 import { useAuthStore } from "@/store/auth.store";
-import { MODULE_OPTIONS, ROLE_OPTIONS, defaultModulesForRole } from "@/components/users/users-management-constants";
+import { MODULE_OPTIONS, PLACEHOLDER_CLINICAL_MODULES, ROLE_OPTIONS, defaultModulesForRole } from "@/components/users/users-management-constants";
 import { extractErrorMessage, formatRole } from "@/components/users/users-management-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,11 @@ export function RoleAssignmentPage({ userId }: RoleAssignmentPageProps) {
   async function loadUser() {
     setLoading(true);
     try {
-      setUser(await usersService.getById(userId));
+      const data = await usersService.getById(userId);
+      setUser({
+        ...data,
+        assignedModules: data.assignedModules.filter((m) => !PLACEHOLDER_CLINICAL_MODULES.has(m)),
+      });
     } catch (error) {
       setMessage(extractErrorMessage(error, "Failed to load user profile."));
     } finally {
@@ -50,7 +54,7 @@ export function RoleAssignmentPage({ userId }: RoleAssignmentPageProps) {
   }
 
   function toggleModule(module: AppModule, checked: boolean) {
-    if (!user) return;
+    if (!user || PLACEHOLDER_CLINICAL_MODULES.has(module)) return;
     const nextModules = checked
       ? Array.from(new Set([...user.assignedModules, module]))
       : user.assignedModules.filter((m) => m !== module);
@@ -179,9 +183,20 @@ export function RoleAssignmentPage({ userId }: RoleAssignmentPageProps) {
               <div className="grid gap-2 md:grid-cols-2">
                 {visibleModules.map((module) => {
                   const checked = user.assignedModules.includes(module.module);
+                  const placeholder = PLACEHOLDER_CLINICAL_MODULES.has(module.module);
                   return (
-                    <label key={module.module} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2">
-                      <Checkbox checked={checked} onCheckedChange={(next) => toggleModule(module.module, next === true)} />
+                    <label
+                      key={module.module}
+                      className={`flex items-center gap-2 rounded-md border px-3 py-2 ${
+                        placeholder ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                      }`}
+                      title={placeholder ? "This module is not available for assignment yet." : undefined}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        disabled={placeholder}
+                        onCheckedChange={(next) => toggleModule(module.module, next === true)}
+                      />
                       <span className="text-sm">{module.label}</span>
                     </label>
                   );
