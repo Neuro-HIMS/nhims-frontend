@@ -8,6 +8,7 @@ const LABELS: Record<EncounterStation, string> = {
   PHARMACY: "Pharmacy",
   BILLING: "Billing / cashier",
   WARD: "Ward / IPD",
+  COMPLETED: "Visit completed",
 };
 
 export function formatEncounterStation(station: EncounterStation | string | undefined | null): string {

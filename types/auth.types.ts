@@ -73,6 +73,8 @@ export interface LoginResponse {
   tokenType: "Bearer";
   expiresIn: number;
   user: AuthUser;
+  refreshToken: string;
+  refreshExpiresIn: number;
 }
 
 export type AuthResult =

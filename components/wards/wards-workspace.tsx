@@ -35,6 +35,7 @@ import { queryKeys } from "@/lib/query-keys";
 const SUB_NAV = [
   { label: "Bed Board", view: "beds", href: "/wards?view=beds" },
   { label: "Admissions", view: "admissions", href: "/wards?view=admissions" },
+  { label: "MAR / TPR", view: "nursing", href: "/wards?view=nursing" },
   { label: "Discharge", view: "discharge", href: "/wards?view=discharge" },
 ];
 
@@ -64,8 +65,298 @@ export function WardsWorkspace() {
       <div className="pt-2">
         {view === "beds" && <BedBoardView />}
         {view === "admissions" && <AdmissionsView />}
+        {view === "nursing" && <WardsNursingMarTprView />}
         {view === "discharge" && <DischargeView />}
       </div>
+    </div>
+  );
+}
+
+function localToIso(local: string): string {
+  if (!local) return new Date().toISOString();
+  const d = new Date(local);
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
+function WardsNursingMarTprView() {
+  const qc = useQueryClient();
+  const admissions = useQuery({
+    queryKey: ["clinical", "admissions", "active"],
+    queryFn: () => clinicalService.activeAdmissions(),
+    staleTime: 20_000,
+  });
+
+  const [admissionId, setAdmissionId] = useState<string | null>(null);
+  const [marSchedule, setMarSchedule] = useState(() => {
+    const d = new Date();
+    d.setMinutes(0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  });
+  const [marDrug, setMarDrug] = useState("");
+  const [marDose, setMarDose] = useState("");
+  const [marRoute, setMarRoute] = useState("");
+
+  const [tprAt, setTprAt] = useState(() => {
+    const d = new Date();
+    return d.toISOString().slice(0, 16);
+  });
+  const [tempC, setTempC] = useState("");
+  const [pulse, setPulse] = useState("");
+  const [respRate, setRespRate] = useState("");
+  const [bpSys, setBpSys] = useState("");
+  const [bpDia, setBpDia] = useState("");
+  const [tprNotes, setTprNotes] = useState("");
+
+  const marList = useQuery({
+    queryKey: ["ipd", "mar", admissionId],
+    queryFn: () => ipdService.listMar(admissionId!),
+    enabled: Boolean(admissionId),
+  });
+
+  const tprList = useQuery({
+    queryKey: ["ipd", "tpr", admissionId],
+    queryFn: () => ipdService.listTpr(admissionId!),
+    enabled: Boolean(admissionId),
+  });
+
+  const addMarMut = useMutation({
+    mutationFn: () =>
+      ipdService.addMar(admissionId!, {
+        scheduledFor: localToIso(marSchedule),
+        drugDisplay: marDrug.trim(),
+        dose: marDose.trim() || undefined,
+        route: marRoute.trim() || undefined,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["ipd", "mar", admissionId] });
+      void qc.invalidateQueries({ queryKey: [...queryKeys.ipd.wards, "nursing"] });
+      toast.success("MAR entry saved");
+      setMarDrug("");
+      setMarDose("");
+      setMarRoute("");
+    },
+    onError: () => toast.error("Could not save MAR entry"),
+  });
+
+  const addTprMut = useMutation({
+    mutationFn: () =>
+      ipdService.addTpr(admissionId!, {
+        recordedAt: localToIso(tprAt),
+        tempC: tempC.trim() || undefined,
+        pulse: pulse.trim() || undefined,
+        respRate: respRate.trim() || undefined,
+        bpSys: bpSys.trim() || undefined,
+        bpDia: bpDia.trim() || undefined,
+        notes: tprNotes.trim() || undefined,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["ipd", "tpr", admissionId] });
+      void qc.invalidateQueries({ queryKey: [...queryKeys.ipd.wards, "nursing"] });
+      toast.success("TPR recorded");
+      setTempC("");
+      setPulse("");
+      setRespRate("");
+      setBpSys("");
+      setBpDia("");
+      setTprNotes("");
+    },
+    onError: () => toast.error("Could not record TPR"),
+  });
+
+  const rows = admissions.data ?? [];
+
+  if (admissions.isLoading) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading admissions…
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Select admission</CardTitle>
+          <CardDescription>Charts are scoped to one active inpatient admission.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No active admissions — admit a patient first.</p>
+          ) : (
+            <Select
+              value={admissionId ?? "__pick__"}
+              onValueChange={(v) => setAdmissionId(v === "__pick__" ? null : v)}
+            >
+              <SelectTrigger className="max-w-xl">
+                <SelectValue placeholder="Choose patient" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__pick__">Choose…</SelectItem>
+                {rows.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.patientName} · {a.ward} / {a.bed}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </CardContent>
+      </Card>
+
+      {!admissionId ? null : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Medication administration (MAR)</CardTitle>
+              <CardDescription>Entries from /api/ipd/nursing/admissions/{`{id}`}/mar</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Scheduled for</Label>
+                  <Input
+                    type="datetime-local"
+                    value={marSchedule}
+                    onChange={(e) => setMarSchedule(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs">Drug / order label *</Label>
+                  <Input value={marDrug} onChange={(e) => setMarDrug(e.target.value)} placeholder="e.g. Ceftriaxone IV" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Dose</Label>
+                  <Input value={marDose} onChange={(e) => setMarDose(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Route</Label>
+                  <Input value={marRoute} onChange={(e) => setMarRoute(e.target.value)} />
+                </div>
+              </div>
+              <Button
+                size="sm"
+                disabled={!marDrug.trim() || addMarMut.isPending}
+                onClick={() => addMarMut.mutate()}
+              >
+                {addMarMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add MAR row"}
+              </Button>
+
+              <div className="max-h-64 overflow-auto rounded border border-border">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted/80">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left font-medium">Scheduled</th>
+                      <th className="px-2 py-1.5 text-left font-medium">Drug</th>
+                      <th className="px-2 py-1.5 text-left font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(marList.data ?? []).length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-2 py-4 text-center text-muted-foreground">
+                          No MAR rows.
+                        </td>
+                      </tr>
+                    ) : (
+                      (marList.data ?? []).map((m) => (
+                        <tr key={m.id} className="border-t border-border">
+                          <td className="px-2 py-1.5 font-clinical text-muted-foreground">
+                            {m.scheduledFor ? formatDateTime(m.scheduledFor) : "—"}
+                          </td>
+                          <td className="px-2 py-1.5">{m.drugDisplay}</td>
+                          <td className="px-2 py-1.5">{m.status}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Temperature–pulse–respiration (TPR)</CardTitle>
+              <CardDescription>Vitals series from /api/ipd/nursing/admissions/{`{id}`}/tpr</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs">Recorded at</Label>
+                  <Input
+                    type="datetime-local"
+                    value={tprAt}
+                    onChange={(e) => setTprAt(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Temp °C</Label>
+                  <Input value={tempC} onChange={(e) => setTempC(e.target.value)} className="font-clinical" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Pulse</Label>
+                  <Input value={pulse} onChange={(e) => setPulse(e.target.value)} className="font-clinical" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Resp. rate</Label>
+                  <Input value={respRate} onChange={(e) => setRespRate(e.target.value)} className="font-clinical" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">BP systolic</Label>
+                  <Input value={bpSys} onChange={(e) => setBpSys(e.target.value)} className="font-clinical" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">BP diastolic</Label>
+                  <Input value={bpDia} onChange={(e) => setBpDia(e.target.value)} className="font-clinical" />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs">Notes</Label>
+                  <Textarea rows={2} value={tprNotes} onChange={(e) => setTprNotes(e.target.value)} />
+                </div>
+              </div>
+              <Button size="sm" disabled={addTprMut.isPending} onClick={() => addTprMut.mutate()}>
+                {addTprMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Record TPR"}
+              </Button>
+
+              <div className="max-h-64 overflow-auto rounded border border-border">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted/80">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left font-medium">Time</th>
+                      <th className="px-2 py-1.5 text-left font-medium">T / P / R</th>
+                      <th className="px-2 py-1.5 text-left font-medium">BP</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(tprList.data ?? []).length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-2 py-4 text-center text-muted-foreground">
+                          No TPR readings.
+                        </td>
+                      </tr>
+                    ) : (
+                      (tprList.data ?? []).map((t) => (
+                        <tr key={t.id} className="border-t border-border">
+                          <td className="px-2 py-1.5 font-clinical text-muted-foreground">
+                            {t.recordedAt ? formatDateTime(t.recordedAt) : "—"}
+                          </td>
+                          <td className="px-2 py-1.5 font-clinical">
+                            {[t.tempC, t.pulse, t.respRate].filter(Boolean).join(" · ") || "—"}
+                          </td>
+                          <td className="px-2 py-1.5 font-clinical">
+                            {t.bpSys && t.bpDia ? `${t.bpSys}/${t.bpDia}` : "—"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

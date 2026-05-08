@@ -6,9 +6,12 @@ import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { OpdConsultQueue } from "@/components/clinical/opd/opd-consult-queue";
 import { OpdFollowupPlanner } from "@/components/clinical/opd/opd-followup-planner";
 
+import { OpdReferralsInbox } from "@/components/clinical/opd/opd-referrals-inbox";
+
 const SUB_NAV = [
   { label: "Consult Queue", view: "queue", href: "/opd?view=queue" },
   { label: "Consultations", view: "consult", href: "/opd?view=consult" },
+  { label: "Referrals inbox", view: "referrals", href: "/opd?view=referrals" },
   { label: "Follow-up", view: "followup", href: "/opd?view=followup" },
 ];
 
@@ -31,6 +34,7 @@ export function OpdWorkspace() {
       <div className="pt-2">
         {view === "queue" && <OpdConsultQueue />}
         {view === "consult" && <OpdConsultQueue sections="consult" />}
+        {view === "referrals" && <OpdReferralsInbox />}
         {view === "followup" && <OpdFollowupPlanner />}
       </div>
     </div>

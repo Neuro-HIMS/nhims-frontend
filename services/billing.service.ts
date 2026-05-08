@@ -1,5 +1,5 @@
 import { apiClient } from "@/services/api-client";
-import type { ApiResponse } from "@/types/api.types";
+import type { ApiResponse, PagedResponse } from "@/types/api.types";
 import type {
   AddChargesPayload,
   ApplyDiscountPayload,
@@ -28,8 +28,14 @@ export const billingService = {
     return res.data.data;
   },
 
-  async billsForPatient(patientId: string): Promise<BillDto[]> {
-    const res = await apiClient.get<ApiResponse<BillDto[]>>(`/billing/bills/by-patient/${patientId}`);
+  async billsForPatient(
+    patientId: string,
+    params?: { page?: number; size?: number },
+  ): Promise<PagedResponse<BillDto>> {
+    const res = await apiClient.get<ApiResponse<PagedResponse<BillDto>>>(
+      `/billing/bills/by-patient/${patientId}`,
+      { params },
+    );
     return res.data.data;
   },
 

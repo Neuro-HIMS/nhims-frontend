@@ -504,7 +504,12 @@ export const clinicalService = {
     return res.data.data;
   },
 
-  async referralInbox(params?: { department?: string; status?: string }): Promise<ReferralDto[]> {
+  async referralInbox(params?: {
+    department?: string;
+    status?: string;
+    /** Use `"me"` for assignee-scoped queue */
+    assignee?: string;
+  }): Promise<ReferralDto[]> {
     const res = await apiClient.get<ApiResponse<ReferralDto[]>>("/clinical/referrals", { params });
     return res.data.data;
   },

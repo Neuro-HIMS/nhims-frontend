@@ -12,6 +12,7 @@ import {
 } from "@/components/clinical/folder/folder-record-expandable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsField } from "@/components/records/shared/records-field";
@@ -42,6 +43,7 @@ const EMPTY_REF: CreateReferralPayload = {
   toDepartment: "General OPD",
   reason: "",
   urgency: "ROUTINE",
+  assignedToUserId: undefined,
 };
 
 interface FolderReferralsProps {
@@ -98,6 +100,7 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
       toDepartment: form.toDepartment,
       reason: form.reason.trim(),
       urgency: form.urgency,
+      assignedToUserId: form.assignedToUserId?.trim() || undefined,
     });
   }
 
@@ -174,6 +177,16 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
                 </Select>
               </RecordsField>
             </div>
+            <RecordsField label="Assign to clinician (optional UUID)">
+              <Input
+                className="font-mono text-xs"
+                placeholder="User UUID — appears in assignee inbox"
+                value={form.assignedToUserId ?? ""}
+                onChange={(e) =>
+                  setForm({ ...form, assignedToUserId: e.target.value.trim() || undefined })
+                }
+              />
+            </RecordsField>
             <RecordsField label="Reason *">
               <Textarea
                 value={form.reason}

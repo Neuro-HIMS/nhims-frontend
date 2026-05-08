@@ -15,6 +15,30 @@ export interface IpdNursingOverviewDto {
   notice: string;
 }
 
+export interface IpdMarEntryDto {
+  id: string;
+  admissionId: string;
+  scheduledFor: string;
+  drugDisplay: string;
+  dose: string;
+  route: string;
+  status: string;
+  givenAt: string | null;
+  notes: string;
+}
+
+export interface IpdTprReadingDto {
+  id: string;
+  admissionId: string;
+  recordedAt: string;
+  tempC: string;
+  pulse: string;
+  respRate: string;
+  bpSys: string;
+  bpDia: string;
+  notes: string;
+}
+
 export interface IpdBoardDto {
   wards: WardBoardDto[];
 }

@@ -1,4 +1,4 @@
-import { apiClient, setAccessToken, clearAccessToken } from "./api-client";
+import { apiClient, setAccessToken, clearAccessToken, setRefreshToken, clearRefreshToken } from "./api-client";
 import type { LoginRequest, LoginResponse, AuthUser } from "@/types/auth.types";
 import type { ApiResponse } from "@/types/api.types";
 
@@ -17,6 +17,7 @@ export const authService = {
     const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/login", credentials);
     const payload = response.data.data;
     setAccessToken(payload.accessToken);
+    setRefreshToken(payload.refreshToken);
     try {
       await authService.warmCsrfCookie();
     } catch {
@@ -25,11 +26,36 @@ export const authService = {
     return payload;
   },
 
+  async refreshSession(): Promise<LoginResponse> {
+    const raw =
+      typeof sessionStorage !== "undefined" ? sessionStorage.getItem("hmis_refresh_token") : null;
+    if (!raw) {
+      throw new Error("No refresh token");
+    }
+    const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/refresh", {
+      refreshToken: raw,
+    });
+    const payload = response.data.data;
+    setAccessToken(payload.accessToken);
+    setRefreshToken(payload.refreshToken);
+    return payload;
+  },
+
+  /** Request password reset — token is only in server audit/logs (no email integration in v1). */
+  async forgotPassword(usernameOrEmail: string): Promise<void> {
+    await apiClient.post("/auth/forgot-password", { usernameOrEmail });
+  },
+
+  async resetPasswordWithToken(token: string, newPassword: string): Promise<void> {
+    await apiClient.post("/auth/reset-password", { token, newPassword });
+  },
+
   async logout(): Promise<void> {
     try {
       await apiClient.post("/auth/logout");
     } finally {
       clearAccessToken();
+      clearRefreshToken();
     }
   },
 
@@ -43,6 +69,7 @@ export const authService = {
     const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/reissue");
     const payload = response.data.data;
     setAccessToken(payload.accessToken);
+    setRefreshToken(payload.refreshToken);
     return payload;
   },
 
@@ -50,6 +77,7 @@ export const authService = {
     const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/change-password", body);
     const payload = response.data.data;
     setAccessToken(payload.accessToken);
+    setRefreshToken(payload.refreshToken);
     return payload;
   },
 

@@ -23,7 +23,8 @@ export type EncounterStation =
   | "LAB"
   | "PHARMACY"
   | "BILLING"
-  | "WARD";
+  | "WARD"
+  | "COMPLETED";
 
 export type EncounterPriority = "ROUTINE" | "URGENT" | "EMERGENCY";
 
@@ -555,6 +556,8 @@ export interface ReferralDto {
   referredByName: string;
   referredAt: string | null;
   decidedAt: string | null;
+  assignedToUserId: string | null;
+  assignedToName: string | null;
 }
 
 export interface CreateReferralPayload {
@@ -562,6 +565,8 @@ export interface CreateReferralPayload {
   toDepartment: string;
   urgency?: ReferralUrgency;
   reason: string;
+  /** Optional receiving clinician in the same facility (queues under assignee=me). */
+  assignedToUserId?: string | null;
 }
 
 export interface ReferralDecisionPayload {

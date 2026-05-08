@@ -47,7 +47,7 @@ export function ClinicalServiceModuleWorkspace({
           </Link>
         </p>
       </header>
-      <ModuleSubNav items={subNav} basePath={basePath} />
+      <ModuleSubNav items={subNav} basePath={basePath} disableNavigation />
       <div className="rounded-lg border border-border bg-card p-5 pt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Simulation · {view}</p>
         <p className="mt-2 text-sm text-muted-foreground">

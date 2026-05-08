@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
@@ -18,6 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
+import { ipdService } from "@/services/ipd.service";
+import { formatEncounterStation } from "@/components/clinical/lib/station-labels";
 import { toast } from "sonner";
 
 const SUB_NAV = [
@@ -73,6 +76,11 @@ function OverviewView() {
     },
     refetchInterval: 60_000,
   });
+  const boardQuery = useQuery({
+    queryKey: queryKeys.ipd.wards,
+    queryFn: () => ipdService.board(),
+    refetchInterval: 120_000,
+  });
   const labCriticalQuery = useQuery({
     queryKey: queryKeys.clinical.labCriticalInbox,
     queryFn: () => clinicalService.labCriticalAlertsInbox(),
@@ -88,6 +96,22 @@ function OverviewView() {
     q.isLoading ? "…" : q.isError ? "—" : String(n);
 
   const criticalLab = labCriticalQuery.data ?? [];
+
+  const occupiedBeds =
+    boardQuery.data?.wards.reduce((n, w) => n + w.beds.filter((b) => b.occupied).length, 0) ?? 0;
+  const totalBeds = boardQuery.data?.wards.reduce((n, w) => n + w.beds.length, 0) ?? 0;
+
+  const activityRows = useMemo(() => {
+    return [...encounters]
+      .filter((e) => !["CANCELLED", "NO_SHOW"].includes(e.status))
+      .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
+      .slice(0, 12)
+      .map((e) => ({
+        time: shortTimeLabel(e.updatedAt),
+        event: `${e.patientPublicId} · ${e.status} · ${formatEncounterStation(e.currentStation)}`,
+        module: e.department?.trim() ? e.department : "Clinical",
+      }));
+  }, [encounters]);
 
   return (
     <div className="space-y-6">
@@ -150,9 +174,11 @@ function OverviewView() {
           trend={todayEncountersQuery.isSuccess && clinicalTodayTouchpoints > 0 ? "up" : undefined}
         />
         <StatCard
-          label="Inpatient snapshot"
-          value="38"
-          delta="Illustrative aggregate — wards summary API not wired here"
+          label="Occupied beds (catalogue)"
+          value={
+            boardQuery.isLoading ? "…" : boardQuery.isError ? "—" : `${occupiedBeds}/${totalBeds || 0}`
+          }
+          delta="Live • from IPD ward board"
           icon={<BedDouble className="h-5 w-5" />}
         />
         <StatCard
@@ -170,26 +196,33 @@ function OverviewView() {
         />
       </div>
 
-      {/* Sample-only widgets — not fed by live APIs (see card descriptions). */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Today&apos;s activity (sample)</CardTitle>
-            <CardDescription>
-              Illustrative timeline for layout — not live audit data
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Today&apos;s clinical touches (recent updates)</CardTitle>
+          <CardDescription>
+            Derived from today&apos;s encounter list — not a full audit log.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {activityRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No encounter updates yet today.</p>
+          ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Time</th>
-                  <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Event</th>
-                  <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Module</th>
+                  <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Time
+                  </th>
+                  <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Encounter snapshot
+                  </th>
+                  <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Dept
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {SAMPLE_RECENT_ACTIVITY.map((item, i) => (
+                {activityRows.map((item, i) => (
                   <tr key={i} className="table-row-interactive">
                     <td className="py-2.5 font-clinical text-xs text-muted-foreground">{item.time}</td>
                     <td className="py-2.5 text-foreground">{item.event}</td>
@@ -200,43 +233,9 @@ function OverviewView() {
                 ))}
               </tbody>
             </table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Department load (sample)</CardTitle>
-            <CardDescription>
-              Illustrative occupancy — not wired to live capacity APIs
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {DEPT_LOAD.map((dept) => (
-                <div key={dept.name}>
-                  <div className="mb-1 flex items-center justify-between text-sm">
-                    <span className="font-medium text-foreground">{dept.name}</span>
-                    <span className="font-clinical text-xs text-muted-foreground">
-                      {dept.current}/{dept.capacity}
-                    </span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${Math.round((dept.current / dept.capacity) * 100)}%`,
-                        background: dept.current / dept.capacity > 0.85
-                          ? "hsl(var(--clinical-urgent))"
-                          : "hsl(var(--accent))",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -246,44 +245,11 @@ function IndicatorsView() {
     <div className="space-y-4">
       <Card className="border-dashed bg-muted/30">
         <CardContent className="pt-5 text-sm text-muted-foreground">
-          These KPI rows are placeholders for dashboards fed by NHIMS reporting. Submit and review official DHIMS2
-          returns in{" "}
+          Programme indicators and DHIMS2 submission depth are tracked under{" "}
           <Link href="/reports?view=dhims2" className="font-medium text-primary underline-offset-4 hover:underline">
             Reports → DHIMS2
           </Link>
-          .
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Monthly DHIMS2 indicators (sample)</CardTitle>
-          <CardDescription>Illustrative KPI rows — May 2026</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Indicator</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Target</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Actual</th>
-                <th className="pb-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {SAMPLE_DHIMS_INDICATORS.map((row) => (
-                <tr key={row.name} className="table-row-interactive">
-                  <td className="py-2.5 font-medium text-foreground">{row.name}</td>
-                  <td className="py-2.5 text-right font-clinical text-muted-foreground">{row.target}</td>
-                  <td className="py-2.5 text-right font-clinical text-foreground">{row.actual}</td>
-                  <td className="py-2.5 text-right">
-                    <span className={`status-pill ${row.met ? "status-pill-active" : "status-pill-pending"}`}>
-                      {row.met ? "On track" : "Review"}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          . This dashboard tab no longer shows sample KPI rows.
         </CardContent>
       </Card>
     </div>
@@ -411,27 +377,11 @@ function StatCard({
   );
 }
 
-const SAMPLE_RECENT_ACTIVITY = [
-  { time: "09:47", event: "New patient registered — Kofi Acheampong", module: "Records" },
-  { time: "09:31", event: "Lab result reported — Malaria RDT positive", module: "Lab" },
-  { time: "09:18", event: "Prescription dispensed — Amoxicillin 500mg", module: "Pharmacy" },
-  { time: "09:04", event: "Patient admitted — Ward B Bed 14", module: "Wards" },
-  { time: "08:52", event: "Triage completed — Priority 2 (Urgent)", module: "Nurse" },
-  { time: "08:40", event: "NHIS eligibility verified — Active", module: "Billing" },
-];
-
-const DEPT_LOAD = [
-  { name: "OPD", current: 142, capacity: 200 },
-  { name: "Ward A (General)", current: 28, capacity: 30 },
-  { name: "Ward B (Maternity)", current: 22, capacity: 25 },
-  { name: "ICU", current: 8, capacity: 10 },
-  { name: "Laboratory", current: 27, capacity: 60 },
-];
-
-const SAMPLE_DHIMS_INDICATORS = [
-  { name: "ANC 1st Visit Coverage", target: "90%", actual: "88%", met: true },
-  { name: "Deliveries at Facility", target: "120", actual: "98", met: false },
-  { name: "OPD Malaria Cases", target: "—", actual: "214", met: true },
-  { name: "Under-5 Outpatient Visits", target: "300", actual: "312", met: true },
-  { name: "Family Planning Acceptors", target: "80", actual: "67", met: false },
-];
+function shortTimeLabel(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
