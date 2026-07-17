@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { normalizeModuleKeys } from "@/lib/module-keys";
 import type { AppModule, Session } from "@/types/auth.types";
 
 const ACCESS_COOKIE = process.env.NEXT_PUBLIC_ACCESS_COOKIE_NAME?.trim() || "hmis_access";
@@ -39,8 +40,10 @@ export async function getServerSession(): Promise<Session | null> {
         firstName: payload.firstName,
         lastName: payload.lastName,
         role: payload.role,
-        assignedModules: payload.assignedModules ?? [],
-        enabledHmisModuleKeys: payload.enabledHmisModuleKeys,
+        assignedModules: normalizeModuleKeys(payload.assignedModules),
+        enabledHmisModuleKeys: payload.enabledHmisModuleKeys
+          ? normalizeModuleKeys(payload.enabledHmisModuleKeys)
+          : undefined,
         facilityId: payload.facilityId,
         facilityName: payload.facilityName,
         facilityCode: payload.facilityCode,

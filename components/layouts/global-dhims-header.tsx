@@ -29,7 +29,11 @@ export function GlobalDhimsHeader({ user }: GlobalDhimsHeaderProps) {
   const { logout } = useAuth();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
 
-  const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+  // Seeded/OAuth accounts may have no profile yet — fall back to username initials.
+  const initials = (
+    `${user.firstName?.charAt(0) ?? ""}${user.lastName?.charAt(0) ?? ""}` ||
+    user.username.slice(0, 2)
+  ).toUpperCase();
   const accessibleTabs = NAV_ITEMS.filter((tab) => canAccessWorkspaceModule(user, tab.module));
   const activeTab = accessibleTabs.find(
     (tab) => pathname === tab.href || pathname.startsWith(`${tab.href}/`)

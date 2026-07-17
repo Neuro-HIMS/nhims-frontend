@@ -1,6 +1,21 @@
 import { apiClient, setRefreshToken, clearRefreshToken } from "./api-client";
+import { normalizeModuleKeys } from "@/lib/module-keys";
 import type { LoginRequest, LoginResponse, AuthUser } from "@/types/auth.types";
 import type { ApiResponse } from "@/types/api.types";
+
+function normalizeAuthUser(user: AuthUser): AuthUser {
+  return {
+    ...user,
+    assignedModules: normalizeModuleKeys(user.assignedModules),
+    enabledHmisModuleKeys: user.enabledHmisModuleKeys
+      ? normalizeModuleKeys(user.enabledHmisModuleKeys)
+      : undefined,
+  };
+}
+
+function normalizeLoginResponse(payload: LoginResponse): LoginResponse {
+  return { ...payload, user: normalizeAuthUser(payload.user) };
+}
 
 export const authService = {
   /** Prime HttpOnly-adjacent CSRF cookie for credentialed mutating requests (no Bearer header). */
@@ -22,7 +37,7 @@ export const authService = {
     } catch {
       /* ignore */
     }
-    return payload;
+    return normalizeLoginResponse(payload);
   },
 
   async refreshSession(): Promise<LoginResponse> {
@@ -36,7 +51,7 @@ export const authService = {
     });
     const payload = response.data.data;
     setRefreshToken(payload.refreshToken);
-    return payload;
+    return normalizeLoginResponse(payload);
   },
 
   /** Request password reset — token is only in server audit/logs (no email integration in v1). */
@@ -65,7 +80,7 @@ export const authService = {
 
   async getCurrentUser(): Promise<AuthUser> {
     const response = await apiClient.get<ApiResponse<AuthUser>>("/auth/me");
-    return response.data.data;
+    return normalizeAuthUser(response.data.data);
   },
 
   /** New JWT + user from DB — use after permission or facility branding changes for the signed-in account */
@@ -73,14 +88,14 @@ export const authService = {
     const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/reissue");
     const payload = response.data.data;
     setRefreshToken(payload.refreshToken);
-    return payload;
+    return normalizeLoginResponse(payload);
   },
 
   async changePassword(body: { currentPassword: string; newPassword: string }): Promise<LoginResponse> {
     const response = await apiClient.post<ApiResponse<LoginResponse>>("/auth/change-password", body);
     const payload = response.data.data;
     setRefreshToken(payload.refreshToken);
-    return payload;
+    return normalizeLoginResponse(payload);
   },
 
   async beginTotpEnrollment(): Promise<{ secret: string; otpAuthUri: string }> {

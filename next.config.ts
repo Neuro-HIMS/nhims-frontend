@@ -24,8 +24,8 @@ const nextConfig: NextConfig = {
   // Expose only safe env vars to the browser
   env: {
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME ?? "HMIS",
-    /** Defaults to same-origin `/api` (rewritten to BACKEND_API_ORIGIN). Browser axios base URL. */
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "/api",
+    /** Defaults to same-origin `/api/v1` (rewritten to BACKEND_API_ORIGIN). Browser axios base URL. */
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "/api/v1",
     NEXT_PUBLIC_ACCESS_COOKIE_NAME: process.env.NEXT_PUBLIC_ACCESS_COOKIE_NAME ?? "hmis_access",
     NEXT_PUBLIC_ENABLE_PLACEHOLDER_SPECIALTY_ROUTES:
       process.env.NEXT_PUBLIC_ENABLE_PLACEHOLDER_SPECIALTY_ROUTES ?? "false",

@@ -6,10 +6,11 @@ import type { LoginResponse } from "@/types/auth.types";
 const REFRESH_TOKEN_KEY = "hmis_refresh_token";
 
 /**
- * Same-origin `/api` (Next rewrite → Java backend) so HttpOnly `hmis_access` is set on the app host.
+ * Same-origin `/api/v1` (Next rewrite → Java backend, whose controllers are mounted at `/api/v1/**`)
+ * so HttpOnly `hmis_access` is set on the app host.
  * Override with `NEXT_PUBLIC_API_URL` only if you use a dedicated API origin (SSR session may be limited).
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "/api";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "/api/v1";
 
 /** Default REST timeout; CSV/export/import should override with {@link EXPORT_REQUEST_TIMEOUT_MS}. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;

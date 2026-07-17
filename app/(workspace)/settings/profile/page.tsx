@@ -43,7 +43,10 @@ export default function ProfileSettingsPage() {
     );
   }
 
-  const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+  const initials = (
+    `${user.firstName?.charAt(0) ?? ""}${user.lastName?.charAt(0) ?? ""}` ||
+    user.username.slice(0, 2)
+  ).toUpperCase();
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">

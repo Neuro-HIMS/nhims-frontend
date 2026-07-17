@@ -57,11 +57,12 @@ const ROLE_ACCESS_BY_MODULE: Record<AppModule, UserRole[]> = NAV_ITEMS.reduce(
 );
 
 export function getLandingPathForUser(user: AuthUser): string {
-  if (user.assignedModules.length > 0) {
-    return MODULE_PATHS[user.assignedModules[0]];
+  const firstAssigned = user.assignedModules.find((m) => MODULE_PATHS[m] !== undefined);
+  if (firstAssigned) {
+    return MODULE_PATHS[firstAssigned];
   }
 
-  return MODULE_PATHS[DEFAULT_MODULE_BY_ROLE[user.role]];
+  return MODULE_PATHS[DEFAULT_MODULE_BY_ROLE[user.role]] ?? "/dashboard";
 }
 
 export function canUserAccessModule(user: AuthUser, module: AppModule): boolean {
@@ -69,7 +70,7 @@ export function canUserAccessModule(user: AuthUser, module: AppModule): boolean 
     return user.assignedModules.includes(module);
   }
 
-  return ROLE_ACCESS_BY_MODULE[module].includes(user.role);
+  return ROLE_ACCESS_BY_MODULE[module]?.includes(user.role) ?? false;
 }
 
 /** False only when the facility disabled the matching service line (dashboard / admin modules are never gated here). */
