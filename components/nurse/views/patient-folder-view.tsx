@@ -307,7 +307,7 @@ export function PatientFolderView() {
           <FolderOrders patientId={patientPublicId} visit={visit} user={userLabel} canOrder={canOrder} />
         )}
         {tab === "treatments" && (
-          <FolderTreatments patientId={patientPublicId} visit={visit} prescribedBy={userLabel} />
+          <FolderTreatments patientUuid={patientUuid} visit={visit} />
         )}
         {tab === "admissions" && (
           <FolderAdmissions patientUuid={patientUuid!} visit={visit} />

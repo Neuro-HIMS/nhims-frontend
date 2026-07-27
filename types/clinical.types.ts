@@ -574,6 +574,33 @@ export interface ReferralDecisionPayload {
   response?: string;
 }
 
+export type TreatmentStatus = "ORDERED" | "ADMINISTERED" | "WITHHELD" | "CANCELLED";
+
+export interface TreatmentDto {
+  id: string;
+  patientId: string | null;
+  encounterId: string | null;
+  drug: string;
+  dose: string;
+  route: string;
+  frequency: string;
+  durationDays: number;
+  instructions: string;
+  status: TreatmentStatus;
+  orderedByName: string;
+  orderedAt: string | null;
+}
+
+export interface CreateTreatmentPayload {
+  encounterId?: string;
+  drug: string;
+  dose: string;
+  route?: string;
+  frequency?: string;
+  durationDays?: number;
+  instructions?: string;
+}
+
 export type MedicalAlertCategory =
   | "ALLERGY"
   | "CHRONIC"

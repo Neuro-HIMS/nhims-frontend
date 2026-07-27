@@ -61,6 +61,7 @@ export const queryKeys = {
       admissions: (encounterId: string) => ["clinical", "encounters", encounterId, "admissions"] as const,
       referrals: (encounterId: string) => ["clinical", "encounters", encounterId, "referrals"] as const,
       alerts: (patientId: string) => ["clinical", "patients", patientId, "alerts"] as const,
+      treatments: (patientId: string) => ["clinical", "patients", patientId, "treatments"] as const,
       conditions: (q: string, activeOnly: boolean) =>
         ["clinical", "conditions", q, activeOnly] as const,
       /** Paginated classifications (same `/clinical/conditions` catalogue). */

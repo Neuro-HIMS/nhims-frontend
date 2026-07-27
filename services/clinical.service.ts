@@ -25,6 +25,9 @@ import type {
   CreateRadiologyOrderPayload,
   RadiologyOrderDto,
   MedicalAlertDto,
+  TreatmentDto,
+  CreateTreatmentPayload,
+  TreatmentStatus,
   PrescriptionDto,
   PrescriptionStatus,
   RecordTriagePayload,
@@ -571,6 +574,30 @@ export const clinicalService = {
 
   async deactivateAlert(id: string): Promise<MedicalAlertDto> {
     const res = await apiClient.delete<ApiResponse<MedicalAlertDto>>(`/clinical/alerts/${id}`);
+    return res.data.data;
+  },
+
+  // ── Treatment sheet ─────────────────────────────────────────────────────
+  async listTreatments(patientId: string): Promise<TreatmentDto[]> {
+    const res = await apiClient.get<ApiResponse<TreatmentDto[]>>(
+      `/clinical/patients/${patientId}/treatments`,
+    );
+    return res.data.data;
+  },
+
+  async createTreatment(patientId: string, payload: CreateTreatmentPayload): Promise<TreatmentDto> {
+    const res = await apiClient.post<ApiResponse<TreatmentDto>>(
+      `/clinical/patients/${patientId}/treatments`,
+      payload,
+    );
+    return res.data.data;
+  },
+
+  async updateTreatmentStatus(id: string, status: TreatmentStatus): Promise<TreatmentDto> {
+    const res = await apiClient.patch<ApiResponse<TreatmentDto>>(
+      `/clinical/treatments/${id}/status`,
+      { status },
+    );
     return res.data.data;
   },
 

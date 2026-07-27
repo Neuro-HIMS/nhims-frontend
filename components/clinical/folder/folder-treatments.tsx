@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Pill, Plus, Save } from "lucide-react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Pill, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,8 +16,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsField } from "@/components/records/shared/records-field";
-import { useEncountersStore } from "@/store/encounters.store";
-import type { TreatmentEntry, Visit } from "@/lib/clinical-types";
+import { clinicalService } from "@/services/clinical.service";
+import { queryKeys } from "@/lib/query-keys";
+import type { ApiError } from "@/types/api.types";
+import type { TreatmentStatus } from "@/types/clinical.types";
+import type { Visit } from "@/lib/clinical-types";
+
+function apiErrorMessage(e: unknown, fallback: string): string {
+  const ax = e as { response?: { data?: ApiError } };
+  return ax.response?.data?.message ?? fallback;
+}
 
 const ROUTES = ["Oral (PO)", "Intravenous (IV)", "Intramuscular (IM)", "Subcutaneous (SC)", "Topical", "Inhalation", "Rectal"];
 const FREQUENCIES = ["OD (once daily)", "BD (twice daily)", "TDS (three times daily)", "QID (four times daily)", "PRN (as needed)", "STAT (immediately)"];
@@ -31,23 +40,53 @@ const EMPTY_TX = {
 };
 
 interface FolderTreatmentsProps {
-  patientId: string;
+  /** Patient UUID (backend id, not the public folder number). */
+  patientUuid: string;
   visit: Visit | null;
-  prescribedBy: string;
 }
 
-export function FolderTreatments({ patientId, visit, prescribedBy }: FolderTreatmentsProps) {
-  const treatments = useEncountersStore((s) => s.treatments);
-  const addTreatment = useEncountersStore((s) => s.addTreatment);
-  const setTreatmentStatus = useEncountersStore((s) => s.setTreatmentStatus);
+export function FolderTreatments({ patientUuid, visit }: FolderTreatmentsProps) {
+  const qc = useQueryClient();
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_TX);
 
-  const list = useMemo(
-    () => treatments.filter((t) => t.patientId === patientId).sort((a, b) => b.prescribedAt.localeCompare(a.prescribedAt)),
-    [treatments, patientId]
-  );
+  const treatmentsQuery = useQuery({
+    queryKey: queryKeys.clinical.treatments(patientUuid),
+    queryFn: () => clinicalService.listTreatments(patientUuid),
+    enabled: Boolean(patientUuid),
+  });
+
+  const createMut = useMutation({
+    mutationFn: () =>
+      clinicalService.createTreatment(patientUuid, {
+        encounterId: visit?.id,
+        drug: form.drug.trim(),
+        dose: form.dose.trim(),
+        route: form.route,
+        frequency: form.frequency,
+        durationDays: parseInt(form.durationDays) || 0,
+        instructions: form.instructions.trim(),
+      }),
+    onSuccess: () => {
+      toast.success("Treatment ordered");
+      setForm(EMPTY_TX);
+      setShowForm(false);
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.treatments(patientUuid) });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not save the treatment order")),
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: TreatmentStatus }) =>
+      clinicalService.updateTreatmentStatus(id, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.treatments(patientUuid) });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not update the treatment status")),
+  });
+
+  const list = treatmentsQuery.data ?? [];
 
   function update<K extends keyof typeof form>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -62,20 +101,7 @@ export function FolderTreatments({ patientId, visit, prescribedBy }: FolderTreat
       toast.error("Drug name and dose are required");
       return;
     }
-    addTreatment({
-      visitId: visit.id,
-      patientId,
-      drug: form.drug.trim(),
-      dose: form.dose.trim(),
-      route: form.route,
-      frequency: form.frequency,
-      durationDays: parseInt(form.durationDays) || 0,
-      instructions: form.instructions.trim(),
-      prescribedBy,
-    });
-    toast.success("Treatment ordered");
-    setForm(EMPTY_TX);
-    setShowForm(false);
+    createMut.mutate();
   }
 
   return (
@@ -129,8 +155,12 @@ export function FolderTreatments({ patientId, visit, prescribedBy }: FolderTreat
               <Textarea value={form.instructions} onChange={(e) => update("instructions", e.target.value)} rows={2} placeholder="Take after meals, complete the course…" />
             </RecordsField>
             <div className="flex justify-end">
-              <Button onClick={handleSave}>
-                <Save className="mr-1.5 h-4 w-4" />
+              <Button onClick={handleSave} disabled={createMut.isPending}>
+                {createMut.isPending ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 h-4 w-4" />
+                )}
                 Save Order
               </Button>
             </div>
@@ -138,7 +168,14 @@ export function FolderTreatments({ patientId, visit, prescribedBy }: FolderTreat
         </Card>
       )}
 
-      {list.length === 0 ? (
+      {treatmentsQuery.isLoading ? (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/60" />
+            <p className="text-sm text-muted-foreground">Loading treatment sheet…</p>
+          </CardContent>
+        </Card>
+      ) : list.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
             <Pill className="h-7 w-7 text-muted-foreground/50" />
@@ -163,18 +200,21 @@ export function FolderTreatments({ patientId, visit, prescribedBy }: FolderTreat
                   {t.durationDays ? ` · ${t.durationDays} day(s)` : ""}
                 </span>
               }
-              footerTime={t.prescribedAt}
+              footerTime={t.orderedAt ?? undefined}
               badges={<StatusPill status={t.status} />}
               headerActions={
-                <Select value={t.status} onValueChange={(v) => setTreatmentStatus(t.id, v as TreatmentEntry["status"])}>
+                <Select
+                  value={t.status}
+                  onValueChange={(v) => statusMut.mutate({ id: t.id, status: v as TreatmentStatus })}
+                >
                   <SelectTrigger className="h-8 w-[140px] text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ordered">Ordered</SelectItem>
-                    <SelectItem value="administered">Administered</SelectItem>
-                    <SelectItem value="withheld">Withheld</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="ORDERED">Ordered</SelectItem>
+                    <SelectItem value="ADMINISTERED">Administered</SelectItem>
+                    <SelectItem value="WITHHELD">Withheld</SelectItem>
+                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
               }
@@ -186,7 +226,7 @@ export function FolderTreatments({ patientId, visit, prescribedBy }: FolderTreat
                 <FolderRecordField label="Frequency" value={t.frequency} />
                 <FolderRecordField label="Duration (days)" value={t.durationDays ? String(t.durationDays) : null} />
                 <FolderRecordField label="Instructions" value={t.instructions?.trim() || null} />
-                <FolderRecordField label="Ordered by" value={t.prescribedBy} />
+                <FolderRecordField label="Ordered by" value={t.orderedByName} />
               </div>
             </FolderRecordExpandableRow>
           ))}
@@ -196,12 +236,12 @@ export function FolderTreatments({ patientId, visit, prescribedBy }: FolderTreat
   );
 }
 
-function StatusPill({ status }: { status: TreatmentEntry["status"] }) {
+function StatusPill({ status }: { status: TreatmentStatus }) {
   const cls =
-    status === "administered"
+    status === "ADMINISTERED"
       ? "status-pill-active"
-      : status === "withheld" || status === "cancelled"
+      : status === "WITHHELD" || status === "CANCELLED"
       ? "status-pill-inactive"
       : "status-pill-pending";
-  return <span className={`status-pill text-xs ${cls}`}>{status}</span>;
+  return <span className={`status-pill text-xs ${cls}`}>{status.toLowerCase()}</span>;
 }
