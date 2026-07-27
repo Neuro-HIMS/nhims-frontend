@@ -137,7 +137,7 @@ function Dhims2View({ month }: { month: string }) {
         </p>
         <Button variant="outline" size="sm" onClick={download} disabled={!month}>
           <Download className="mr-1.5 h-4 w-4" />
-          Export CSV
+          Export to CSV
         </Button>
       </div>
       <Card>
