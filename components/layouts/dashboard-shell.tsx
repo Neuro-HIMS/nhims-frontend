@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 
 import { OfflineBanner } from "@/components/common/offline-banner";
-import { GlobalDhimsHeader } from "@/components/layouts/global-dhims-header";
+import { AppSidebar } from "@/components/layouts/app-sidebar";
+import { AppHeader } from "@/components/layouts/app-header";
 import { authService } from "@/services/auth.service";
 import { useOfflineStore } from "@/store/offline.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -36,14 +37,20 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
   const headerUser = storeUser ?? user;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
-      {isOffline && <OfflineBanner queueCount={queueCount} />}
-      <GlobalDhimsHeader user={headerUser} />
-      <main className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-y-contain" id="main-content">
-        <div className="mx-auto max-w-screen-2xl px-4 py-4 lg:px-6 lg:py-6">
-          {children}
-        </div>
-      </main>
+    <div className="flex h-screen overflow-hidden bg-background">
+      <AppSidebar user={headerUser} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {isOffline && <OfflineBanner queueCount={queueCount} />}
+        <AppHeader user={headerUser} />
+        <main
+          className="canvas-dots scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
+          id="main-content"
+        >
+          <div className="mx-auto max-w-screen-2xl px-6 py-6 lg:px-8 lg:py-8">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

@@ -26,273 +26,198 @@ import {
 
 import type { AppModule, UserRole } from "@/types/auth.types";
 
-export interface ModuleSubNavItem {
-  href: string;
-  label: string;
-}
+/** The seven work-type groups shown in the left-hand menu (design brief §5). */
+export type NavGroup =
+  | "home"
+  | "patients"
+  | "care"
+  | "tests-and-medicines"
+  | "money"
+  | "reports"
+  | "admin";
+
+export const NAV_GROUP_LABELS: Record<NavGroup, string> = {
+  home: "Home",
+  patients: "Patients",
+  care: "Care",
+  "tests-and-medicines": "Tests and medicines",
+  money: "Money",
+  reports: "Reports",
+  admin: "Admin",
+};
+
+/** Order groups appear in the sidebar, top to bottom. */
+export const NAV_GROUP_ORDER: NavGroup[] = [
+  "home",
+  "patients",
+  "care",
+  "tests-and-medicines",
+  "money",
+  "reports",
+  "admin",
+];
 
 export interface NavItem {
   href: string;
+  /** Plain-language label shown in the menu — no jargon (design brief §2). */
   label: string;
   icon: LucideIcon;
   module: AppModule;
-  workflowGroup: "overview" | "clinical" | "diagnostics" | "finance" | "admin";
+  group: NavGroup;
   allowedRoles: UserRole[];
-  subNav: ModuleSubNavItem[];
 }
 
 export const NAV_ITEMS: NavItem[] = [
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: "Home",
     icon: LayoutDashboard,
     module: "dashboard",
-    workflowGroup: "overview",
+    group: "home",
     allowedRoles: ["FACILITY_ADMIN", "SUPER_ADMIN", "HIO"],
-    subNav: [
-      { label: "Overview", href: "/dashboard?view=overview" },
-      { label: "Indicators", href: "/dashboard?view=indicators" },
-      { label: "Alerts", href: "/dashboard?view=alerts" },
-    ],
   },
   {
     href: "/records",
-    label: "Records",
+    label: "Find or register a patient",
     icon: UserPlus,
     module: "records",
-    workflowGroup: "clinical",
+    group: "patients",
     allowedRoles: ["RECORDS_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Register Patient", href: "/records?view=register" },
-      { label: "Search Records", href: "/records?view=search" },
-      { label: "Patient Records", href: "/records?view=manage" },
-      { label: "Visit History", href: "/records?view=visits" },
-    ],
   },
   {
     href: "/appointments",
     label: "Appointments",
     icon: CalendarDays,
     module: "appointments",
-    workflowGroup: "clinical",
+    group: "patients",
     allowedRoles: ["RECORDS_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Book", href: "/appointments?view=book" },
-      { label: "Calendar", href: "/appointments?view=calendar" },
-      { label: "Today's Queue", href: "/appointments?view=queue" },
-      { label: "Appointment History", href: "/appointments?view=history" },
-    ],
   },
   {
     href: "/emergency",
     label: "Emergency",
     icon: AlertTriangle,
     module: "emergency",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Board", href: "/emergency?view=board" },
-      { label: "Triage", href: "/emergency?view=triage" },
-      { label: "Handoff", href: "/emergency?view=handoff" },
-    ],
   },
   {
     href: "/opd",
-    label: "OPD",
+    label: "Outpatient clinic (OPD)",
     icon: UsersRound,
     module: "opd",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["RECORDS_OFFICER", "NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Consult Queue", href: "/opd?view=queue" },
-      { label: "Consultations", href: "/opd?view=consult" },
-      { label: "Follow-up", href: "/opd?view=followup" },
-    ],
   },
   {
     href: "/nurse",
-    label: "Nurse Station",
+    label: "Nurse station",
     icon: ClipboardList,
     module: "nurse",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Triage", href: "/nurse?view=triage" },
-      { label: "Vitals", href: "/nurse?view=vitals" },
-      { label: "Queue", href: "/nurse?view=queue" },
-    ],
   },
   {
     href: "/wards",
-    label: "Ward Management",
+    label: "Wards",
     icon: BedDouble,
     module: "wards",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Admissions", href: "/wards?view=admissions" },
-      { label: "Bed Board", href: "/wards?view=beds" },
-      { label: "Discharge", href: "/wards?view=discharge" },
-    ],
   },
   {
     href: "/anc",
-    label: "Antenatal Care",
+    label: "Antenatal care (ANC)",
     icon: Baby,
     module: "anc",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["MIDWIFE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "ANC Clients", href: "/anc?view=clients" },
-      { label: "Follow-up Visits", href: "/anc?view=visits" },
-      { label: "Risk Tracking", href: "/anc?view=risk" },
-    ],
   },
   {
     href: "/surgery",
-    label: "Theatre & Surgery",
+    label: "Theatre and surgery",
     icon: Syringe,
     module: "surgery",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Schedule", href: "/surgery?view=schedule" },
-      { label: "Theatre Board", href: "/surgery?view=board" },
-      { label: "Recovery", href: "/surgery?view=recovery" },
-    ],
   },
   {
     href: "/dental",
     label: "Dental",
     icon: Smile,
     module: "dental",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Clinic Queue", href: "/dental?view=queue" },
-      { label: "Charts", href: "/dental?view=charts" },
-      { label: "Procedures", href: "/dental?view=procedures" },
-    ],
   },
   {
     href: "/mental-health",
-    label: "Mental Health",
+    label: "Mental health",
     icon: Brain,
     module: "mental-health",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "OP Clinic", href: "/mental-health?view=clinic" },
-      { label: "Reviews", href: "/mental-health?view=reviews" },
-      { label: "Care Plans", href: "/mental-health?view=plans" },
-    ],
-  },
-  {
-    href: "/laboratory",
-    label: "Laboratory",
-    icon: FlaskConical,
-    module: "laboratory",
-    workflowGroup: "diagnostics",
-    allowedRoles: ["LAB_SCIENTIST", "LAB_TECH", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Worklist", href: "/laboratory?view=worklist" },
-      { label: "Patient search", href: "/laboratory?view=search" },
-      { label: "Result entry", href: "/laboratory?view=results" },
-      { label: "Catalog & setup", href: "/laboratory?view=catalog" },
-      { label: "Quality Control", href: "/laboratory?view=quality" },
-    ],
-  },
-  {
-    href: "/radiology",
-    label: "Radiology",
-    icon: Scan,
-    module: "radiology",
-    workflowGroup: "diagnostics",
-    allowedRoles: ["RADIOGRAPHER", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Worklist", href: "/radiology?view=worklist" },
-      { label: "Requests", href: "/radiology?view=requests" },
-      { label: "Reports", href: "/radiology?view=reports" },
-    ],
-  },
-  {
-    href: "/pharmacy",
-    label: "Pharmacy",
-    icon: Pill,
-    module: "pharmacy",
-    workflowGroup: "diagnostics",
-    allowedRoles: ["PHARMACIST", "PHARMACY_TECH", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Dispensing Queue", href: "/pharmacy?view=queue" },
-      { label: "Dispense", href: "/pharmacy?view=dispense" },
-      { label: "Inventory", href: "/pharmacy?view=inventory" },
-    ],
   },
   {
     href: "/physiotherapy",
     label: "Physiotherapy",
     icon: Activity,
     module: "physiotherapy",
-    workflowGroup: "clinical",
+    group: "care",
     allowedRoles: ["NURSE", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Referrals", href: "/physiotherapy?view=referrals" },
-      { label: "Sessions", href: "/physiotherapy?view=sessions" },
-      { label: "Goals", href: "/physiotherapy?view=goals" },
-    ],
+  },
+  {
+    href: "/laboratory",
+    label: "Laboratory",
+    icon: FlaskConical,
+    module: "laboratory",
+    group: "tests-and-medicines",
+    allowedRoles: ["LAB_SCIENTIST", "LAB_TECH", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
+  },
+  {
+    href: "/radiology",
+    label: "Imaging (Radiology)",
+    icon: Scan,
+    module: "radiology",
+    group: "tests-and-medicines",
+    allowedRoles: ["RADIOGRAPHER", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
+  },
+  {
+    href: "/pharmacy",
+    label: "Pharmacy",
+    icon: Pill,
+    module: "pharmacy",
+    group: "tests-and-medicines",
+    allowedRoles: ["PHARMACIST", "PHARMACY_TECH", "FACILITY_ADMIN", "SUPER_ADMIN"],
   },
   {
     href: "/blood-bank",
-    label: "Blood Bank",
+    label: "Blood bank",
     icon: Droplets,
     module: "blood-bank",
-    workflowGroup: "diagnostics",
+    group: "tests-and-medicines",
     allowedRoles: ["LAB_SCIENTIST", "LAB_TECH", "MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Inventory", href: "/blood-bank?view=inventory" },
-      { label: "Cross-match", href: "/blood-bank?view=crossmatch" },
-      { label: "Issues", href: "/blood-bank?view=issues" },
-    ],
   },
   {
     href: "/finance",
-    label: "Finance",
+    label: "Prices and revenue",
     icon: Landmark,
     module: "finance",
-    workflowGroup: "finance",
+    group: "money",
     allowedRoles: ["FINANCE_OFFICER", "BILLING_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Dashboard", href: "/finance?view=dashboard" },
-      { label: "Services", href: "/finance?view=catalog" },
-      { label: "Pricing matrix", href: "/finance?view=pricing-matrix" },
-      { label: "Billing", href: "/finance?view=billing" },
-      { label: "Payments", href: "/finance?view=payments" },
-      { label: "Revenue", href: "/finance?view=revenue" },
-      { label: "Legacy prices", href: "/finance?view=legacy-pricing" },
-      { label: "NHIS Claims", href: "/finance?view=nhis-claims" },
-      { label: "NHIS Reports", href: "/finance?view=nhis-reports" },
-    ],
   },
   {
     href: "/billing",
-    label: "Billing",
+    label: "Bills and payments",
     icon: CreditCard,
     module: "billing",
-    workflowGroup: "finance",
+    group: "money",
     allowedRoles: ["BILLING_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Dashboard", href: "/billing?view=dashboard" },
-      { label: "Bills", href: "/billing?view=bills" },
-      { label: "New Bill", href: "/billing?view=new" },
-      { label: "Payments", href: "/billing?view=payments" },
-    ],
   },
   {
     href: "/reports",
     label: "Reports",
     icon: BarChart3,
     module: "reports",
-    workflowGroup: "finance",
+    group: "reports",
     allowedRoles: [
       "HIO",
       "FACILITY_ADMIN",
@@ -302,51 +227,30 @@ export const NAV_ITEMS: NavItem[] = [
       "RECORDS_OFFICER",
       "BILLING_OFFICER",
     ],
-    subNav: [
-      { label: "DHIMS2", href: "/reports?view=dhims2" },
-      { label: "Facility monthly", href: "/reports?view=monthly" },
-      { label: "Exports hub", href: "/reports?view=exports" },
-    ],
   },
   {
     href: "/users",
-    label: "Users",
+    label: "Staff and access",
     icon: Users,
     module: "users",
-    workflowGroup: "admin",
+    group: "admin",
     allowedRoles: ["FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Staff Accounts", href: "/users?view=staff" },
-      { label: "Role Assignment", href: "/users?view=roles" },
-      { label: "Access Review", href: "/users?view=access" },
-    ],
   },
   {
     href: "/facility",
-    label: "Facility Settings",
+    label: "Facility settings",
     icon: Building2,
     module: "facility",
-    workflowGroup: "admin",
+    group: "admin",
     allowedRoles: ["FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "Profile", href: "/facility?view=profile" },
-      { label: "Services", href: "/facility?view=services" },
-      { label: "Configuration", href: "/facility?view=config" },
-      { label: "Diagnosis classifications", href: "/facility?view=conditions" },
-    ],
   },
   {
     href: "/audit-log",
-    label: "Audit Log",
+    label: "Activity history",
     icon: ScrollText,
     module: "audit-log",
-    workflowGroup: "admin",
+    group: "admin",
     allowedRoles: ["FACILITY_ADMIN", "SUPER_ADMIN"],
-    subNav: [
-      { label: "User Events", href: "/audit-log?view=users" },
-      { label: "Security Events", href: "/audit-log?view=security" },
-      { label: "System Events", href: "/audit-log?view=system" },
-    ],
   },
 ];
 

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, CalendarPlus, Loader2, Search, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,9 +30,10 @@ function toQueryKeyParams(s: ActiveSearch) {
 
 export function ClientLookupView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [mode, setMode] = useState<SearchMode>("id");
-  const [idQuery, setIdQuery] = useState("");
+  const [idQuery, setIdQuery] = useState(() => formatPatientPublicIdLive(searchParams.get("q")?.trim() ?? ""));
   const [nhisQuery, setNhisQuery] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");

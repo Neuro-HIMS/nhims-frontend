@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
 import { makeQueryClient } from "@/lib/query-client";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 // ── Providers
 // All global context providers are composed here.
@@ -16,11 +17,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <TooltipProvider>{children}</TooltipProvider>
 
-      {/* Toast notifications — Sonner is lighter than shadcn Toaster for our needs */}
+      {/* Toast notifications — bottom-right, at most 2 at once (design brief §9) */}
       <Toaster
-        position="top-right"
+        position="bottom-right"
+        visibleToasts={2}
         richColors
         closeButton
         toastOptions={{

@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 const PREFIXES = ["/surgery", "/dental", "/mental-health", "/physiotherapy", "/blood-bank", "/emergency"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_ENABLE_PLACEHOLDER_SPECIALTY_ROUTES === "true") {
     return NextResponse.next();
   }

@@ -11,9 +11,9 @@ export function OfflineBanner({ queueCount }: OfflineBannerProps) {
     <div className="offline-banner" role="status" aria-live="polite">
       <WifiOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span>
-        Offline mode — working from local cache.
+        You&apos;re offline. Your work is being saved on this computer and will send when the internet is back.
         {queueCount > 0 && (
-          <> {queueCount} action{queueCount !== 1 ? "s" : ""} queued for sync.</>
+          <> {queueCount} thing{queueCount !== 1 ? "s" : ""} waiting to send.</>
         )}
       </span>
     </div>
