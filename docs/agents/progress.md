@@ -63,4 +63,33 @@ One short block per stage. Read this first when resuming — it's the source of 
 
 **Commit:** `2c57960`
 
-**Next stage:** Stage 2 — Facility admin: set up the facility and staff (J12): ADM-08 → ADM-09 → ADM-10 → ADM-11 → ADM-02 → ADM-03 → ADM-04 → ADM-05 → ADM-06 → ADM-07 → ADM-12 (ADM-01 Home deferred to Stage 13). Reads: `flows/actors/facility-admin.md`, `flows/journeys/J12-staff-onboarding.md`, `03-components.md`. Builds FND-02 (StatusPill), FND-03 (states), FND-04 (DataTable), FND-09 (UploadDropzone).
+---
+
+## Stage 2 — Facility admin: set up the facility and staff (2026-09-19)
+
+**Gap list:** `facility-settings-workspace.tsx` was a single 1,083-line file mixing state, save/load and three unrelated views; jargon throughout ("Diagnosis classifications (ICD-11)", "Operational configuration", a "Legacy ICD hint" field, raw "HMIS module · {key}" links); switching a service off had no confirmation and no "applies at next sign-in" notice. Staff and access had no way to pick sections at creation time (silently used role defaults, no UI), showed a hardcoded fake "Email verification: Not verified" column, and used an ad-hoc `formatRole`. "Role Assignment"/"Module Access"/"Apply Default Modules for Role" were the literal glossary-banned phrases. "Access Review" was a per-module list, not the staff×sections matrix the brief describes. "Audit Log" showed raw action codes, database-id fragments, and a permanently-visible IP column with no plain-language framing.
+
+**Foundation built (just-in-time):** FND-02 (`StatusPill`, `TriagePill`, `NhisPill`, `AllergyPill`, `LabResultValue`, `.result-low`/`.result-high`), FND-03 (`EmptyState`, `ErrorState`, `QueryState`, skeleton presets, icon-in-circle illustrations), FND-04 (`DataTable`/`TableToolbar`/`TablePagination` with a tablet card mode), FND-09 partial (`UploadDropzone`, then `UnitInput` added mid-stage per review finding).
+
+**Slices done:** ADM-08 Facility details (split into `components/facility/views/*`, logo via `UploadDropzone`), ADM-09 Services (per-service description, `ConfirmDialog` + "applies at next sign-in" on switch-off), ADM-10 Opening hours and booking rules (renamed from "Configuration", every field relabelled), ADM-11 Diagnosis list (renamed from "Diagnosis classifications (ICD-11)", status pill, bulk-add via `UploadDropzone` dialog), ADM-02 Staff (rebuilt on `DataTable`), ADM-03 Add staff member (real sections checkbox picker + "usual access" reset + success screen with copyable temporary password), ADM-04 Job and access (grouped checkboxes, facility-off sections shown disabled, job-change confirmation), ADM-05/06 Deactivate/Reactivate and Reset password (named confirmations, unified temporary-password copy box), ADM-07 Check who can open what (rebuilt as a real staff×sections matrix with a "more access than usual" warning pill and CSV export), ADM-12 Activity history (renamed from "Audit Log", humanized action text, person/kind/search filters, no raw IDs).
+
+**Mocks added:** none — everything in this stage hits real, already-existing endpoints.
+
+**Reviewer:** ui/copy/access-checker passes (general-purpose stand-ins). Two real bugs found and fixed:
+- **Access-checker (blocking):** the facility-off/placeholder "disabled sections" check only ever looked at `enabledHmisModuleKeys`, which never contains non-facility-gated modules (Finance, Billing, Reports, Users, Facility settings, Activity history, Nurse station, Appointments, Home) — so Job and access wrongly greyed out and blocked admins from granting those to anyone. Add staff had the opposite gap: it never passed `disabledModules` at all. Fixed with one shared `hooks/use-disabled-sections.ts` built on the existing `isModuleEnabledAtFacility()`.
+- **UI reviewer (blocking):** the diagnosis list and staff table both silently rendered their *empty* state on a failed load instead of a retryable error — a real outage would have looked like "nothing here yet." Fixed by wiring `ErrorState`/`DataTable`'s `error`/`onRetry` props through.
+- Should-fix: extracted a page-local numeric-with-suffix input into the documented `UnitInput` (FND-09) instead of leaving a duplicate; fixed a real content bug (a field labelled "waiting long" threshold was actually the waiting-list refresh interval); Reload button's spinner was inside an unreachable branch.
+- Copy reviewer: unified two different "temporary password" sentence templates into one; two backend free-text fields (`details` on activity events, diagnosis-import row errors) now go through the same plain-language filter `getFriendlyError` uses, so a technical backend string can't leak onto the screen; renamed "Device" (showing a raw IP) to "From".
+- **User-reported mid-review:** status pills with longer text (e.g. "More access than usual") were wrapping inside a narrow table cell and rendering as a stretched oval instead of a pill. Fixed at the component level — `.status-pill` now forces `whitespace-nowrap`/`w-fit`/`shrink-0`, so no pill anywhere in the app can hit this again.
+
+**Verified:** `pnpm build` and `pnpm exec tsc --noEmit` clean after every commit in this stage. `pnpm lint` back to the 22-error/32-warning pre-existing baseline (down 2 warnings from Stage 1's baseline — cleaned up dead `formatRole`/`extractErrorMessage` helpers along the way).
+
+**Open issues:**
+- Could not visually verify the authenticated screens myself (no test credentials) — the user did screenshot the Check who can open what matrix directly and caught the pill-wrapping bug live; everything else in this stage is unverified in a live browser.
+- ADM-01 (Home/facility dashboard) is explicitly deferred to Stage 13 per the mission.
+- ADM-07's matrix is now derived client-side from already-loaded staff data instead of calling `usersService.accessReview()` — that endpoint is unused by the UI now but left in place (real backend endpoint, no reason to delete it).
+- Date convention tension noted, not resolved: `lib/dates.ts`'s existing `formatClinicalDate*` deliberately avoids DD/MM/YYYY for clinical safety (documented in its own comment); the design brief mandates DD/MM/YYYY for tables. Added separate `formatTableDate(Time)` for non-clinical admin screens rather than changing the clinical formatters — worth a deliberate decision later if the two need to converge.
+
+**Commit:** `700b77b`, `ebee3a0`, `f9f62ab`
+
+**Next stage:** Stage 3 — Records: find, register, start visit (J01 steps 1–3): REC-01 → REC-02 → REC-03 → REC-04 → REC-05 → REC-06 → REC-07. Reads: `flows/actors/records-officer.md`, `flows/journeys/J01-walk-in-opd-visit.md`. Builds FND-06 (`PatientBanner`), FND-09 (`PhoneInput`), `schemas/patient.schema.ts`.
