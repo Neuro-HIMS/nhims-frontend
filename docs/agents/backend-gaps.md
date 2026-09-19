@@ -30,7 +30,17 @@ One entry per missing or changed endpoint the frontend needs, written for the ba
 
 ### REC-05 · Single "start walk-in visit" call  (needed by: REC-05, J01)
 - Today: book + check in as two calls
-- Frontend status: not built yet
+- Frontend status: built against the two-call workaround (`components/records/start-visit-dialog.tsx` calls `appointmentsService.book()` then `.checkIn()`). Works, but a single call would remove the window where a booked-but-not-checked-in appointment could be left behind if the second call fails.
+
+### REC-01 · Patient search summary is missing age and last-visit date
+- Method & path: `GET /patients/search` → `PatientSummaryDto`
+- Need: `PatientSummaryDto` has `dobDisplay` but no raw birth date (so age can't be derived) and no last-visit date
+- Frontend status: `patient-result-card.tsx` shows DOB instead of age, and omits last-visit date, per the spec's result-card layout
+
+### REC-02 · Duplicate check can only search by name
+- Method & path: `POST /patients/search` (`mode: "name"`)
+- Need: the actor doc asks for a name + DOB + phone duplicate search; the search endpoint only supports `id` / `nhis` / `name` modes, no combined filter
+- Frontend status: `registration-view.tsx`'s duplicate check searches by name only after step 1 and shows all name matches for the officer to eyeball — a reasonable approximation, not a true DOB/phone-narrowed match
 
 ### DOC-04 · Save diagnoses on a visit  (needed by: DOC-04)
 - Method & path: confirm endpoint

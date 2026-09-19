@@ -38,6 +38,16 @@ export const queryKeys = {
       visits: (id: string) => ["patients", id, "visits"] as const,
     },
   
+    // ── Appointments
+    appointments: {
+      all: ["appointments"] as const,
+      today: ["appointments", "today"] as const,
+      byPatient: (patientId: string) => ["appointments", "by-patient", patientId] as const,
+      search: (params: { status?: string; from?: string; to?: string; clinicianId?: string; visitType?: string }) =>
+        ["appointments", "search", params] as const,
+      clinicians: ["appointments", "clinicians"] as const,
+    },
+
     // ── OPD
     opd: {
       queue: ["opd", "queue"] as const,

@@ -1,617 +1,820 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Loader2, RefreshCw, UserPlus } from "lucide-react";
-import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter, useSearchParams } from "next/navigation";
 import { endOfToday } from "date-fns";
+import { Pencil, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePickerField } from "@/components/ui/date-picker-field";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { BookingForm } from "@/components/booking/booking-form";
-import { HospitalPatientCard } from "@/components/records/views/hospital-patient-card";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InlineNotice } from "@/components/common/inline-notice";
+import { SaveIndicator } from "@/components/common/save-indicator";
+import { StepIndicator, type Step } from "@/components/common/step-indicator";
+import { SuccessPanel } from "@/components/common/success-panel";
 import { BLOOD_GROUP_OPTIONS, GHANA_REGIONS, OCCUPATION_OPTIONS } from "@/components/records/lib/records-data";
-import { RecordsField } from "@/components/records/shared/records-field";
-import { EMPTY_REGISTRATION_FORM, type RegistrationForm } from "@/components/records/lib/records-types";
-import { calculateAgeFromDob, verifyNhisMembership } from "@/components/records/lib/records-utils";
-import { patientDtoToLegacyPatient } from "@/lib/patient-mapper";
+import type { Patient } from "@/components/records/lib/records-types";
+import { calculateAgeFromDob } from "@/components/records/lib/records-utils";
+import { NhisCheck } from "@/components/records/nhis-check";
+import { StartVisitDialog } from "@/components/records/start-visit-dialog";
+import { HospitalPatientCard } from "@/components/records/views/hospital-patient-card";
+import { PatientResultCard } from "@/components/records/views/patient-result-card";
+import { getFriendlyError } from "@/lib/api-errors";
+import { patientDtoToLegacyPatient, patientSummaryToLegacyPatient } from "@/lib/patient-mapper";
 import { queryKeys } from "@/lib/query-keys";
 import { patientsService } from "@/services/patients.service";
-import type { PatientDto } from "@/types/patients.types";
-import type { ApiError } from "@/types/api.types";
+import { useUIStore } from "@/store/ui.store";
+import {
+  patientRegistrationSchema,
+  REGISTRATION_STEP_FIELDS,
+  type PatientRegistrationInput,
+} from "@/schemas/patient.schema";
+import type { PatientDto, PatientSummaryDto, RegisterPatientPayload } from "@/types/patients.types";
 
-function registrationFormToPayload(form: RegistrationForm) {
+const STEPS: Step[] = [
+  { label: "Personal details" },
+  { label: "Contact and next of kin" },
+  { label: "NHIS" },
+  { label: "Health details" },
+  { label: "Check and save" },
+];
+
+const DRAFT_KEY = "nhims-registration-draft";
+
+const DEFAULT_VALUES: PatientRegistrationInput = {
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  sex: "",
+  dob: "",
+  dobUnknown: false,
+  age: "",
+  ageUnit: "years",
+  occupation: "",
+  phone: "",
+  altPhone: "",
+  address: "",
+  town: "",
+  region: "",
+  emergencyName: "",
+  emergencyRelation: "",
+  emergencyPhone: "",
+  hasNhis: "no",
+  nhisNumber: "",
+  nhisStatus: "no",
+  nhisExpiry: "",
+  allergyChips: [],
+  noKnownAllergies: false,
+  bloodGroup: "",
+  registrationConsentAcknowledged: false,
+};
+
+function toPayload(v: PatientRegistrationInput): RegisterPatientPayload {
   return {
-    clientStatus: form.clientStatus,
-    firstName: form.firstName,
-    middleName: form.middleName,
-    lastName: form.lastName,
-    dob: form.dob,
-    dobUnknown: form.dobUnknown,
-    age: form.age,
-    ageUnit: form.ageUnit,
-    sex: form.sex,
-    phone: form.phone,
-    altPhone: form.altPhone,
-    region: form.region,
-    address: form.address,
-    maritalStatus: form.maritalStatus,
-    occupation: form.occupation,
-    nhisNumber: form.nhisNumber,
-    nhisStatus: form.nhisStatus,
-    nhisExpiry: form.nhisExpiry,
-    emergencyName: form.emergencyName,
-    emergencyRelation: form.emergencyRelation,
-    emergencyPhone: form.emergencyPhone,
-    bloodGroup: form.bloodGroup,
-    knownAllergies: form.knownAllergies,
-    registrationConsentAcknowledged: form.registrationConsentAcknowledged,
+    clientStatus: "new",
+    firstName: v.firstName.trim(),
+    middleName: v.middleName.trim(),
+    lastName: v.lastName.trim(),
+    dob: v.dobUnknown ? "" : v.dob,
+    dobUnknown: v.dobUnknown,
+    age: v.age,
+    ageUnit: v.ageUnit,
+    sex: v.sex,
+    phone: v.phone.trim(),
+    altPhone: v.altPhone.trim(),
+    region: v.region,
+    address: [v.address.trim(), v.town.trim()].filter(Boolean).join(", "),
+    maritalStatus: "",
+    occupation: v.occupation.trim(),
+    nhisNumber: v.hasNhis === "yes" ? v.nhisNumber.trim() : "",
+    nhisStatus: v.hasNhis === "yes" ? v.nhisStatus : "no",
+    nhisExpiry: v.hasNhis === "yes" ? v.nhisExpiry : "",
+    emergencyName: v.emergencyName.trim(),
+    emergencyRelation: v.emergencyRelation.trim(),
+    emergencyPhone: v.emergencyPhone.trim(),
+    bloodGroup: v.bloodGroup,
+    knownAllergies: v.noKnownAllergies ? "None known" : v.allergyChips.join(", "),
+    registrationConsentAcknowledged: v.registrationConsentAcknowledged,
   };
 }
 
 export function RegistrationView() {
-  const currentYear = new Date().getFullYear();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<RegistrationForm>(EMPTY_REGISTRATION_FORM);
+  const setSaveStatus = useUIStore((s) => s.setSaveStatus);
+
+  const [step, setStep] = useState(0);
   const [registeredDto, setRegisteredDto] = useState<PatientDto | null>(null);
-  const [nhisMessage, setNhisMessage] = useState("");
-  const [isValidatingNhis, setIsValidatingNhis] = useState(false);
+  const [duplicates, setDuplicates] = useState<PatientSummaryDto[] | null>(null);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [visitPatient, setVisitPatient] = useState<Patient | null>(null);
+  const [newChip, setNewChip] = useState("");
+
+  const form = useForm<PatientRegistrationInput>({
+    resolver: zodResolver(patientRegistrationSchema),
+    defaultValues: {
+      ...DEFAULT_VALUES,
+      firstName: searchParams.get("firstName") ?? "",
+      lastName: searchParams.get("lastName") ?? "",
+    },
+  });
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (raw) form.reset(JSON.parse(raw));
+    } catch {
+      // Corrupt or missing draft — start from a blank form.
+    }
+    // Only ever load the draft once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      setSaveStatus("saving");
+      clearTimeout(draftTimer.current);
+      draftTimer.current = setTimeout(() => {
+        try {
+          sessionStorage.setItem(DRAFT_KEY, JSON.stringify(value));
+          setSaveStatus("saved");
+        } catch {
+          setSaveStatus("error");
+        }
+      }, 600);
+    });
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(draftTimer.current);
+    };
+  }, [form, setSaveStatus]);
+
+  useEffect(() => () => setSaveStatus("idle"), [setSaveStatus]);
 
   const nextRefQuery = useQuery({
     queryKey: queryKeys.patients.nextReference,
     queryFn: () => patientsService.peekNextReference(),
     staleTime: 60_000,
+    enabled: !registeredDto,
   });
 
+  const dob = form.watch("dob");
+  const dobUnknown = form.watch("dobUnknown");
   useEffect(() => {
-    const id = nextRefQuery.data?.patientPublicId;
-    if (id) {
-      setForm((previous) => ({ ...previous, patientId: id }));
-    }
-  }, [nextRefQuery.data?.patientPublicId]);
+    if (!dob || dobUnknown) return;
+    const result = calculateAgeFromDob(dob);
+    form.setValue("age", String(result.age));
+    form.setValue("ageUnit", result.unit);
+  }, [dob, dobUnknown, form]);
 
   const registerMutation = useMutation({
-    mutationFn: (payload: ReturnType<typeof registrationFormToPayload>) => patientsService.register(payload),
+    mutationFn: (payload: RegisterPatientPayload) => patientsService.register(payload),
     onSuccess: (data) => {
       setRegisteredDto(data);
       queryClient.invalidateQueries({ queryKey: queryKeys.patients.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.patients.nextReference });
-      toast.success("Patient registered", {
-        description: `${data.firstName} ${data.lastName} · ${data.patientPublicId}`,
-      });
+      try {
+        sessionStorage.removeItem(DRAFT_KEY);
+      } catch {
+        /* best-effort draft cleanup */
+      }
+      setSaveStatus("idle");
     },
-    onError: (error: unknown) => {
-      const ax = error as { response?: { data?: ApiError } };
-      const msg = ax.response?.data?.message ?? "Registration failed";
-      toast.error(msg);
+    onError: (error) => {
+      const friendly = getFriendlyError(error, "the patient's details");
+      toast.error(friendly.title, { description: friendly.message });
     },
   });
 
-  const hasDobOrAge = form.dobUnknown ? form.age.trim().length > 0 : Boolean(form.dob?.trim());
-
-  const canSubmit =
-    Boolean(form.firstName.trim()) &&
-    Boolean(form.lastName.trim()) &&
-    Boolean(form.sex) &&
-    hasDobOrAge &&
-    Boolean(form.phone.trim()) &&
-    form.registrationConsentAcknowledged &&
-    !registerMutation.isPending;
-
-  function updateForm<K extends keyof RegistrationForm>(key: K, value: RegistrationForm[K]) {
-    setForm((previous) => ({ ...previous, [key]: value }));
+  function addChip() {
+    const value = newChip.trim();
+    if (!value) return;
+    form.setValue("allergyChips", [...form.getValues("allergyChips"), value], { shouldValidate: true });
+    setNewChip("");
   }
 
-  useEffect(() => {
-    if (!form.dob || form.dobUnknown) return;
-    const ageResult = calculateAgeFromDob(form.dob);
-    updateForm("age", String(ageResult.age));
-    updateForm("ageUnit", ageResult.unit);
-  }, [form.dob, form.dobUnknown]);
+  function removeChip(index: number) {
+    const chips = form.getValues("allergyChips").filter((_, i) => i !== index);
+    form.setValue("allergyChips", chips, { shouldValidate: true });
+  }
 
-  function refreshPreviewId() {
+  async function handleContinue() {
+    if (step === 0) {
+      const valid = await form.trigger(REGISTRATION_STEP_FIELDS[0]);
+      if (!valid) return;
+      const { firstName, lastName } = form.getValues();
+      if (!firstName.trim() && !lastName.trim()) {
+        setStep(1);
+        return;
+      }
+      setCheckingDuplicates(true);
+      try {
+        const matches = await patientsService.search({
+          mode: "name",
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+        });
+        if (matches.length > 0) {
+          setDuplicates(matches);
+        } else {
+          setStep(1);
+        }
+      } catch {
+        setStep(1);
+      } finally {
+        setCheckingDuplicates(false);
+      }
+      return;
+    }
+
+    const valid = await form.trigger(REGISTRATION_STEP_FIELDS[step]);
+    if (valid) setStep((s) => Math.min(s + 1, STEPS.length - 1));
+  }
+
+  async function handleSave() {
+    const valid = await form.trigger();
+    if (!valid) return;
+    registerMutation.mutate(toPayload(form.getValues()));
+  }
+
+  function resetAll() {
+    form.reset({
+      ...DEFAULT_VALUES,
+    });
+    setRegisteredDto(null);
+    setDuplicates(null);
+    setStep(0);
     nextRefQuery.refetch();
   }
 
-  function onDobUnknownChange(checked: boolean) {
-    updateForm("dobUnknown", checked);
-    if (checked) {
-      updateForm("dob", "");
-      updateForm("age", "");
-      updateForm("ageUnit", "years");
-      return;
-    }
-
-    if (form.dob) {
-      const ageResult = calculateAgeFromDob(form.dob);
-      updateForm("age", String(ageResult.age));
-      updateForm("ageUnit", ageResult.unit);
-    }
-  }
-
-  async function validateNhis() {
-    if (!form.nhisNumber.trim()) {
-      toast.error("Enter an NHIS membership number first.");
-      return;
-    }
-    setIsValidatingNhis(true);
-    setNhisMessage("");
-    try {
-      const result = await verifyNhisMembership(form.nhisNumber.trim());
-      switch (result.status) {
-        case "VERIFIED":
-          updateForm("nhisStatus", "yes");
-          updateForm("nhisExpiry", result.validUntil ?? "");
-          setNhisMessage(result.memberName ? `NHIS validated for ${result.memberName}.` : "NHIS validated.");
-          break;
-        case "NOT_FOUND":
-          updateForm("nhisStatus", "no");
-          updateForm("nhisExpiry", "");
-          setNhisMessage(result.message ?? "NHIS record not found.");
-          break;
-        case "INVALID_FORMAT":
-          updateForm("nhisStatus", "no");
-          updateForm("nhisExpiry", "");
-          setNhisMessage(result.message ?? "Invalid membership number format.");
-          break;
-        case "PENDING_GATEWAY":
-          updateForm("nhisStatus", "no");
-          updateForm("nhisExpiry", "");
-          setNhisMessage(
-            result.message ??
-              "NHIA verification is not connected. Confirm eligibility before billing as NHIS."
-          );
-          break;
-        default:
-          updateForm("nhisStatus", "no");
-          setNhisMessage("Could not verify NHIS.");
-      }
-    } catch (error: unknown) {
-      const ax = error as { response?: { data?: ApiError } };
-      updateForm("nhisStatus", "no");
-      updateForm("nhisExpiry", "");
-      setNhisMessage(ax.response?.data?.message ?? "NHIS verification request failed.");
-    } finally {
-      setIsValidatingNhis(false);
-    }
-  }
-
-  function handleRegister() {
-    if (!canSubmit) return;
-    registerMutation.mutate(registrationFormToPayload(form));
-  }
-
-  function resetForm() {
-    setForm({ ...EMPTY_REGISTRATION_FORM });
-    setRegisteredDto(null);
-    refreshPreviewId();
-  }
-
-  const previewError = nextRefQuery.isError;
-  const peekAx = nextRefQuery.error as { response?: { status?: number; data?: ApiError } } | undefined;
-  const peekErrDetail = peekAx?.response?.data?.message;
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">First-Time Client Registration</CardTitle>
-          <CardDescription>
-            Single-page registration for new clients only. Existing clients should use lookup and book.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Identity and Demographics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <RecordsField label="PATIENT_ID *" className="lg:col-span-2">
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                <Input
-                  value={form.patientId}
-                  readOnly
-                  placeholder={nextRefQuery.isLoading ? "Loading…" : "—"}
-                  className="font-clinical"
-                />
-                <Button type="button" variant="outline" onClick={refreshPreviewId} disabled={nextRefQuery.isFetching}>
-                  {nextRefQuery.isFetching ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  <span className="ml-1.5 hidden sm:inline">Refresh</span>
-                </Button>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Pattern: <span className="font-mono">FACILITYCODE-12345678-YY</span> — server-assigned. Tap Refresh to
-                regenerate the preview if allocation conflicts (409).
-              </p>
-              {previewError && (
-                <p className="mt-1 text-xs text-destructive">
-                  {peekAx?.response?.status === 409
-                    ? (peekErrDetail ?? "Could not reserve a unique preview ID — tap Refresh.")
-                    : (peekErrDetail ??
-                      "Could not load the next ID preview. You can still register — the server will assign an ID.")}
-                </p>
-              )}
-            </RecordsField>
-            <RecordsField label="Client Status *">
-              <div className="flex h-10 items-center gap-4 rounded-md border border-input px-3">
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.clientStatus === "new"}
-                    onChange={() => updateForm("clientStatus", "new")}
-                  />
-                  New
-                </label>
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.clientStatus === "old"}
-                    onChange={() => updateForm("clientStatus", "old")}
-                  />
-                  Old
-                </label>
-              </div>
-            </RecordsField>
-            <RecordsField label="First Name *">
-              <Input value={form.firstName} onChange={(event) => updateForm("firstName", event.target.value)} />
-            </RecordsField>
-            <RecordsField label="Middle Name">
-              <Input value={form.middleName} onChange={(event) => updateForm("middleName", event.target.value)} />
-            </RecordsField>
-            <RecordsField label="Last Name *">
-              <Input value={form.lastName} onChange={(event) => updateForm("lastName", event.target.value)} />
-            </RecordsField>
-            <RecordsField label="Date of Birth">
-              <DatePickerField
-                value={form.dob}
-                disabled={form.dobUnknown}
-                placeholder="Select date of birth"
-                fromYear={1900}
-                toYear={currentYear}
-                disableAfter={endOfToday()}
-                className="font-clinical"
-                onChange={(iso) => updateForm("dob", iso)}
-              />
-            </RecordsField>
-            <RecordsField label="Age">
-              <Input
-                value={form.age}
-                disabled={!form.dobUnknown}
-                onChange={(event) => updateForm("age", event.target.value.replace(/\D/g, ""))}
-                placeholder={form.dobUnknown ? "Enter age" : "Auto from DOB"}
-                className="font-clinical"
-              />
-            </RecordsField>
-            <RecordsField label="Age Unit">
-              <div className="flex h-10 items-center gap-4 rounded-md border border-input px-3">
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.ageUnit === "months"}
-                    onChange={() => updateForm("ageUnit", "months")}
-                  />
-                  Months
-                </label>
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.ageUnit === "years"}
-                    onChange={() => updateForm("ageUnit", "years")}
-                  />
-                  Years
-                </label>
-              </div>
-            </RecordsField>
-            <RecordsField label="Sex *">
-              <Select value={form.sex} onValueChange={(value: RegistrationForm["sex"]) => updateForm("sex", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select sex" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="M">Male</SelectItem>
-                  <SelectItem value="F">Female</SelectItem>
-                </SelectContent>
-              </Select>
-            </RecordsField>
-            <RecordsField label="Marital Status">
-              <Select value={form.maritalStatus} onValueChange={(value) => updateForm("maritalStatus", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="single">Single</SelectItem>
-                  <SelectItem value="married">Married</SelectItem>
-                  <SelectItem value="divorced">Divorced</SelectItem>
-                  <SelectItem value="widowed">Widowed</SelectItem>
-                </SelectContent>
-              </Select>
-            </RecordsField>
-            <RecordsField label="Occupation">
-              <Input
-                list="occupation-options"
-                value={form.occupation}
-                onChange={(event) => updateForm("occupation", event.target.value)}
-                placeholder="Search occupation"
-              />
-              <datalist id="occupation-options">
-                {OCCUPATION_OPTIONS.map((occupation) => (
-                  <option key={occupation} value={occupation} />
-                ))}
-              </datalist>
-            </RecordsField>
-            <RecordsField label="DOB Unknown">
-              <div className="flex h-10 items-center rounded-md border border-input px-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={form.dobUnknown}
-                    onChange={(event) => onDobUnknownChange(event.target.checked)}
-                  />
-                  Enable manual age entry
-                </label>
-              </div>
-            </RecordsField>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Contact</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <RecordsField label="Phone Number *">
-              <Input
-                type="tel"
-                value={form.phone}
-                onChange={(event) => updateForm("phone", event.target.value)}
-                className="font-clinical"
-              />
-            </RecordsField>
-            <RecordsField label="Alternate Phone">
-              <Input
-                type="tel"
-                value={form.altPhone}
-                onChange={(event) => updateForm("altPhone", event.target.value)}
-                className="font-clinical"
-              />
-            </RecordsField>
-            <RecordsField label="Region">
-              <Select value={form.region} onValueChange={(value) => updateForm("region", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select region" />
-                </SelectTrigger>
-                <SelectContent>
-                  {GHANA_REGIONS.map((region) => (
-                    <SelectItem key={region} value={region}>
-                      {region}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </RecordsField>
-            <RecordsField label="Address" className="sm:col-span-2">
-              <Input value={form.address} onChange={(event) => updateForm("address", event.target.value)} />
-            </RecordsField>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">NHIS Validity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <RecordsField label="NHIS Member Number">
-              <Input
-                value={form.nhisNumber}
-                onChange={(event) => updateForm("nhisNumber", event.target.value)}
-                className="font-clinical"
-              />
-            </RecordsField>
-            <RecordsField label="Validate">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!form.nhisNumber.trim() || isValidatingNhis}
-                onClick={validateNhis}
-                className="w-full"
-              >
-                {isValidatingNhis ? "Validating..." : "Validate NHIS"}
-              </Button>
-            </RecordsField>
-            <RecordsField label="NHIS Status">
-              <div className="flex h-10 items-center gap-4 rounded-md border border-input px-3">
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.nhisStatus === "yes"}
-                    onChange={() => updateForm("nhisStatus", "yes")}
-                  />
-                  Yes
-                </label>
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.nhisStatus === "no"}
-                    onChange={() => updateForm("nhisStatus", "no")}
-                  />
-                  No
-                </label>
-              </div>
-            </RecordsField>
-            <RecordsField label="NHIS Expiry Date">
-              <DatePickerField
-                value={form.nhisExpiry}
-                placeholder="Select expiry date"
-                fromYear={2000}
-                toYear={currentYear + 20}
-                className="font-clinical"
-                onChange={(iso) => updateForm("nhisExpiry", iso)}
-              />
-            </RecordsField>
-          </div>
-          {nhisMessage && <p className="mt-3 text-sm text-muted-foreground">{nhisMessage}</p>}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Clinical & consent</CardTitle>
-          <CardDescription>Blood group and allergies support clinical safety; consent is required for registration.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <RecordsField label="Blood group">
-              <Select
-                value={form.bloodGroup ? form.bloodGroup.toUpperCase() : "__none__"}
-                onValueChange={(value) => updateForm("bloodGroup", value === "__none__" ? "" : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select blood group" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BLOOD_GROUP_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value || "none"} value={opt.value || "__none__"}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </RecordsField>
-            <RecordsField label="Known allergies" className="sm:col-span-2">
-              <Textarea
-                value={form.knownAllergies}
-                onChange={(event) => updateForm("knownAllergies", event.target.value)}
-                placeholder="e.g. Penicillin — anaphylaxis; or None known"
-                rows={3}
-                className="resize-y font-clinical"
-              />
-            </RecordsField>
-          </div>
-          <label className="flex cursor-pointer items-start gap-3 rounded-md border border-input bg-muted/30 p-3 text-sm">
-            <Checkbox
-              checked={form.registrationConsentAcknowledged}
-              onCheckedChange={(checked) => updateForm("registrationConsentAcknowledged", checked === true)}
-              className="mt-0.5"
-            />
-            <span>
-              I confirm that the client (or legal guardian) has been informed that demographic and clinical identifiers
-              will be stored for care and NHIS reporting, and that they consent to registration at this facility.
-            </span>
-          </label>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Emergency Contact</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <RecordsField label="Name">
-              <Input
-                value={form.emergencyName}
-                onChange={(event) => updateForm("emergencyName", event.target.value)}
-              />
-            </RecordsField>
-            <RecordsField label="Relationship">
-              <Input
-                value={form.emergencyRelation}
-                onChange={(event) => updateForm("emergencyRelation", event.target.value)}
-              />
-            </RecordsField>
-            <RecordsField label="Phone">
-              <Input
-                type="tel"
-                value={form.emergencyPhone}
-                onChange={(event) => updateForm("emergencyPhone", event.target.value)}
-                className="font-clinical"
-              />
-            </RecordsField>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-          <p className="text-sm text-muted-foreground">
-            Required: First name, last name, sex, DOB or age, phone, and registration consent. Blood group and allergies
-            are optional but recommended.
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" type="button" onClick={resetForm}>
-              Reset Form
-            </Button>
-            <Button type="button" onClick={handleRegister} disabled={!canSubmit}>
-              {registerMutation.isPending ? (
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              ) : (
-                <UserPlus className="mr-1.5 h-4 w-4" />
-              )}
-              Register Client
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {registeredDto && (
-        <Card className="border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/40">
-          <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-700 dark:text-green-400" />
-            <div>
-              <p className="font-medium text-green-900 dark:text-green-100">Client registered successfully</p>
-              <p className="mt-0.5 text-sm text-green-800 dark:text-green-200">
-                {registeredDto.firstName} {registeredDto.lastName} — {registeredDto.patientPublicId}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {registeredDto && (
+  if (registeredDto) {
+    return (
+      <div className="space-y-4">
+        <SuccessPanel
+          title={`${registeredDto.firstName} ${registeredDto.lastName} is registered.`}
+          description={`Hospital number ${registeredDto.patientPublicId}.`}
+          actions={[
+            {
+              label: "Start today's visit",
+              variant: "default",
+              onClick: () => setVisitPatient(patientDtoToLegacyPatient(registeredDto)),
+            },
+            { label: "Print patient card", variant: "outline", onClick: () => window.print() },
+            {
+              label: "Book an appointment",
+              variant: "outline",
+              onClick: () =>
+                router.push(`/appointments?view=book&patientPublicId=${encodeURIComponent(registeredDto.patientPublicId)}`),
+            },
+            { label: "Register another patient", variant: "outline", onClick: resetAll },
+          ]}
+        />
         <div className="space-y-2">
           <p className="text-center text-sm font-medium text-muted-foreground">Hospital card</p>
           <HospitalPatientCard patient={registeredDto} />
         </div>
-      )}
+        {visitPatient && (
+          <StartVisitDialog patient={visitPatient} onOpenChange={(next) => !next && setVisitPatient(null)} />
+        )}
+      </div>
+    );
+  }
 
-      {registeredDto && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Book Appointment for Newly Registered Client</CardTitle>
-            <CardDescription>
-              Use this immediately to complete the registration workflow. The service comes from the Finance catalog so the
-              same canonical name reaches the cashier.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <BookingForm
-              patient={patientDtoToLegacyPatient(registeredDto)}
-              patientId={registeredDto.id}
+  if (duplicates) {
+    return (
+      <div className="space-y-4">
+        <InlineNotice tone="warning" title="This patient may already be registered">
+          Check the matches below before creating a new record.
+        </InlineNotice>
+        <div className="space-y-2">
+          {duplicates.map((d) => (
+            <PatientResultCard
+              key={d.id}
+              patient={patientSummaryToLegacyPatient(d)}
+              showBookButton={false}
+              rightSlot={
+                <Button size="sm" onClick={() => setVisitPatient(patientSummaryToLegacyPatient(d))}>
+                  Use this patient
+                </Button>
+              }
             />
-          </CardContent>
-        </Card>
-      )}
+          ))}
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setDuplicates(null);
+            setStep(1);
+          }}
+        >
+          No, this is a new patient
+        </Button>
+        {visitPatient && (
+          <StartVisitDialog patient={visitPatient} onOpenChange={(next) => !next && setVisitPatient(null)} />
+        )}
+      </div>
+    );
+  }
+
+  const v = form.watch();
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <Form {...form}>
+      <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+          <StepIndicator steps={STEPS} current={step} onStepClick={setStep} />
+          <SaveIndicator />
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+          {step === 0 && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="firstName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>First name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="middleName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Other names (optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="lastName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Last name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="sex"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sex</FormLabel>
+                    <RadioGroup value={field.value} onValueChange={field.onChange} className="flex gap-3 pt-1.5">
+                      <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                        <RadioGroupItem value="M" /> Male
+                      </label>
+                      <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                        <RadioGroupItem value="F" /> Female
+                      </label>
+                    </RadioGroup>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="dob"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date of birth</FormLabel>
+                    <FormControl>
+                      <DatePickerField
+                        value={field.value}
+                        disabled={dobUnknown}
+                        placeholder="Select date of birth"
+                        fromYear={1900}
+                        toYear={currentYear}
+                        disableAfter={endOfToday()}
+                        className="font-clinical"
+                        onChange={(iso) => field.onChange(iso)}
+                      />
+                    </FormControl>
+                    <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox
+                        checked={dobUnknown}
+                        onCheckedChange={(checked) => {
+                          const isUnknown = checked === true;
+                          form.setValue("dobUnknown", isUnknown, { shouldValidate: true });
+                          if (isUnknown) field.onChange("");
+                        }}
+                      />
+                      Don&apos;t know exact date
+                    </label>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {dobUnknown && (
+                <div className="grid grid-cols-2 gap-2">
+                  <FormField
+                    control={form.control}
+                    name="age"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Age</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            className="font-clinical"
+                            onChange={(e) => field.onChange(e.target.value.replace(/\D/g, ""))}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="ageUnit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Unit</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="years">Years</SelectItem>
+                            <SelectItem value="months">Months</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+
+              <FormField
+                control={form.control}
+                name="occupation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Occupation (optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} list="occupation-options" placeholder="Search occupation" />
+                    </FormControl>
+                    <datalist id="occupation-options">
+                      {OCCUPATION_OPTIONS.map((o) => (
+                        <option key={o} value={o} />
+                      ))}
+                    </datalist>
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+
+          {step === 1 && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone number (optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="tel" placeholder="e.g. 024 123 4567" className="font-clinical" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="altPhone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Alternative phone (optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="tel" placeholder="e.g. 024 123 4567" className="font-clinical" />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>GPS / digital address (optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="e.g. GA-123-4567" className="font-clinical" />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="town"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Town (optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="region"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Region (optional)</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select region" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {GHANA_REGIONS.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {r}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+
+              <div className="sm:col-span-2 mt-2 border-t border-border pt-4">
+                <p className="text-sm font-medium text-foreground">Next of kin (optional)</p>
+              </div>
+              <FormField
+                control={form.control}
+                name="emergencyName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="emergencyRelation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Relationship</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="emergencyPhone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="tel" placeholder="e.g. 024 123 4567" className="font-clinical" />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="max-w-md space-y-4">
+              <FormField
+                control={form.control}
+                name="hasNhis"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Does the patient have NHIS?</FormLabel>
+                    <RadioGroup value={field.value} onValueChange={field.onChange} className="grid grid-cols-2 gap-2">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                        <RadioGroupItem value="yes" /> Yes
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                        <RadioGroupItem value="no" /> No
+                      </label>
+                    </RadioGroup>
+                  </FormItem>
+                )}
+              />
+
+              {v.hasNhis === "yes" && (
+                <NhisCheck
+                  memberNumber={v.nhisNumber}
+                  onMemberNumberChange={(value) => form.setValue("nhisNumber", value)}
+                  onVerified={(result) => {
+                    form.setValue("nhisStatus", result.status === "VERIFIED" ? "yes" : "no");
+                    form.setValue("nhisExpiry", result.validUntil ?? "");
+                  }}
+                />
+              )}
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="max-w-lg space-y-5">
+              <div className="space-y-2">
+                <Label>Known allergies</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newChip}
+                    onChange={(e) => setNewChip(e.target.value)}
+                    disabled={v.noKnownAllergies}
+                    placeholder="e.g. Penicillin"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addChip();
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" disabled={!newChip.trim() || v.noKnownAllergies} onClick={addChip}>
+                    Add
+                  </Button>
+                </div>
+                {v.allergyChips.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {v.allergyChips.map((chip, i) => (
+                      <span key={`${chip}-${i}`} className="status-pill status-pill-error">
+                        {chip}
+                        <button type="button" onClick={() => removeChip(i)} aria-label={`Remove ${chip}`}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={v.noKnownAllergies}
+                    onCheckedChange={(checked) => {
+                      const value = checked === true;
+                      form.setValue("noKnownAllergies", value, { shouldValidate: true });
+                      if (value) form.setValue("allergyChips", [], { shouldValidate: true });
+                    }}
+                  />
+                  No known allergies
+                </label>
+                {form.formState.errors.allergyChips && (
+                  <p className="text-xs text-destructive">{form.formState.errors.allergyChips.message}</p>
+                )}
+              </div>
+
+              <FormField
+                control={form.control}
+                name="bloodGroup"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Blood group (optional)</FormLabel>
+                    <Select
+                      value={field.value || "__none__"}
+                      onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select blood group" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {BLOOD_GROUP_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value || "none"} value={opt.value || "__none__"}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="space-y-3">
+              <SummarySection title="Personal details" onEdit={() => setStep(0)}>
+                <SummaryRow label="Name" value={[v.firstName, v.middleName, v.lastName].filter(Boolean).join(" ")} />
+                <SummaryRow label="Sex" value={v.sex === "F" ? "Female" : "Male"} />
+                <SummaryRow
+                  label="Date of birth"
+                  value={v.dobUnknown ? `${v.age || "—"} ${v.ageUnit} (approximate)` : v.dob || "—"}
+                />
+                <SummaryRow label="Occupation" value={v.occupation || "—"} />
+              </SummarySection>
+
+              <SummarySection title="Contact and next of kin" onEdit={() => setStep(1)}>
+                <SummaryRow label="Phone" value={v.phone || "—"} />
+                <SummaryRow label="Address" value={[v.address, v.town, v.region].filter(Boolean).join(", ") || "—"} />
+                <SummaryRow label="Next of kin" value={v.emergencyName ? `${v.emergencyName} (${v.emergencyRelation || "—"})` : "—"} />
+              </SummarySection>
+
+              <SummarySection title="NHIS" onEdit={() => setStep(2)}>
+                <SummaryRow label="Has NHIS" value={v.hasNhis === "yes" ? "Yes" : "No"} />
+                {v.hasNhis === "yes" && <SummaryRow label="Member number" value={v.nhisNumber || "—"} />}
+              </SummarySection>
+
+              <SummarySection title="Health details" onEdit={() => setStep(3)}>
+                <SummaryRow label="Allergies" value={v.noKnownAllergies ? "No known allergies" : v.allergyChips.join(", ")} />
+                <SummaryRow label="Blood group" value={v.bloodGroup || "Not recorded"} />
+              </SummarySection>
+
+              {nextRefQuery.data?.patientPublicId && (
+                <p className="text-sm text-muted-foreground">
+                  Hospital number will be{" "}
+                  <span className="font-clinical font-medium text-foreground">{nextRefQuery.data.patientPublicId}</span>.
+                </p>
+              )}
+
+              <FormField
+                control={form.control}
+                name="registrationConsentAcknowledged"
+                render={({ field }) => (
+                  <FormItem>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-md border border-input bg-muted/30 p-3 text-sm">
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                        className="mt-0.5"
+                      />
+                      <span>The patient agreed to have their details recorded.</span>
+                    </label>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between">
+          <Button type="button" variant="outline" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
+            Back
+          </Button>
+          {step < STEPS.length - 1 ? (
+            <Button type="button" onClick={handleContinue} disabled={checkingDuplicates}>
+              {checkingDuplicates ? "Checking…" : "Continue"}
+            </Button>
+          ) : (
+            <Button type="button" onClick={handleSave} disabled={registerMutation.isPending}>
+              {registerMutation.isPending ? "Saving…" : "Save patient"}
+            </Button>
+          )}
+        </div>
+      </form>
+    </Form>
+  );
+}
+
+function SummarySection({ title, onEdit, children }: { title: string; onEdit: () => void; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <button type="button" onClick={onEdit} className="flex items-center gap-1 text-xs font-medium text-accent hover:underline">
+          <Pencil className="h-3 w-3" /> Edit
+        </button>
+      </div>
+      <div className="mt-2 space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-medium text-foreground">{value || "—"}</span>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { CalendarPlus, ChevronRight, Phone } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NhisPill } from "@/components/clinical/nhis-pill";
 import type { Patient } from "@/components/records/lib/records-types";
 
 /**
@@ -60,9 +61,7 @@ export function PatientResultCard({
         </div>
       </div>
       <div className="flex flex-col items-end gap-2 self-start">
-        <span className={`status-pill ${nhisActive ? "status-pill-active" : "status-pill-inactive"}`}>
-          NHIS {nhisActive ? "Active" : "Inactive"}
-        </span>
+        <NhisPill status={nhisActive ? "ACTIVE" : "INACTIVE"} />
         {rightSlot}
         {showBookButton && (
           <Button

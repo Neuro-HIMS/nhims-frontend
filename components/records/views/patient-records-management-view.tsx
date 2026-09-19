@@ -1,20 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Save, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { BLOOD_GROUP_OPTIONS } from "@/components/records/lib/records-data";
+import { EmptyState } from "@/components/common/empty-state";
+import { ErrorState } from "@/components/common/error-state";
+import { PageCard } from "@/components/layouts/page-card";
+import { BLOOD_GROUP_OPTIONS, GHANA_REGIONS } from "@/components/records/lib/records-data";
+import { NhisCheck } from "@/components/records/nhis-check";
+import { searchPatientsFreeText } from "@/components/records/lib/records-utils";
 import { PatientResultCard } from "@/components/records/views/patient-result-card";
+import { getFriendlyError } from "@/lib/api-errors";
 import { patientSummaryToLegacyPatient } from "@/lib/patient-mapper";
 import { queryKeys } from "@/lib/query-keys";
 import { patientsService } from "@/services/patients.service";
@@ -49,202 +56,301 @@ function dtoToPayload(d: PatientDto): UpdatePatientPayload {
 }
 
 export function PatientRecordsManagementView() {
-  const qc = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlPatientId = searchParams.get("patientId");
 
   const [query, setQuery] = useState("");
+  const [searchedTerm, setSearchedTerm] = useState<string | null>(null);
   const [results, setResults] = useState<PatientSummaryDto[]>([]);
-  const [selected, setSelected] = useState<PatientDto | null>(null);
-  const [form, setForm] = useState<UpdatePatientPayload | null>(null);
   const [searching, setSearching] = useState(false);
-  const [loadingPatient, setLoadingPatient] = useState(false);
+  const [searchError, setSearchError] = useState<unknown>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(urlPatientId);
+
+  const patientQuery = useQuery({
+    queryKey: selectedId ? queryKeys.patients.detail(selectedId) : ["patients", "detail", "idle"],
+    queryFn: () => patientsService.getById(selectedId!),
+    enabled: Boolean(selectedId),
+  });
 
   async function runSearch() {
     const term = query.trim();
     if (!term) return;
     setSearching(true);
+    setSearchError(null);
+    setSearchedTerm(term);
     try {
-      const data = term.includes(" ")
-        ? await patientsService.search({
-            mode: "name",
-            firstName: term.split(/\s+/)[0] ?? "",
-            lastName: term.split(/\s+/).slice(1).join(" "),
-          })
-        : await patientsService.search({ mode: "id", q: term });
+      const data = await searchPatientsFreeText(term);
       setResults(data);
+    } catch (error) {
+      setSearchError(error);
+      setResults([]);
     } finally {
       setSearching(false);
     }
   }
 
-  async function selectPatient(id: string) {
-    setLoadingPatient(true);
-    try {
-      const p = await patientsService.getById(id);
-      setSelected(p);
-      setForm(dtoToPayload(p));
-    } finally {
-      setLoadingPatient(false);
-    }
+  function selectPatient(id: string) {
+    setSelectedId(id);
+    router.replace(`/records?view=manage&patientId=${id}`);
   }
 
-  const saveMut = useMutation({
-    mutationFn: async () => {
-      if (!selected || !form) throw new Error("No patient selected");
-      return patientsService.update(selected.id, form);
-    },
-    onSuccess: (updated) => {
-      setSelected(updated);
-      setForm(dtoToPayload(updated));
-      qc.invalidateQueries({ queryKey: queryKeys.patients.all });
-      toast.success("Patient record updated");
-    },
-    onError: () => toast.error("Could not update patient"),
-  });
-
-  const canSave = useMemo(() => Boolean(selected && form && !saveMut.isPending), [selected, form, saveMut.isPending]);
+  const patient = patientQuery.data;
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Patient records management</CardTitle>
-          <CardDescription>
-            Records officers can search and edit first-time registration details for existing patients.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <PageCard title="Patient details" description="Find a patient to view or correct their details." />
+
+      {!selectedId && (
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
           <div className="flex gap-2">
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by patient ID or full name"
+              placeholder="Search by hospital number or full name"
               onKeyDown={(e) => e.key === "Enter" && runSearch()}
             />
-            <Button onClick={runSearch} disabled={searching}>
+            <Button onClick={runSearch} disabled={searching || !query.trim()}>
               <Search className="mr-1.5 h-4 w-4" />
-              {searching ? "Searching..." : "Search"}
+              {searching ? "Searching…" : "Search"}
             </Button>
           </div>
-          {results.length > 0 && (
-            <div className="space-y-2">
-              {results.map((r) => (
-                <PatientResultCard
-                  key={r.id}
-                  patient={patientSummaryToLegacyPatient(r)}
-                  selected={selected?.id === r.id}
-                  onSelect={() => void selectPatient(r.id)}
-                  showBookButton={false}
-                />
-              ))}
-            </div>
-          )}
-          {loadingPatient && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading patient...
-            </p>
-          )}
-        </CardContent>
-      </Card>
 
-      {form && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Edit registration record</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Client status">
-                <Select value={form.clientStatus} onValueChange={(v) => setForm({ ...form, clientStatus: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="new">New</SelectItem><SelectItem value="old">Old</SelectItem></SelectContent>
-                </Select>
-              </Field>
-              <Field label="First name"><Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
-              <Field label="Middle name"><Input value={form.middleName} onChange={(e) => setForm({ ...form, middleName: e.target.value })} /></Field>
-              <Field label="Last name"><Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
-              <Field label="Sex">
-                <Select value={form.sex} onValueChange={(v) => setForm({ ...form, sex: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="M">Male</SelectItem><SelectItem value="F">Female</SelectItem></SelectContent>
-                </Select>
-              </Field>
-              <Field label="DOB unknown">
-                <Select value={form.dobUnknown ? "yes" : "no"} onValueChange={(v) => setForm({ ...form, dobUnknown: v === "yes" })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="no">No</SelectItem><SelectItem value="yes">Yes</SelectItem></SelectContent>
-                </Select>
-              </Field>
-              <Field label="Date of birth"><DatePickerField value={form.dob} onChange={(v) => setForm({ ...form, dob: v })} /></Field>
-              <Field label="Age"><Input value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} /></Field>
-              <Field label="Age unit">
-                <Select value={form.ageUnit} onValueChange={(v) => setForm({ ...form, ageUnit: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="years">Years</SelectItem><SelectItem value="months">Months</SelectItem></SelectContent>
-                </Select>
-              </Field>
-              <Field label="Phone"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-              <Field label="Alt phone"><Input value={form.altPhone} onChange={(e) => setForm({ ...form, altPhone: e.target.value })} /></Field>
-              <Field label="Region"><Input value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} /></Field>
-              <Field label="Marital status"><Input value={form.maritalStatus} onChange={(e) => setForm({ ...form, maritalStatus: e.target.value })} /></Field>
-              <Field label="Occupation"><Input value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} /></Field>
-              <Field label="Address" className="md:col-span-3">
-                <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} />
-              </Field>
-              <Field label="NHIS member no."><Input value={form.nhisNumber} onChange={(e) => setForm({ ...form, nhisNumber: e.target.value })} /></Field>
-              <Field label="NHIS status">
-                <Select value={form.nhisStatus} onValueChange={(v) => setForm({ ...form, nhisStatus: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="yes">Active</SelectItem><SelectItem value="no">Inactive</SelectItem></SelectContent>
-                </Select>
-              </Field>
-              <Field label="NHIS expiry"><DatePickerField value={form.nhisExpiry} onChange={(v) => setForm({ ...form, nhisExpiry: v })} /></Field>
-              <Field label="Blood group">
-                <Select
-                  value={form.bloodGroup ? form.bloodGroup.toUpperCase() : "__none__"}
-                  onValueChange={(v) => setForm({ ...form, bloodGroup: v === "__none__" ? "" : v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Blood group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BLOOD_GROUP_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value || "none"} value={opt.value || "__none__"}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Known allergies" className="md:col-span-3">
-                <Textarea
-                  value={form.knownAllergies}
-                  onChange={(e) => setForm({ ...form, knownAllergies: e.target.value })}
-                  rows={3}
-                  className="font-clinical"
-                />
-              </Field>
-              <Field label="Emergency contact"><Input value={form.emergencyName} onChange={(e) => setForm({ ...form, emergencyName: e.target.value })} /></Field>
-              <Field label="Emergency relation"><Input value={form.emergencyRelation} onChange={(e) => setForm({ ...form, emergencyRelation: e.target.value })} /></Field>
-              <Field label="Emergency phone"><Input value={form.emergencyPhone} onChange={(e) => setForm({ ...form, emergencyPhone: e.target.value })} /></Field>
-            </div>
-
-            <div className="flex justify-end">
-              <Button onClick={() => saveMut.mutate()} disabled={!canSave}>
-                {saveMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
-                Save changes
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="mt-4">
+            {Boolean(searchError) && <ErrorState error={searchError} onRetry={runSearch} />}
+            {!searchError && searchedTerm && !searching && results.length === 0 && (
+              <EmptyState
+                illustration="no-results"
+                title={`No patient found for "${searchedTerm}"`}
+                description="Check the spelling or try their hospital number."
+              />
+            )}
+            {!searchedTerm && !searching && (
+              <EmptyState illustration="choose-patient" title="Search for a patient" description="Their details will appear here once found." />
+            )}
+            {results.length > 0 && (
+              <div className="space-y-2">
+                {results.map((r) => (
+                  <PatientResultCard
+                    key={r.id}
+                    patient={patientSummaryToLegacyPatient(r)}
+                    selected={selectedId === r.id}
+                    onSelect={() => selectPatient(r.id)}
+                    showBookButton={false}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
+
+      {selectedId && patientQuery.isPending && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading patient…
+        </p>
+      )}
+
+      {selectedId && patientQuery.isError && (
+        <ErrorState error={patientQuery.error} onRetry={() => void patientQuery.refetch()} />
+      )}
+
+      {selectedId && patient && (
+        <PatientEditPanel
+          key={patient.id}
+          patient={patient}
+          onFindDifferent={() => {
+            setSelectedId(null);
+            router.replace("/records?view=manage");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PatientEditPanel({
+  patient,
+  onFindDifferent,
+}: {
+  patient: PatientDto;
+  onFindDifferent: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState<UpdatePatientPayload>(() => dtoToPayload(patient));
+
+  const missingRequired =
+    !form.firstName.trim() || !form.lastName.trim() || (form.sex !== "M" && form.sex !== "F");
+
+  const saveMut = useMutation({
+    mutationFn: () => patientsService.update(patient.id, form),
+    onSuccess: (updated) => {
+      setForm(dtoToPayload(updated));
+      qc.setQueryData(queryKeys.patients.detail(updated.id), updated);
+      qc.invalidateQueries({ queryKey: queryKeys.patients.all });
+      toast.success("Patient details updated");
+    },
+    onError: (error) => {
+      const friendly = getFriendlyError(error, "the patient's details");
+      toast.error(friendly.title, { description: friendly.message });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+        <div>
+          <p className="text-base font-semibold text-foreground">
+            {patient.firstName} {patient.lastName}
+          </p>
+          <p className="patient-id mt-0.5">
+            {patient.patientPublicId} · {patient.ageDisplay} · {patient.sex === "F" ? "Female" : "Male"}
+          </p>
+        </div>
+        <Button variant="outline" onClick={onFindDifferent}>
+          Find a different patient
+        </Button>
+      </div>
+
+      <SectionCard title="Personal details">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="First name">
+            <Input
+              value={form.firstName}
+              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+              aria-invalid={!form.firstName.trim()}
+            />
+            {!form.firstName.trim() && <p className="text-xs text-destructive">Enter a first name</p>}
+          </Field>
+          <Field label="Other names (optional)">
+            <Input value={form.middleName} onChange={(e) => setForm({ ...form, middleName: e.target.value })} />
+          </Field>
+          <Field label="Last name">
+            <Input
+              value={form.lastName}
+              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+              aria-invalid={!form.lastName.trim()}
+            />
+            {!form.lastName.trim() && <p className="text-xs text-destructive">Enter a last name</p>}
+          </Field>
+          <Field label="Sex">
+            <RadioGroup value={form.sex} onValueChange={(v) => setForm({ ...form, sex: v })} className="flex gap-3">
+              <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                <RadioGroupItem value="M" /> Male
+              </label>
+              <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                <RadioGroupItem value="F" /> Female
+              </label>
+            </RadioGroup>
+          </Field>
+          <Field label="Date of birth">
+            <DatePickerField value={form.dob} disabled={form.dobUnknown} onChange={(v) => setForm({ ...form, dob: v })} />
+          </Field>
+          <Field label="Occupation">
+            <Input value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} />
+          </Field>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Contact and next of kin">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Phone">
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="font-clinical" />
+          </Field>
+          <Field label="Alternative phone">
+            <Input value={form.altPhone} onChange={(e) => setForm({ ...form, altPhone: e.target.value })} className="font-clinical" />
+          </Field>
+          <Field label="Region">
+            <Select value={form.region} onValueChange={(v) => setForm({ ...form, region: v })}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select region" /></SelectTrigger>
+              <SelectContent>
+                {GHANA_REGIONS.map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Address" className="sm:col-span-3">
+            <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} />
+          </Field>
+          <Field label="Next of kin name">
+            <Input value={form.emergencyName} onChange={(e) => setForm({ ...form, emergencyName: e.target.value })} />
+          </Field>
+          <Field label="Relationship">
+            <Input value={form.emergencyRelation} onChange={(e) => setForm({ ...form, emergencyRelation: e.target.value })} />
+          </Field>
+          <Field label="Next of kin phone">
+            <Input value={form.emergencyPhone} onChange={(e) => setForm({ ...form, emergencyPhone: e.target.value })} className="font-clinical" />
+          </Field>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="NHIS">
+        <div className="max-w-md space-y-3">
+          <NhisCheck
+            memberNumber={form.nhisNumber}
+            onMemberNumberChange={(v) => setForm({ ...form, nhisNumber: v })}
+            onVerified={(result) =>
+              setForm((prev) => ({
+                ...prev,
+                nhisStatus: result.status === "VERIFIED" ? "yes" : "no",
+                nhisExpiry: result.validUntil ?? "",
+              }))
+            }
+          />
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Allergies and blood group">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Known allergies" className="sm:col-span-2">
+            <Textarea
+              value={form.knownAllergies}
+              onChange={(e) => setForm({ ...form, knownAllergies: e.target.value })}
+              rows={2}
+              className="font-clinical"
+              placeholder="e.g. Penicillin, or None known"
+            />
+          </Field>
+          <Field label="Blood group">
+            <Select
+              value={form.bloodGroup ? form.bloodGroup.toUpperCase() : "__none__"}
+              onValueChange={(v) => setForm({ ...form, bloodGroup: v === "__none__" ? "" : v })}
+            >
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select blood group" /></SelectTrigger>
+              <SelectContent>
+                {BLOOD_GROUP_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || "none"} value={opt.value || "__none__"}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
+      </SectionCard>
+
+      <div className="flex justify-end">
+        <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || missingRequired}>
+          {saveMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+          Save changes
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+      <p className="mb-3 text-sm font-semibold text-foreground">{title}</p>
+      {children}
     </div>
   );
 }
 
 function Field({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <div className={`space-y-1 ${className}`}>
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+    <div className={`space-y-1.5 ${className}`}>
+      <Label className="text-sm text-foreground">{label}</Label>
       {children}
     </div>
   );

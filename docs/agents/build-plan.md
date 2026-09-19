@@ -12,7 +12,7 @@ Build in phases. Within a phase, slices on different lines can be built in paral
 | ✅ FND-02 | Pills | `StatusPill`, `TriagePill`, `NhisPill`, `AllergyPill`, `LabResultValue` built; `.result-low` / `.result-high` utilities added | components/common, components/clinical, globals.css |
 | ✅ FND-03 | States | `EmptyState`, `ErrorState`, `QueryState`, skeleton presets built; illustrations are plain icon-in-circle (`components/common/illustrations`), not custom SVG artwork | components/common |
 | ✅ FND-04 | Table | `DataTable`, `TableToolbar`, `TablePagination` built with a tablet card mode (sub-1024px) | components/common/data-table |
-| ✅ FND-05 | Layout blocks | `PageCard` (evolve `PageHeader`), `InlineNotice`, `SuccessPanel`, `ConfirmDialog` requires explicit labels — built. `SectionCard`, `FormSection`, `StatCard`, `StepIndicator` not needed yet, still open | components/layouts, components/common |
+| ✅ FND-05 | Layout blocks | `PageCard`, `InlineNotice`, `SuccessPanel`, `ConfirmDialog`, `StepIndicator` (Stage 3) — built. `SectionCard`, `FormSection`, `StatCard` not needed yet, still open | components/layouts, components/common |
 | FND-06 | Patient context | `PatientBanner` (from `folder-header`), `CriticalAlert` | components/clinical |
 | FND-07 | Waiting list | `WaitingList` + `sortByUrgencyThenArrival` (unit tested) | components/clinical, lib |
 | ✅ FND-08 | Shell polish + token debt | `AppHeader` greeting/role pill/facility badge — built (Stage 0 + 1). Removed dead `dashboard-*` classes. `*_NAV` label rename per `05-ui-copy` §3 still open (14 module-local files, deferred — see design-system-v2 session notes) | components/layouts, globals.css |
@@ -29,7 +29,7 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 
 | Line | Slices |
 |---|---|
-| Records | REC-01 → REC-02 → REC-03 → REC-04 → REC-05 → REC-06 → REC-07 |
+| Records | ✅ REC-01 → ✅ REC-02 → ✅ REC-03 → ✅ REC-04 → ✅ REC-05 → ✅ REC-06 → ✅ REC-07 — **done, Stage 3 (2026-09-19)**, see `progress.md` |
 | Appointments | REC-08 → REC-09 → REC-10 → REC-11 |
 | Nurse | NUR-01 → NUR-02 → NUR-03 → NUR-04 → NUR-05 → NUR-06 |
 | Doctor | DOC-01 → DOC-02 → DOC-03 → DOC-04 → DOC-13 |

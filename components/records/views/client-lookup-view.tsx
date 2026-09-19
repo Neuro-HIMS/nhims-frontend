@@ -1,239 +1,215 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, CalendarPlus, Loader2, Search, UserPlus } from "lucide-react";
+import { ClipboardList, Search, UserPlus, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import type { Patient, SearchMode } from "@/components/records/lib/records-types";
-import { BookingFormDialog } from "@/components/booking/booking-form-dialog";
-import { HospitalPatientCard } from "@/components/records/views/hospital-patient-card";
+import { EmptyState } from "@/components/common/empty-state";
+import { ErrorState } from "@/components/common/error-state";
+import { PageCard } from "@/components/layouts/page-card";
 import { PatientResultCard } from "@/components/records/views/patient-result-card";
+import { StartVisitDialog } from "@/components/records/start-visit-dialog";
+import type { Patient, SearchMode } from "@/components/records/lib/records-types";
+import { detectSearchMode, splitFullName } from "@/components/records/lib/records-utils";
 import { patientSummaryToLegacyPatient } from "@/lib/patient-mapper";
 import { formatPatientPublicIdLive } from "@/lib/patient-public-id";
 import { queryKeys } from "@/lib/query-keys";
 import { patientsService } from "@/services/patients.service";
 import type { PatientSearchParams } from "@/types/patients.types";
-import type { ApiError } from "@/types/api.types";
 
-type ActiveSearch = PatientSearchParams;
+const MODE_TABS: Array<{ id: SearchMode; label: string }> = [
+  { id: "any", label: "Anything" },
+  { id: "id", label: "Hospital number" },
+  { id: "nhis", label: "NHIS number" },
+  { id: "name", label: "Name" },
+];
 
-function toQueryKeyParams(s: ActiveSearch) {
-  if (s.mode === "name") {
-    return { mode: s.mode, firstName: s.firstName, lastName: s.lastName };
+function toParams(mode: SearchMode, query: string, firstName: string, lastName: string): PatientSearchParams | null {
+  if (mode === "name") {
+    if (!firstName.trim() && !lastName.trim()) return null;
+    return { mode: "name", firstName: firstName.trim(), lastName: lastName.trim() };
   }
-  return { mode: s.mode, q: s.q };
+  if (!query.trim() || query.trim().length < 2) return null;
+  if (mode === "any") {
+    const detected = detectSearchMode(query);
+    if (detected === "name") {
+      const split = splitFullName(query);
+      return { mode: "name", firstName: split.firstName, lastName: split.lastName };
+    }
+    return { mode: detected, q: query.trim() };
+  }
+  return { mode, q: query.trim() };
 }
 
 export function ClientLookupView() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [mode, setMode] = useState<SearchMode>("id");
-  const [idQuery, setIdQuery] = useState(() => formatPatientPublicIdLive(searchParams.get("q")?.trim() ?? ""));
-  const [nhisQuery, setNhisQuery] = useState("");
+  const [mode, setMode] = useState<SearchMode>("any");
+  const [query, setQuery] = useState(() => searchParams.get("q")?.trim() ?? "");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [activeSearch, setActiveSearch] = useState<ActiveSearch | null>(null);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const [visitPatient, setVisitPatient] = useState<Patient | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  const activeSearch = useMemo(
+    () => toParams(mode, debouncedQuery, firstName, lastName),
+    [mode, debouncedQuery, firstName, lastName],
+  );
 
   const searchQuery = useQuery({
-    queryKey: activeSearch ? queryKeys.patients.search(toQueryKeyParams(activeSearch)) : ["patients", "search", "idle"],
+    queryKey: activeSearch
+      ? queryKeys.patients.search(
+          activeSearch.mode === "name"
+            ? { mode: activeSearch.mode, firstName: activeSearch.firstName, lastName: activeSearch.lastName }
+            : { mode: activeSearch.mode, q: activeSearch.q },
+        )
+      : ["patients", "search", "idle"],
     queryFn: () => patientsService.search(activeSearch!),
     enabled: activeSearch !== null,
   });
 
-  const selectedPatientDetailQuery = useQuery({
-    queryKey: selectedPatient?.id ? queryKeys.patients.detail(selectedPatient.id) : ["patients", "detail", "idle"],
-    queryFn: () => patientsService.getById(selectedPatient!.id!),
-    enabled: Boolean(selectedPatient?.id),
-  });
-
-  const results = useMemo(
-    () => (searchQuery.data ?? []).map(patientSummaryToLegacyPatient),
-    [searchQuery.data]
-  );
-
-  function runSearch() {
-    setSelectedPatient(null);
-    if (mode === "id") { setActiveSearch({ mode: "id", q: idQuery.trim() }); return; }
-    if (mode === "nhis") { setActiveSearch({ mode: "nhis", q: nhisQuery.trim() }); return; }
-    setActiveSearch({ mode: "name", firstName: firstName.trim(), lastName: lastName.trim() });
-  }
-
-  function clearSearch() {
-    setIdQuery(""); setNhisQuery(""); setFirstName(""); setLastName("");
-    setActiveSearch(null); setSelectedPatient(null);
-  }
-
-  function hasValidQuery() {
-    if (mode === "id") return idQuery.trim().length > 0;
-    if (mode === "nhis") return nhisQuery.trim().length > 0;
-    return firstName.trim().length > 0 || lastName.trim().length > 0;
-  }
-
+  const results = useMemo(() => (searchQuery.data ?? []).map(patientSummaryToLegacyPatient), [searchQuery.data]);
+  const hasTyped = mode === "name" ? Boolean(firstName.trim() || lastName.trim()) : query.trim().length > 0;
   const searched = activeSearch !== null;
-  const showEmpty = searched && searchQuery.isSuccess && results.length === 0 && !searchQuery.isFetching;
-  const errMsg =
-    searchQuery.error && typeof searchQuery.error === "object" && "response" in searchQuery.error
-      ? (searchQuery.error as { response?: { data?: ApiError } }).response?.data?.message
-      : null;
+  const showEmpty = searched && searchQuery.isSuccess && results.length === 0;
+  const registerHref =
+    mode === "name" && (firstName.trim() || lastName.trim())
+      ? `/records?view=register&firstName=${encodeURIComponent(firstName.trim())}&lastName=${encodeURIComponent(lastName.trim())}`
+      : "/records?view=register";
+
+  function switchMode(next: SearchMode) {
+    setMode(next);
+    setQuery("");
+    setDebouncedQuery("");
+    setFirstName("");
+    setLastName("");
+  }
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            Search Existing Client
-          </CardTitle>
-          <CardDescription>
-            Start every record flow from lookup to avoid duplicate registration. Results come from your facility registry.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/30 p-1">
-            {([
-              { id: "id", label: "Client ID" },
-              { id: "nhis", label: "NHIS Number" },
-              { id: "name", label: "Name" },
-            ] as const).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => { setMode(item.id); setActiveSearch(null); setSelectedPatient(null); }}
-                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  mode === item.id
-                    ? "border border-border bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+      <PageCard
+        title="Find or register a patient"
+        description="Find a patient or register someone new."
+        actions={
+          <Button asChild>
+            <a href="/records?view=register">
+              <UserPlus className="mr-1.5 h-4 w-4" />
+              Register new patient
+            </a>
+          </Button>
+        }
+      />
 
-          {mode === "id" && (
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-muted/30 p-1">
+          {MODE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => switchMode(tab.id)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                mode === tab.id
+                  ? "border border-border bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4">
+          {mode === "name" ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" />
+              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" />
+            </div>
+          ) : (
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                value={idQuery}
-                onChange={(e) => setIdQuery(formatPatientPublicIdLive(e.target.value))}
-                onKeyDown={(e) => e.key === "Enter" && hasValidQuery() && runSearch()}
-                placeholder="Example: KBTH-12345678-26"
-                className="font-clinical"
+                value={query}
+                onChange={(e) =>
+                  setQuery(mode === "id" ? formatPatientPublicIdLive(e.target.value) : e.target.value)
+                }
+                placeholder={
+                  mode === "id"
+                    ? "Example: KBTH-12345678-26"
+                    : mode === "nhis"
+                      ? "Example: 12345678"
+                      : "Hospital number, NHIS number, name or phone"
+                }
+                className="pl-9 font-clinical"
+                autoFocus
               />
-              <Button onClick={runSearch} disabled={!hasValidQuery()}><Search className="mr-1.5 h-4 w-4" />Search</Button>
-              <Button variant="outline" onClick={clearSearch}>Clear</Button>
             </div>
           )}
+        </div>
+      </div>
 
-          {mode === "nhis" && (
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-              <Input
-                value={nhisQuery}
-                onChange={(e) => setNhisQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && hasValidQuery() && runSearch()}
-                placeholder="Example: GH/12345678-01"
-                className="font-clinical"
-              />
-              <Button onClick={runSearch} disabled={!hasValidQuery()}><Search className="mr-1.5 h-4 w-4" />Search</Button>
-              <Button variant="outline" onClick={clearSearch}>Clear</Button>
-            </div>
-          )}
-
-          {mode === "name" && (
-            <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First Name" />
-                <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last Name" />
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={runSearch} disabled={!hasValidQuery()}><Search className="mr-1.5 h-4 w-4" />Search</Button>
-                <Button variant="outline" onClick={clearSearch}>Clear</Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {searched && searchQuery.isFetching && (
-        <Card className="border-dashed">
-          <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" /> Searching registry…
-          </CardContent>
-        </Card>
+      {!hasTyped && (
+        <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+          Ask the patient for their hospital card or NHIS card — it&apos;s the fastest way to find them.
+        </div>
       )}
 
       {searched && searchQuery.isError && (
-        <Card className="border-destructive/40 bg-destructive/5">
-          <CardContent className="py-6 text-center text-sm">
-            <p className="font-medium text-destructive">Search failed</p>
-            <p className="mt-1 text-muted-foreground">{errMsg ?? "Check your connection and try again."}</p>
-            <Button className="mt-4" variant="outline" size="sm" onClick={() => searchQuery.refetch()}>Retry</Button>
-          </CardContent>
-        </Card>
+        <ErrorState error={searchQuery.error} onRetry={() => void searchQuery.refetch()} />
       )}
 
       {showEmpty && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-              <AlertCircle className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="font-semibold text-foreground">No matching client found</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Register as first-time patient and continue to appointment booking.
-              </p>
-            </div>
-            <Button onClick={() => router.push("/records?view=register")}>
-              <UserPlus className="mr-1.5 h-4 w-4" /> Register First-Time Client
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          illustration="no-results"
+          title={`No patient found for "${mode === "name" ? `${firstName} ${lastName}`.trim() : query}"`}
+          description="Check the spelling or try their phone or NHIS number."
+          action={{ label: "Register new patient", href: registerHref }}
+        />
       )}
 
-      {results.length > 0 && !searchQuery.isFetching && (
-        <div className="space-y-3">
+      {results.length > 0 && (
+        <div className="space-y-2" role="list">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {results.length} client{results.length > 1 ? "s" : ""} found
+            {results.length} patient{results.length > 1 ? "s" : ""} found
           </p>
-          <div className="space-y-2">
-            {results.map((patient) => (
-              <PatientResultCard
-                key={patient.id ?? patient.patientId}
-                patient={patient}
-                selected={selectedPatient?.patientId === patient.patientId}
-                onSelect={(p) => setSelectedPatient(p)}
-              />
-            ))}
-          </div>
+          {results.map((patient) => (
+            <PatientResultCard
+              key={patient.id ?? patient.patientId}
+              patient={patient}
+              showBookButton={false}
+              rightSlot={
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => router.push(`/records?view=manage&patientId=${patient.id}`)}>
+                    <UserRound className="mr-1.5 h-3.5 w-3.5" />
+                    View details
+                  </Button>
+                  <Button size="sm" onClick={() => setVisitPatient(patient)}>
+                    <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
+                    Start today&apos;s visit
+                  </Button>
+                </div>
+              }
+            />
+          ))}
         </div>
       )}
 
-      {selectedPatient && selectedPatient.id && selectedPatientDetailQuery.data && (
-        <div className="space-y-3">
-          <p className="text-center text-sm font-medium text-muted-foreground">Patient card</p>
-          <HospitalPatientCard patient={selectedPatientDetailQuery.data} />
-          <div className="flex justify-center">
-            <Button onClick={() => setBookingDialogOpen(true)}>
-              <CalendarPlus className="mr-1.5 h-4 w-4" />
-              Book Appointment
-            </Button>
-          </div>
-        </div>
+      {visitPatient && (
+        <StartVisitDialog
+          patient={visitPatient}
+          onOpenChange={(next) => !next && setVisitPatient(null)}
+        />
       )}
-
-      <BookingFormDialog
-        open={bookingDialogOpen}
-        onOpenChange={setBookingDialogOpen}
-        patient={selectedPatient}
-        patientId={selectedPatient?.id ?? null}
-      />
     </div>
   );
 }
