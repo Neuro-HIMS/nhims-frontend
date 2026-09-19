@@ -7,6 +7,7 @@ import { DataTable, type DataTableColumn, TableToolbar } from "@/components/comm
 import { StatusPill } from "@/components/common/status-pill";
 import { PageCard } from "@/components/layouts/page-card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { plainLanguageMessage } from "@/lib/api-errors";
 import { formatTableDateTime } from "@/lib/dates";
 import { auditApiService } from "@/services/audit.service";
 import type { AuditEventDto } from "@/types/audit.types";
@@ -74,18 +75,21 @@ export function AuditLogWorkspace() {
     {
       key: "what",
       header: "What happened",
-      cell: (e) => (
-        <span>
-          <StatusPill tone="neutral" className="mr-1.5">
-            {humanize(e.action)}
-          </StatusPill>
-          {e.details && <span className="text-muted-foreground">{e.details}</span>}
-        </span>
-      ),
+      cell: (e) => {
+        const details = plainLanguageMessage(e.details);
+        return (
+          <span>
+            <StatusPill tone="neutral" className="mr-1.5">
+              {humanize(e.action)}
+            </StatusPill>
+            {details && <span className="text-muted-foreground">{details}</span>}
+          </span>
+        );
+      },
     },
     {
-      key: "device",
-      header: "Device",
+      key: "from",
+      header: "From",
       cell: (e) => <span className="text-xs text-muted-foreground">{e.ipAddress || "—"}</span>,
       hideOnTablet: true,
     },

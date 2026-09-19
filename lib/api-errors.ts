@@ -72,8 +72,12 @@ export function getFriendlyError(error: unknown, context?: string): FriendlyErro
   }
 }
 
-/** Only pass a backend message through if it plainly reads like a sentence, not a technical dump. */
-function plainLanguageMessage(message: string | null | undefined): string | null {
+/**
+ * Only pass a backend string through to the screen if it plainly reads like a
+ * sentence, not a technical dump — use for any backend text shown outside the
+ * standard error path too (activity history details, import-error rows, ...).
+ */
+export function plainLanguageMessage(message: string | null | undefined): string | null {
   if (!message) return null;
   if (message.length > 160) return null;
   if (/exception|stack trace|\bat java\.|\bnull\b|\bundefined\b|:\s*\d{3}\b/i.test(message)) return null;

@@ -42,6 +42,7 @@ export function UsersManagementWorkspace() {
 
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [justCreated, setJustCreated] = useState<{ name: string; username: string; password: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -66,10 +67,11 @@ export function UsersManagementWorkspace() {
 
   async function loadUsers() {
     setLoading(true);
+    setLoadError(null);
     try {
       setUsers(await usersService.list());
     } catch (error) {
-      notify.error(getFriendlyError(error).message);
+      setLoadError(error);
     } finally {
       setLoading(false);
     }
@@ -181,7 +183,7 @@ export function UsersManagementWorkspace() {
           <p className="text-base font-semibold text-foreground">Account created for {justCreated.name}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             Temporary password — share it with {justCreated.name.split(" ")[0]} privately. They&apos;ll choose their
-            own when they first sign in.
+            own password when they first sign in.
           </p>
           <div className="mt-3 rounded-xl border border-border bg-card p-4">
             <p className="text-xs font-medium text-muted-foreground">Username</p>
@@ -236,6 +238,8 @@ export function UsersManagementWorkspace() {
         <StaffAccountsView
           users={filteredUsers}
           loading={loading}
+          error={loadError}
+          onRetry={() => void loadUsers()}
           search={search}
           onSearchChange={setSearch}
           roleFilter={roleFilter}
@@ -256,8 +260,8 @@ export function UsersManagementWorkspace() {
       {issuedReset && (
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-sm text-foreground">
-            Temporary password for <span className="font-semibold">{issuedReset.name}</span> — share it with them
-            privately. They&apos;ll choose their own when they next sign in.
+            Temporary password — share it with {issuedReset.name.split(" ")[0]} privately. They&apos;ll choose their
+            own password when they next sign in.
           </p>
           <div className="mt-2 flex items-center gap-2">
             <code className="font-clinical flex-1 rounded-md bg-muted px-2.5 py-1.5 text-sm">{issuedReset.token}</code>

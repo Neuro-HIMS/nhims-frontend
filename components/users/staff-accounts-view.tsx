@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 interface StaffAccountsViewProps {
   users: UserListItem[];
   loading: boolean;
+  error?: unknown;
+  onRetry?: () => void;
   search: string;
   onSearchChange: (value: string) => void;
   roleFilter: "all" | UserRole;
@@ -27,6 +29,8 @@ interface StaffAccountsViewProps {
 export function StaffAccountsView({
   users,
   loading,
+  error,
+  onRetry,
   search,
   onSearchChange,
   roleFilter,
@@ -74,6 +78,8 @@ export function StaffAccountsView({
       rows={loading ? undefined : users}
       getRowId={(u) => u.id}
       isLoading={loading}
+      error={error}
+      onRetry={onRetry}
       empty={{
         illustration: "empty-list",
         title: search || roleFilter !== "all" || statusFilter !== "all" ? "No staff match these filters" : "No staff yet",

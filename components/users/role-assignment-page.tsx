@@ -6,10 +6,10 @@ import { ArrowLeft, Save } from "lucide-react";
 
 import type { AppModule, UserRole } from "@/types/auth.types";
 import type { UserListItem } from "@/types/users.types";
-import { WORKSPACE_APP_MODULES } from "@/config/navigation";
 import { authService } from "@/services/auth.service";
 import { usersService } from "@/services/users.service";
 import { useAuthStore } from "@/store/auth.store";
+import { useDisabledSections } from "@/hooks/use-disabled-sections";
 import {
   PLACEHOLDER_CLINICAL_MODULES,
   ROLE_OPTIONS,
@@ -35,7 +35,7 @@ export function RoleAssignmentPage({ userId }: RoleAssignmentPageProps) {
   const router = useRouter();
   const setSessionUser = useAuthStore((s) => s.setUser);
   const currentUserId = useAuthStore((s) => s.user?.userId);
-  const enabledAtFacility = useAuthStore((s) => s.user?.enabledHmisModuleKeys);
+  const disabledModules = useDisabledSections();
 
   const [user, setUser] = useState<UserListItem | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -96,11 +96,6 @@ export function RoleAssignmentPage({ userId }: RoleAssignmentPageProps) {
       setIsSaving(false);
     }
   }
-
-  const disabledModules = new Set<AppModule>([
-    ...PLACEHOLDER_CLINICAL_MODULES,
-    ...(enabledAtFacility ? WORKSPACE_APP_MODULES.filter((m) => !enabledAtFacility.includes(m)) : []),
-  ]);
 
   return (
     <section className="space-y-4">

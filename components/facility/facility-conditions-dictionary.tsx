@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Loader2, Pencil, Plus } from "lucide-react";
 
 import { EmptyState } from "@/components/common/empty-state";
+import { ErrorState } from "@/components/common/error-state";
 import { StatusPill } from "@/components/common/status-pill";
 import { TableSkeleton } from "@/components/common/skeletons";
 import { UploadDropzone } from "@/components/common/upload-dropzone";
@@ -23,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { getFriendlyError } from "@/lib/api-errors";
+import { getFriendlyError, plainLanguageMessage } from "@/lib/api-errors";
 import { notify } from "@/lib/notify";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
@@ -120,11 +121,12 @@ export function FacilityDiagnosisClassificationsSettings() {
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
       setImportOpen(false);
-      const errPreview = res.errors.slice(0, 5).join("; ");
       if (res.errors.length === 0) {
         notify.success(`Added ${res.imported} diagnoses. Skipped ${res.skipped} already in the list.`);
       } else {
-        notify.error(`Added ${res.imported}, skipped ${res.skipped}. Some rows had problems: ${errPreview}`);
+        const clean = res.errors.map((e) => plainLanguageMessage(e)).filter((e): e is string => Boolean(e));
+        const detail = clean.length > 0 ? ` ${clean.slice(0, 3).join(" ")}` : " Check the file and try again.";
+        notify.error(`Added ${res.imported}, skipped ${res.skipped}. Some rows had problems.${detail}`);
       }
     },
     onError: (e: unknown) => notify.error(getFriendlyError(e).message),
@@ -225,11 +227,11 @@ export function FacilityDiagnosisClassificationsSettings() {
               <div className="ml-auto flex flex-wrap gap-2">
                 <Button type="button" size="sm" variant="secondary" onClick={() => exportAs("csv")}>
                   <Download className="mr-1.5 h-4 w-4" />
-                  Download (CSV)
+                  Download (data file)
                 </Button>
                 <Button type="button" size="sm" variant="secondary" onClick={() => exportAs("xlsx")}>
                   <Download className="mr-1.5 h-4 w-4" />
-                  Download (spreadsheet)
+                  Download (Excel file)
                 </Button>
                 <Button type="button" size="sm" variant="secondary" onClick={() => setImportOpen(true)}>
                   Add many at once
@@ -276,7 +278,10 @@ export function FacilityDiagnosisClassificationsSettings() {
               </tbody>
             </table>
             {listQuery.isLoading && <TableSkeleton rows={5} columns={canWrite ? 5 : 4} />}
-            {!listQuery.isLoading && content.length === 0 && (
+            {listQuery.isError && (
+              <ErrorState error={listQuery.error} onRetry={() => void listQuery.refetch()} />
+            )}
+            {!listQuery.isLoading && !listQuery.isError && content.length === 0 && (
               <EmptyState
                 illustration="no-results"
                 title={searchApplied ? `No diagnosis found for "${searchApplied}"` : "No diagnoses yet"}
@@ -290,7 +295,7 @@ export function FacilityDiagnosisClassificationsSettings() {
             )}
           </div>
 
-          {content.length > 0 && (
+          {!listQuery.isError && content.length > 0 && (
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
                 Page {page + 1}

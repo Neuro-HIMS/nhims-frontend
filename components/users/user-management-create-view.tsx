@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { AppModule, UserRole } from "@/types/auth.types";
 import { ROLE_OPTIONS, defaultModulesForRole } from "@/components/users/users-management-constants";
 import { SectionsCheckboxGroups } from "@/components/users/sections-checkbox-groups";
+import { useDisabledSections } from "@/hooks/use-disabled-sections";
 import { roleLabel } from "@/lib/status-labels";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +40,7 @@ export function UserManagementCreateView({
   onCreateAccount,
 }: UserManagementCreateViewProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const disabledModules = useDisabledSections();
   const showError = (key: keyof CreateFormState) =>
     formErrors[key] ? <p className="text-xs text-destructive">{formErrors[key]}</p> : null;
 
@@ -158,6 +160,7 @@ export function UserManagementCreateView({
           </div>
           <SectionsCheckboxGroups
             selected={createForm.assignedModules}
+            disabledModules={disabledModules}
             onToggle={(module, checked) =>
               setCreateForm((p) => ({
                 ...p,

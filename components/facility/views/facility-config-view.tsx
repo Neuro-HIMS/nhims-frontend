@@ -1,5 +1,6 @@
 "use client";
 
+import { UnitInput } from "@/components/common/unit-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,47 +22,53 @@ export function FacilityConfigView({ config, onChange }: FacilityConfigViewProps
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <LabeledInput
-              label="Length of each appointment"
-              value={String(config.appointmentSlotMinutes)}
-              suffix="minutes"
-              hint="From 5 to 120 minutes"
-              onChange={(value) =>
-                onChange({
-                  ...config,
-                  appointmentSlotMinutes: parseBoundedInt(value, 5, 120, config.appointmentSlotMinutes),
-                })
-              }
-            />
-            <LabeledInput
-              label="How far ahead patients can book"
-              value={String(config.appointmentBookingHorizonDays)}
-              suffix="days"
-              hint="From 1 to 365 days"
-              onChange={(value) =>
-                onChange({
-                  ...config,
-                  appointmentBookingHorizonDays: parseBoundedInt(
-                    value,
-                    1,
-                    365,
-                    config.appointmentBookingHorizonDays
-                  ),
-                })
-              }
-            />
-            <LabeledInput
-              label="How long before a waiting patient shows as waiting long"
-              value={String(config.queueAutoRefreshSec)}
-              suffix="seconds"
-              hint="From 5 to 300 seconds"
-              onChange={(value) =>
-                onChange({
-                  ...config,
-                  queueAutoRefreshSec: parseBoundedInt(value, 5, 300, config.queueAutoRefreshSec),
-                })
-              }
-            />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">Length of each appointment</p>
+              <UnitInput
+                value={String(config.appointmentSlotMinutes)}
+                unit="minutes"
+                hint="From 5 to 120 minutes"
+                onChange={(value) =>
+                  onChange({
+                    ...config,
+                    appointmentSlotMinutes: parseBoundedInt(value, 5, 120, config.appointmentSlotMinutes),
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">How far ahead patients can book</p>
+              <UnitInput
+                value={String(config.appointmentBookingHorizonDays)}
+                unit="days"
+                hint="From 1 to 365 days"
+                onChange={(value) =>
+                  onChange({
+                    ...config,
+                    appointmentBookingHorizonDays: parseBoundedInt(
+                      value,
+                      1,
+                      365,
+                      config.appointmentBookingHorizonDays
+                    ),
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">How often the waiting list refreshes on screen</p>
+              <UnitInput
+                value={String(config.queueAutoRefreshSec)}
+                unit="seconds"
+                hint="From 5 to 300 seconds"
+                onChange={(value) =>
+                  onChange({
+                    ...config,
+                    queueAutoRefreshSec: parseBoundedInt(value, 5, 300, config.queueAutoRefreshSec),
+                  })
+                }
+              />
+            </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-foreground">Language staff see by default</p>
               <Select
@@ -118,18 +125,20 @@ export function FacilityConfigView({ config, onChange }: FacilityConfigViewProps
           <CardDescription>How many days after a visit staff may still add clinical notes.</CardDescription>
         </CardHeader>
         <CardContent>
-          <LabeledInput
-            label="Days allowed"
-            value={String(config.allowBackdatedClinicalDays)}
-            suffix="days"
-            hint="0 turns this off — notes can only be added on the day of the visit"
-            onChange={(value) =>
-              onChange({
-                ...config,
-                allowBackdatedClinicalDays: parseBoundedInt(value, 0, 30, config.allowBackdatedClinicalDays),
-              })
-            }
-          />
+          <div className="max-w-xs space-y-1">
+            <p className="text-sm font-medium text-foreground">Days allowed</p>
+            <UnitInput
+              value={String(config.allowBackdatedClinicalDays)}
+              unit="days"
+              hint="0 turns this off — notes can only be added on the day of the visit"
+              onChange={(value) =>
+                onChange({
+                  ...config,
+                  allowBackdatedClinicalDays: parseBoundedInt(value, 0, 30, config.allowBackdatedClinicalDays),
+                })
+              }
+            />
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -155,36 +164,6 @@ function FlagCheckbox({
         <span className="block text-xs text-muted-foreground">{description}</span>
       </span>
     </label>
-  );
-}
-
-function LabeledInput({
-  label,
-  value,
-  suffix,
-  hint,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  suffix?: string;
-  hint?: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-sm font-medium text-foreground">{label}</p>
-      <div className="flex items-center gap-2">
-        <input
-          type="number"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-9 w-full min-w-0 flex-1 rounded-md border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        />
-        {suffix ? <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">{suffix}</span> : null}
-      </div>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
   );
 }
 

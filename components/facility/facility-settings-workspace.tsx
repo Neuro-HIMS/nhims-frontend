@@ -71,6 +71,7 @@ export function FacilitySettingsWorkspace({ facilityName, facilityCode }: Facili
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoDirty, setLogoDirty] = useState<"none" | "replace" | "clear">("none");
   const [loading, setLoading] = useState(true);
+  const [reloading, setReloading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -84,8 +85,9 @@ export function FacilitySettingsWorkspace({ facilityName, facilityCode }: Facili
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function loadFacility() {
-    setLoading(true);
+  async function loadFacility(isReload = false) {
+    if (isReload) setReloading(true);
+    else setLoading(true);
     setLoadError(null);
     try {
       const dto = await facilityService.get();
@@ -98,7 +100,8 @@ export function FacilitySettingsWorkspace({ facilityName, facilityCode }: Facili
     } catch (err) {
       setLoadError(getFriendlyError(err).message);
     } finally {
-      setLoading(false);
+      if (isReload) setReloading(false);
+      else setLoading(false);
     }
   }
 
@@ -185,9 +188,9 @@ export function FacilitySettingsWorkspace({ facilityName, facilityCode }: Facili
           !loading && (
             <>
               <Badge variant={hasChanges ? "secondary" : "outline"}>{hasChanges ? "Unsaved changes" : "Up to date"}</Badge>
-              <Button variant="secondary" type="button" disabled={saving} onClick={() => void loadFacility()}>
-                {loading ? <Spinner className="mr-1.5 h-4 w-4" /> : <RotateCcw className="mr-1.5 h-4 w-4" />}
-                Reload
+              <Button variant="secondary" type="button" disabled={saving || reloading} onClick={() => void loadFacility(true)}>
+                {reloading ? <Spinner className="mr-1.5 h-4 w-4" /> : <RotateCcw className="mr-1.5 h-4 w-4" />}
+                {reloading ? "Reloading…" : "Reload"}
               </Button>
               <Button variant="secondary" type="button" disabled={!hasChanges || saving} onClick={handleReset}>
                 Undo changes

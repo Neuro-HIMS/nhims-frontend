@@ -9,14 +9,14 @@ Build in phases. Within a phase, slices on different lines can be built in paral
 | ID | Slice | Delivers | Files |
 |---|---|---|---|
 | ✅ FND-01 | Shared helpers | `lib/status-labels.ts` (`ROLE_LABELS`/`roleLabel` — other maps added just-in-time by the stages that need them), `lib/api-errors.ts` (`getFriendlyError`), `lib/notify.ts` | lib/ |
-| FND-02 | Pills | `StatusPill`, `TriagePill`, `NhisPill`, `AllergyPill`, `LabResultValue`; add `.result-low` / `.result-high` utilities | components/common, components/clinical, globals.css |
-| FND-03 | States | `EmptyState`, `ErrorState`, `QueryState`, skeleton presets, greyscale illustrations | components/common |
-| FND-04 | Table | `DataTable`, `TableToolbar`, `TablePagination`, tablet card mode | components/common/data-table |
+| ✅ FND-02 | Pills | `StatusPill`, `TriagePill`, `NhisPill`, `AllergyPill`, `LabResultValue` built; `.result-low` / `.result-high` utilities added | components/common, components/clinical, globals.css |
+| ✅ FND-03 | States | `EmptyState`, `ErrorState`, `QueryState`, skeleton presets built; illustrations are plain icon-in-circle (`components/common/illustrations`), not custom SVG artwork | components/common |
+| ✅ FND-04 | Table | `DataTable`, `TableToolbar`, `TablePagination` built with a tablet card mode (sub-1024px) | components/common/data-table |
 | ✅ FND-05 | Layout blocks | `PageCard` (evolve `PageHeader`), `InlineNotice`, `SuccessPanel`, `ConfirmDialog` requires explicit labels — built. `SectionCard`, `FormSection`, `StatCard`, `StepIndicator` not needed yet, still open | components/layouts, components/common |
 | FND-06 | Patient context | `PatientBanner` (from `folder-header`), `CriticalAlert` | components/clinical |
 | FND-07 | Waiting list | `WaitingList` + `sortByUrgencyThenArrival` (unit tested) | components/clinical, lib |
 | ✅ FND-08 | Shell polish + token debt | `AppHeader` greeting/role pill/facility badge — built (Stage 0 + 1). Removed dead `dashboard-*` classes. `*_NAV` label rename per `05-ui-copy` §3 still open (14 module-local files, deferred — see design-system-v2 session notes) | components/layouts, globals.css |
-| FND-09 | Inputs | `UnitInput`, `MoneyInput`, `PhoneInput`, `UploadDropzone`; `lib/vitals-ranges.ts` | components/common, lib |
+| ✅ FND-09 | Inputs | `UploadDropzone` built (Stage 2). `UnitInput`, `MoneyInput`, `PhoneInput`, `lib/vitals-ranges.ts` still open — needed from Stage 5 (Nurse) onward | components/common, lib |
 | ✅ FND-10 | Permissions | Capability helpers in `lib/permissions.ts` mostly pre-existed; doctor landing → OPD fixed | lib |
 
 ## Phase 1 — Getting in (`ALL`) ✅ done (2026-09-19)
@@ -69,7 +69,7 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 
 | Line | Slices |
 |---|---|
-| Admin | ADM-02 → ADM-03 → ADM-04 → ADM-05 → ADM-06 → ADM-07 → ADM-01 → ADM-08 → ADM-09 → ADM-10 → ADM-11 → ADM-12 |
+| Admin | ✅ ADM-02 → ✅ ADM-03 → ✅ ADM-04 → ✅ ADM-05 → ✅ ADM-06 → ✅ ADM-07 → ADM-01 *(deferred to Stage 13)* → ✅ ADM-08 → ✅ ADM-09 → ✅ ADM-10 → ✅ ADM-11 → ✅ ADM-12 — **done, Stage 2 (2026-09-19)**, see `progress.md` |
 | Reports | HIO-01 → HIO-02 → HIO-04 → HIO-05 → HIO-06 → HIO-03 |
 | Super admin | SUP-03 *(SUP-01 "switch facility" and SUP-02 "facilities list" retired — single-facility migration, Stage 0)* |
 
