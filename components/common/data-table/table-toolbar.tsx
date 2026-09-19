@@ -20,7 +20,7 @@ export function TableToolbar({ search, filters, actions }: TableToolbarProps) {
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-t-xl border border-b-0 border-border bg-surface-subtle px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         {search && (
-          <div className="relative w-56">
+          <div className="relative min-w-56 flex-1 sm:max-w-72">
             <Input
               value={search.value}
               onChange={(e) => search.onChange(e.target.value)}

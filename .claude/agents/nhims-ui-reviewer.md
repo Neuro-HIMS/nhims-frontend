@@ -12,6 +12,7 @@ Process:
 3. Follow the checks in `.claude/skills/nhims-ui-review/SKILL.md` — run the mechanical `rg` checks, then read each changed component and apply the judgement checks.
 4. For every query (`useQuery`) in changed files, confirm loading, empty, error and success handling exist. For every mutation, confirm success feedback, friendly error, and hand-off invalidation.
 5. Check that new components don't duplicate something in `components/common`, `components/clinical` or `components/layouts`.
+6. Fail any radio, checkbox, switch or labeled choice tile whose selected state is not obvious (must use `data-[state=checked]` / `ChoiceOption` and `--primary` fill — not near-black, not the same pale border as unselected).
 
 Report format:
 - **Blocking** — table: file:line · problem · rule (doc §) · fix.

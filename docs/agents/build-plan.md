@@ -30,7 +30,7 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 | Line | Slices |
 |---|---|
 | Records | ✅ REC-01 → ✅ REC-02 → ✅ REC-03 → ✅ REC-04 → ✅ REC-05 → ✅ REC-06 → ✅ REC-07 — **done, Stage 3 (2026-09-19)**, see `progress.md` |
-| Appointments | REC-08 → REC-09 → REC-10 → REC-11 |
+| Appointments | ✅ REC-08 → ✅ REC-09 → ✅ REC-10 → ✅ REC-11 — **done, Stage 4 (2026-09-19)**, see `progress.md` |
 | Nurse | NUR-01 → NUR-02 → NUR-03 → NUR-04 → NUR-05 → NUR-06 |
 | Doctor | DOC-01 → DOC-02 → DOC-03 → DOC-04 → DOC-13 |
 

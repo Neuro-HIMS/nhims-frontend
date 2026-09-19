@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ChoiceOption } from "@/components/ui/choice-option";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InlineNotice } from "@/components/common/inline-notice";
@@ -138,13 +139,10 @@ export function StartVisitDialog({
               className="grid grid-cols-2 gap-2 sm:grid-cols-3"
             >
               {WHERE_TO_OPTIONS.map((opt) => (
-                <label
-                  key={opt.value}
-                  className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary"
-                >
+                <ChoiceOption key={opt.value}>
                   <RadioGroupItem value={opt.value} />
                   {opt.label}
-                </label>
+                </ChoiceOption>
               ))}
             </RadioGroup>
           </div>
@@ -180,13 +178,10 @@ export function StartVisitDialog({
             <Label>How they&apos;ll pay</Label>
             <RadioGroup value={payWay} onValueChange={(v) => setPayWay(v as PayWay)} className="grid grid-cols-3 gap-2">
               {PAY_OPTIONS.map((opt) => (
-                <label
-                  key={opt.value}
-                  className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary"
-                >
+                <ChoiceOption key={opt.value}>
                   <RadioGroupItem value={opt.value} />
                   {opt.label}
-                </label>
+                </ChoiceOption>
               ))}
             </RadioGroup>
             {payWay === "NHIS" && (
@@ -206,13 +201,10 @@ export function StartVisitDialog({
               className="grid grid-cols-3 gap-2"
             >
               {PRIORITY_OPTIONS.map((opt) => (
-                <label
-                  key={opt.value}
-                  className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary"
-                >
+                <ChoiceOption key={opt.value}>
                   <RadioGroupItem value={opt.value} />
                   {opt.label}
-                </label>
+                </ChoiceOption>
               ))}
             </RadioGroup>
             {priority === "EMERGENCY" && (

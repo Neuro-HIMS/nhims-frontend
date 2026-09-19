@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ChoiceOption } from "@/components/ui/choice-option";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -235,12 +236,12 @@ function PatientEditPanel({
           </Field>
           <Field label="Sex">
             <RadioGroup value={form.sex} onValueChange={(v) => setForm({ ...form, sex: v })} className="flex gap-3">
-              <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+              <ChoiceOption>
                 <RadioGroupItem value="M" /> Male
-              </label>
-              <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+              </ChoiceOption>
+              <ChoiceOption>
                 <RadioGroupItem value="F" /> Female
-              </label>
+              </ChoiceOption>
             </RadioGroup>
           </Field>
           <Field label="Date of birth">

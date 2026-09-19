@@ -1,148 +1,165 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { Download } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
+import { DataTable, type DataTableColumn, TableToolbar } from "@/components/common/data-table";
+import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { appointmentStatusLabel, appointmentStatusTone } from "@/lib/status-labels";
+import { formatTableDateTime } from "@/lib/dates";
+import { queryKeys } from "@/lib/query-keys";
 import { appointmentsService } from "@/services/appointments.service";
-import { STATUS_LABEL, statusPillClass, visitTypeLabel } from "@/components/appointments/appointment-utils";
+import type { AppointmentDto } from "@/types/appointments.types";
+import { visitTypeLabel } from "@/components/appointments/appointment-utils";
 import { minorToGhs } from "@/components/finance/finance-utils";
 
 export function HistoryView() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [page, setPage] = useState(1);
-  const pageSize = 12;
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
 
-  const recent = useQuery({
-    queryKey: ["appointments", "history"],
-    queryFn: () => appointmentsService.search({}),
+  const searchParams = {
+    from: from ? `${from}T00:00:00` : undefined,
+    to: to ? `${to}T23:59:59` : undefined,
+    status: statusFilter === "ALL" ? undefined : statusFilter,
+  };
+
+  const history = useQuery({
+    queryKey: queryKeys.appointments.search(searchParams),
+    queryFn: () => appointmentsService.search(searchParams),
   });
 
   const filtered = useMemo(() => {
-    const all = recent.data ?? [];
+    const all = history.data ?? [];
     const q = query.trim().toLowerCase();
-    return all.filter((a) => {
-      if (statusFilter !== "ALL" && a.status !== statusFilter) return false;
-      if (!q) return true;
-      return (
+    if (!q) return all;
+    return all.filter(
+      (a) =>
         a.patientName.toLowerCase().includes(q) ||
         a.patientPublicId.toLowerCase().includes(q) ||
         a.appointmentNumber.toLowerCase().includes(q) ||
-        a.serviceName.toLowerCase().includes(q)
-      );
-    });
-  }, [recent.data, query, statusFilter]);
+        a.serviceName.toLowerCase().includes(q),
+    );
+  }, [history.data, query]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+  function downloadSpreadsheet() {
+    const header = ["When", "Appointment", "Patient", "Hospital number", "Service", "Doctor", "Fee (GHS)", "Status"];
+    const lines = [header.join(",")];
+    for (const a of filtered) {
+      lines.push(
+        [
+          a.scheduledFor ? formatTableDateTime(a.scheduledFor) : "",
+          a.appointmentNumber,
+          `"${a.patientName}"`,
+          a.patientPublicId,
+          `"${a.serviceName}"`,
+          `"${a.clinicianName || ""}"`,
+          minorToGhs(a.feeMinor),
+          appointmentStatusLabel(a.status),
+        ].join(","),
+      );
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `appointments-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const columns: DataTableColumn<AppointmentDto>[] = [
+    {
+      key: "when",
+      header: "When",
+      cell: (a) => (
+        <span className="font-clinical text-xs text-muted-foreground">
+          {a.scheduledFor ? formatTableDateTime(a.scheduledFor) : "—"}
+        </span>
+      ),
+    },
+    { key: "appointment", header: "Appointment", cell: (a) => <span className="font-clinical text-xs">{a.appointmentNumber}</span> },
+    {
+      key: "patient",
+      header: "Patient",
+      cell: (a) => (
+        <div>
+          <p className="font-medium text-foreground">{a.patientName}</p>
+          <p className="patient-id mt-0.5">{a.patientPublicId}</p>
+        </div>
+      ),
+    },
+    {
+      key: "service",
+      header: "Service",
+      cell: (a) => (
+        <div>
+          <p className="text-foreground">{a.serviceName}</p>
+          <p className="text-xs text-muted-foreground">{visitTypeLabel(a.visitType)}</p>
+        </div>
+      ),
+      hideOnTablet: true,
+    },
+    { key: "doctor", header: "Doctor", cell: (a) => a.clinicianName || "—", hideOnTablet: true },
+    { key: "fee", header: "Fee", cell: (a) => <span className="font-clinical">GH₵ {minorToGhs(a.feeMinor)}</span>, hideOnTablet: true },
+    {
+      key: "status",
+      header: "Status",
+      cell: (a) => <StatusPill tone={appointmentStatusTone(a.status)}>{appointmentStatusLabel(a.status)}</StatusPill>,
+    },
+  ];
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setPage(1);
-          }}
-          placeholder="Search by patient, appointment number, or service…"
-          className="max-w-md"
-        />
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[190px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All statuses</SelectItem>
-            <SelectItem value="SCHEDULED">Scheduled</SelectItem>
-            <SelectItem value="CHECKED_IN">Checked in</SelectItem>
-            <SelectItem value="IN_PROGRESS">In progress</SelectItem>
-            <SelectItem value="COMPLETED">Completed</SelectItem>
-            <SelectItem value="NO_SHOW">No show</SelectItem>
-            <SelectItem value="CANCELLED">Cancelled</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {recent.isLoading && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-        </p>
-      )}
-
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <Th>When</Th>
-              <Th>Appointment</Th>
-              <Th>Patient</Th>
-              <Th className="hidden md:table-cell">Service</Th>
-              <Th className="hidden lg:table-cell">Clinician</Th>
-              <Th className="hidden md:table-cell">Fee</Th>
-              <Th>Status</Th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {pageItems.map((a) => (
-              <tr key={a.id}>
-                <td className="px-4 py-3 font-clinical text-xs text-muted-foreground">
-                  {a.scheduledFor ? format(new Date(a.scheduledFor), "yyyy-MM-dd HH:mm") : "—"}
-                </td>
-                <td className="px-4 py-3 font-mono text-xs">{a.appointmentNumber}</td>
-                <td className="px-4 py-3">
-                  <p className="font-medium text-foreground">{a.patientName}</p>
-                  <p className="patient-id mt-0.5">{a.patientPublicId}</p>
-                </td>
-                <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">
-                  <p className="text-foreground">{a.serviceName}</p>
-                  <p className="text-xs">{visitTypeLabel(a.visitType)}</p>
-                </td>
-                <td className="hidden px-4 py-3 text-sm text-muted-foreground lg:table-cell">{a.clinicianName || "—"}</td>
-                <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">
-                  GH₵ {minorToGhs(a.feeMinor)}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={statusPillClass(a.status)}>{STATUS_LABEL[a.status] ?? a.status}</span>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && !recent.isLoading && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  No appointments match.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {filtered.length > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, filtered.length)} of {filtered.length}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        rows={history.isPending ? undefined : filtered}
+        getRowId={(a) => a.id}
+        isLoading={history.isPending}
+        error={history.isError ? history.error : undefined}
+        onRetry={() => void history.refetch()}
+        toolbar={
+          <TableToolbar
+            search={{ value: query, onChange: setQuery, placeholder: "Search past appointments" }}
+            filters={
+              <div className="flex flex-wrap items-center gap-2">
+                <DatePickerField value={from} onChange={setFrom} placeholder="From date" className="h-9 w-36" />
+                <DatePickerField value={to} onChange={setTo} placeholder="To date" className="h-9 w-36" />
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-9 w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Every status</SelectItem>
+                    <SelectItem value="SCHEDULED">Booked</SelectItem>
+                    <SelectItem value="CHECKED_IN">Arrived</SelectItem>
+                    <SelectItem value="IN_PROGRESS">Being seen</SelectItem>
+                    <SelectItem value="COMPLETED">Done</SelectItem>
+                    <SelectItem value="NO_SHOW">Didn&apos;t come</SelectItem>
+                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            }
+            actions={
+              <Button variant="outline" size="sm" onClick={downloadSpreadsheet} disabled={filtered.length === 0}>
+                <Download className="mr-1.5 h-4 w-4" /> Download as spreadsheet
+              </Button>
+            }
+          />
+        }
+        empty={{
+          illustration: "no-results",
+          title: "No appointments match",
+          description: "Try a different search, date range or status.",
+        }}
+      />
     </div>
   );
-}
-
-function Th({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <th className={`px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className}`}>{children}</th>;
 }

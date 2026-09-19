@@ -1,94 +1,111 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { format } from "date-fns";
-import { CalendarPlus, CheckCircle2, Clock, Loader2, PlayCircle, UserCheck, XCircle } from "lucide-react";
+import { CalendarPlus, Clock, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { DataTable, type DataTableColumn, TableToolbar } from "@/components/common/data-table";
+import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { DatePickerField } from "@/components/ui/date-picker-field";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { getFriendlyError } from "@/lib/api-errors";
+import { appointmentStatusLabel, appointmentStatusTone } from "@/lib/status-labels";
+import { queryKeys } from "@/lib/query-keys";
 import { appointmentsService } from "@/services/appointments.service";
 import type { AppointmentDto } from "@/types/appointments.types";
-import {
-  STATUS_LABEL,
-  statusPillClass,
-  visitTypeLabel,
-} from "@/components/appointments/appointment-utils";
-import { minorToGhs, PAYER_LABEL, showApiError } from "@/components/finance/finance-utils";
-import { queryKeys } from "@/lib/query-keys";
+import { visitTypeLabel } from "@/components/appointments/appointment-utils";
+import { PAYER_LABEL, minorToGhs } from "@/components/finance/finance-utils";
+
+const STAT_DEFS: Array<{ key: string; status: string }> = [
+  { key: "booked", status: "SCHEDULED" },
+  { key: "arrived", status: "CHECKED_IN" },
+  { key: "seen", status: "IN_PROGRESS" },
+  { key: "done", status: "COMPLETED" },
+  { key: "noShow", status: "NO_SHOW" },
+];
 
 export function QueueView() {
   const qc = useQueryClient();
   const today = useQuery({
-    queryKey: ["appointments", "today"],
+    queryKey: queryKeys.appointments.today,
     queryFn: () => appointmentsService.today(),
     refetchInterval: 30_000,
   });
 
-  const counts = useMemo(() => {
-    const list = today.data ?? [];
-    return {
-      total: list.length,
-      scheduled: list.filter((a) => a.status === "SCHEDULED").length,
-      checkedIn: list.filter((a) => a.status === "CHECKED_IN").length,
-      inProgress: list.filter((a) => a.status === "IN_PROGRESS").length,
-      completed: list.filter((a) => a.status === "COMPLETED").length,
-    };
-  }, [today.data]);
-
-  const checkIn   = useMutation({ mutationFn: (id: string) => appointmentsService.checkIn(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["appointments"] });
-      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Checked in");
-    },
-    onError: (e) => toast.error(showApiError(e)) });
-  const start     = useMutation({ mutationFn: (id: string) => appointmentsService.start(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["appointments"] });
-      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Visit started");
-    },
-    onError: (e) => toast.error(showApiError(e)) });
-  const complete  = useMutation({ mutationFn: (id: string) => appointmentsService.complete(id, { openBill: true }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["appointments"] });
-      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      qc.invalidateQueries({ queryKey: ["finance"] });
-      toast.success("Completed — bill issued in Finance");
-    },
-    onError: (e) => toast.error(showApiError(e)) });
-  const cancel    = useMutation({ mutationFn: ({ id, reason }: { id: string; reason: string }) => appointmentsService.cancel(id, reason),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["appointments"] });
-      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Cancelled");
-    },
-    onError: (e) => toast.error(showApiError(e)) });
-  const noShow    = useMutation({ mutationFn: (id: string) => appointmentsService.noShow(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["appointments"] });
-      void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Marked no-show");
-    },
-    onError: (e) => toast.error(showApiError(e)) });
-
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
-
-  const [completeFor, setCompleteFor] = useState<AppointmentDto | null>(null);
+  const [rescheduleFor, setRescheduleFor] = useState<AppointmentDto | null>(null);
   const [noShowFor, setNoShowFor] = useState<AppointmentDto | null>(null);
   const [cancelFor, setCancelFor] = useState<AppointmentDto | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+
+  function invalidateAfterChange() {
+    qc.invalidateQueries({ queryKey: queryKeys.appointments.all });
+    qc.invalidateQueries({ queryKey: queryKeys.clinical.today });
+    qc.invalidateQueries({ queryKey: queryKeys.opd.queue });
+  }
+
+  const checkIn = useMutation({
+    mutationFn: (id: string) => appointmentsService.checkIn(id),
+    onSuccess: () => {
+      invalidateAfterChange();
+      toast.success("Checked in — waiting for the nurse");
+    },
+    onError: (e) => toast.error(getFriendlyError(e).message),
+  });
+  const start = useMutation({
+    mutationFn: (id: string) => appointmentsService.start(id),
+    onSuccess: () => {
+      invalidateAfterChange();
+      toast.success("Visit started");
+    },
+    onError: (e) => toast.error(getFriendlyError(e).message),
+  });
+  const complete = useMutation({
+    mutationFn: (id: string) => appointmentsService.complete(id, { openBill: true }),
+    onSuccess: () => {
+      invalidateAfterChange();
+      qc.invalidateQueries({ queryKey: ["finance"] });
+      toast.success("Completed — a bill is waiting in Finance");
+    },
+    onError: (e) => toast.error(getFriendlyError(e).message),
+  });
+  const cancel = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => appointmentsService.cancel(id, reason),
+    onSuccess: () => {
+      invalidateAfterChange();
+      toast.success("Appointment cancelled");
+    },
+    onError: (e) => toast.error(getFriendlyError(e).message),
+  });
+  const noShow = useMutation({
+    mutationFn: (id: string) => appointmentsService.noShow(id),
+    onSuccess: () => {
+      invalidateAfterChange();
+      toast.success("Marked as didn't come");
+    },
+    onError: (e) => toast.error(getFriendlyError(e).message),
+  });
+
+  const anyPending = checkIn.isPending || start.isPending || complete.isPending || cancel.isPending || noShow.isPending;
+
+  const stats = useMemo(() => {
+    const list = today.data ?? [];
+    return STAT_DEFS.map((s) => ({
+      ...s,
+      label: appointmentStatusLabel(s.status),
+      count: list.filter((a) => a.status === s.status).length,
+    }));
+  }, [today.data]);
 
   const filtered = useMemo(() => {
     const list = today.data ?? [];
@@ -105,178 +122,158 @@ export function QueueView() {
     });
   }, [today.data, search, statusFilter]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const columns: DataTableColumn<AppointmentDto>[] = [
+    {
+      key: "time",
+      header: "Time",
+      cell: (a) => (
+        <span className="flex items-center gap-1.5 font-clinical text-sm text-foreground">
+          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+          {a.scheduledFor ? format(new Date(a.scheduledFor), "HH:mm") : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "patient",
+      header: "Patient",
+      cell: (a) => (
+        <div>
+          <p className="font-medium text-foreground">{a.patientName}</p>
+          <p className="patient-id mt-0.5">{a.patientPublicId}</p>
+        </div>
+      ),
+    },
+    {
+      key: "clinic",
+      header: "Where",
+      cell: (a) => (
+        <div>
+          <p className="text-foreground">{a.serviceName}</p>
+          <p className="text-xs text-muted-foreground">{visitTypeLabel(a.visitType)}</p>
+        </div>
+      ),
+      hideOnTablet: true,
+    },
+    { key: "doctor", header: "Doctor", cell: (a) => a.clinicianName || "Any available doctor", hideOnTablet: true },
+    {
+      key: "payer",
+      header: "Payer / fee",
+      cell: (a) => (
+        <div>
+          <p>{PAYER_LABEL[a.payerType] ?? a.payerType}</p>
+          <p className="font-clinical text-xs text-muted-foreground">GH₵ {minorToGhs(a.feeMinor)}</p>
+        </div>
+      ),
+      hideOnTablet: true,
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (a) => <StatusPill tone={appointmentStatusTone(a.status)}>{appointmentStatusLabel(a.status)}</StatusPill>,
+    },
+    {
+      key: "checkin",
+      header: "",
+      cell: (a) =>
+        a.status === "SCHEDULED" ? (
+          <Button size="sm" disabled={anyPending} onClick={() => checkIn.mutate(a.id)}>
+            <UserCheck className="mr-1.5 h-3.5 w-3.5" /> Check in
+          </Button>
+        ) : a.status === "CHECKED_IN" ? (
+          <Button size="sm" variant="outline" disabled={anyPending} onClick={() => start.mutate(a.id)}>
+            Start visit
+          </Button>
+        ) : a.status === "IN_PROGRESS" ? (
+          <Button size="sm" variant="outline" disabled={anyPending} onClick={() => complete.mutate(a.id)}>
+            Complete &amp; bill
+          </Button>
+        ) : null,
+    },
+  ];
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Scheduling vs clinical queue</p>
-        <p className="mt-1">
-          This list is driven by{" "}
-          <strong className="text-foreground">appointments</strong> (booked slots and status). Nurses and clinicians work from{" "}
-          <Link href="/nurse?view=visits" className="text-primary underline-offset-4 hover:underline">
-            Nurse Station
-          </Link>{" "}
-          and{" "}
-          <Link href="/opd?view=queue" className="text-primary underline-offset-4 hover:underline">
-            OPD
-          </Link>{" "}
-          using <strong className="text-foreground">encounters</strong> for the live visit pathway.
-        </p>
-      </div>
-
       <div className="grid gap-3 sm:grid-cols-5">
-        <Stat label="Total today"   value={counts.total} />
-        <Stat label="Scheduled"     value={counts.scheduled} />
-        <Stat label="Checked in"    value={counts.checkedIn} />
-        <Stat label="In progress"   value={counts.inProgress} />
-        <Stat label="Completed"     value={counts.completed} />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">{format(new Date(), "EEEE, d LLLL yyyy")}</p>
-        <Button asChild size="sm">
-          <Link href="/appointments?view=book"><CalendarPlus className="mr-1.5 h-4 w-4" /> Book appointment</Link>
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          placeholder="Filter by patient, appointment no., or service..."
-          className="max-w-md"
-        />
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[190px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All statuses</SelectItem>
-            <SelectItem value="SCHEDULED">Scheduled</SelectItem>
-            <SelectItem value="CHECKED_IN">Checked in</SelectItem>
-            <SelectItem value="IN_PROGRESS">In progress</SelectItem>
-            <SelectItem value="COMPLETED">Completed</SelectItem>
-            <SelectItem value="NO_SHOW">No show</SelectItem>
-            <SelectItem value="CANCELLED">Cancelled</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {today.isLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading queue…</p>}
-      {today.isError && <p className="text-sm text-destructive">Could not load today&apos;s queue.</p>}
-
-      {today.data && today.data.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-2 py-10 text-sm text-muted-foreground">
-            <p>No appointments booked for today.</p>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/appointments?view=book">Book first appointment</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {today.data && filtered.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <Th>Time</Th>
-                <Th>Patient</Th>
-                <Th className="hidden md:table-cell">Service</Th>
-                <Th className="hidden lg:table-cell">Clinician</Th>
-                <Th className="hidden md:table-cell">Payer / fee</Th>
-                <Th>Status</Th>
-                <th className="px-4 py-2.5" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {pageItems.map((a) => (
-                <tr key={a.id}>
-                  <td className="px-4 py-3">
-                    <span className="flex items-center gap-1.5 font-clinical text-sm text-foreground">
-                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                      {a.scheduledFor ? format(new Date(a.scheduledFor), "HH:mm") : "—"}
-                    </span>
-                    <p className="patient-id mt-0.5">{a.appointmentNumber}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">{a.patientName}</p>
-                    <p className="patient-id mt-0.5">{a.patientPublicId}</p>
-                  </td>
-                  <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">
-                    <p className="text-foreground">{a.serviceName}</p>
-                    <p className="text-xs">{visitTypeLabel(a.visitType)} · {a.department}</p>
-                  </td>
-                  <td className="hidden px-4 py-3 text-sm text-muted-foreground lg:table-cell">{a.clinicianName || "—"}</td>
-                  <td className="hidden px-4 py-3 text-sm md:table-cell">
-                    <p>{PAYER_LABEL[a.payerType] ?? a.payerType}</p>
-                    <p className="font-clinical text-xs text-muted-foreground">GH₵ {minorToGhs(a.feeMinor)}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={statusPillClass(a.status)}>{STATUS_LABEL[a.status] ?? a.status}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <RowActions
-                      appt={a}
-                      pending={checkIn.isPending || start.isPending || complete.isPending || cancel.isPending || noShow.isPending}
-                      onCheckIn={() => checkIn.mutate(a.id)}
-                      onStart={() => start.mutate(a.id)}
-                      onConfirmComplete={() => setCompleteFor(a)}
-                      onConfirmCancel={() => {
-                        setCancelReason("");
-                        setCancelFor(a);
-                      }}
-                      onConfirmNoShow={() => setNoShowFor(a)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {filtered.length > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, filtered.length)} of {filtered.length}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>
-              Next
-            </Button>
+        {stats.map((s) => (
+          <div key={s.key} className="rounded-xl border border-border bg-card px-4 py-3">
+            <p className="stat-card-label">{s.label}</p>
+            <p className="stat-card-value">{s.count}</p>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
 
-      <ConfirmDialog
-        open={Boolean(completeFor)}
-        onOpenChange={(open) => !open && setCompleteFor(null)}
-        title="Complete visit and bill?"
-        description={`Mark ${completeFor?.patientName ?? ""} as completed for today. This will finalise billing flow for this appointment where configured.`}
-        confirmLabel="Complete & bill"
-        pending={complete.isPending}
-        onConfirm={async () => {
-          if (!completeFor) return;
-          await complete.mutateAsync(completeFor.id);
+      <DataTable
+        columns={columns}
+        rows={today.isPending ? undefined : filtered}
+        getRowId={(a) => a.id}
+        isLoading={today.isPending}
+        error={today.isError ? today.error : undefined}
+        onRetry={() => void today.refetch()}
+        rowActions={(a) => (
+          <>
+            {(a.status === "SCHEDULED" || a.status === "CHECKED_IN") && (
+              <DropdownMenuItem onSelect={() => setRescheduleFor(a)}>Reschedule</DropdownMenuItem>
+            )}
+            {a.status === "SCHEDULED" && slotTimeHasPassed(a) && (
+              <DropdownMenuItem onSelect={() => setNoShowFor(a)}>Mark as didn&apos;t come</DropdownMenuItem>
+            )}
+            {(a.status === "SCHEDULED" || a.status === "CHECKED_IN") && (
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => {
+                  setCancelReason("");
+                  setCancelFor(a);
+                }}
+              >
+                Cancel
+              </DropdownMenuItem>
+            )}
+          </>
+        )}
+        toolbar={
+          <TableToolbar
+            search={{ value: search, onChange: setSearch, placeholder: "Search today's appointments" }}
+            filters={
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-9 w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Every status</SelectItem>
+                  <SelectItem value="SCHEDULED">Booked</SelectItem>
+                  <SelectItem value="CHECKED_IN">Arrived</SelectItem>
+                  <SelectItem value="IN_PROGRESS">Being seen</SelectItem>
+                  <SelectItem value="COMPLETED">Done</SelectItem>
+                  <SelectItem value="NO_SHOW">Didn&apos;t come</SelectItem>
+                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            }
+            actions={
+              <Button asChild size="sm">
+                <Link href="/appointments?view=book">
+                  <CalendarPlus className="mr-1.5 h-4 w-4" /> Book appointment
+                </Link>
+              </Button>
+            }
+          />
+        }
+        empty={{
+          illustration: "empty-list",
+          title: "No appointments today",
+          description: "Booked appointments for today will appear here.",
+          action: { label: "Book appointment", href: "/appointments?view=book" },
         }}
       />
+
+      <RescheduleDialog appointment={rescheduleFor} onClose={() => setRescheduleFor(null)} onDone={invalidateAfterChange} />
 
       <ConfirmDialog
         open={Boolean(noShowFor)}
         onOpenChange={(open) => !open && setNoShowFor(null)}
-        title="Mark as no-show?"
-        description={`Record that ${noShowFor?.patientName ?? ""} did not attend this scheduled appointment.`}
-        confirmLabel="Mark no-show"
+        title={`Mark ${noShowFor?.patientName ?? ""} as didn't come?`}
+        description="Records that the patient did not arrive for this appointment."
+        confirmLabel="Mark as didn't come"
         destructive
         pending={noShow.isPending}
         onConfirm={async () => {
@@ -293,16 +290,17 @@ export function QueueView() {
             setCancelReason("");
           }
         }}
-        title="Cancel appointment?"
-        description="This frees the slot. The cancellation reason is stored with the appointment."
-        confirmLabel="Cancel appointment"
+        title={`Cancel ${cancelFor?.patientName ?? ""}'s appointment?`}
+        description="This frees the slot. The reason is kept with the appointment."
+        cancelLabel="Keep appointment"
+        confirmLabel="Yes, cancel appointment"
         destructive
         pending={cancel.isPending}
         footerExtra={
           <Textarea
             value={cancelReason}
             onChange={(e) => setCancelReason(e.target.value)}
-            placeholder="Cancellation reason…"
+            placeholder="Reason for cancelling"
             rows={3}
             className="resize-none text-sm"
           />
@@ -311,7 +309,7 @@ export function QueueView() {
           if (!cancelFor) return;
           const reason = cancelReason.trim();
           if (!reason) {
-            toast.error("Provide a cancellation reason");
+            toast.error("Enter a reason for cancelling");
             throw new Error("reason");
           }
           await cancel.mutateAsync({ id: cancelFor.id, reason });
@@ -322,59 +320,69 @@ export function QueueView() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <Card>
-      <CardContent className="pt-4 pb-4">
-        <p className="stat-card-label">{label}</p>
-        <p className="stat-card-value">{value}</p>
-      </CardContent>
-    </Card>
-  );
+function slotTimeHasPassed(a: AppointmentDto): boolean {
+  if (!a.scheduledFor) return true;
+  return new Date(a.scheduledFor).getTime() < Date.now();
 }
 
-function Th({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <th className={`px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className}`}>{children}</th>;
-}
-
-function RowActions({
-  appt, pending, onCheckIn, onStart, onConfirmComplete, onConfirmCancel, onConfirmNoShow,
+function RescheduleDialog({
+  appointment,
+  onClose,
+  onDone,
 }: {
-  appt: AppointmentDto;
-  pending: boolean;
-  onCheckIn: () => void;
-  onStart: () => void;
-  onConfirmComplete: () => void;
-  onConfirmCancel: () => void;
-  onConfirmNoShow: () => void;
+  appointment: AppointmentDto | null;
+  onClose: () => void;
+  onDone: () => void;
 }) {
+  return appointment ? (
+    <RescheduleDialogInner key={appointment.id} appointment={appointment} onClose={onClose} onDone={onDone} />
+  ) : null;
+}
+
+function RescheduleDialogInner({
+  appointment,
+  onClose,
+  onDone,
+}: {
+  appointment: AppointmentDto;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const initial = appointment.scheduledFor ? new Date(appointment.scheduledFor) : new Date();
+  const [date, setDate] = useState(format(initial, "yyyy-MM-dd"));
+  const [time, setTime] = useState(format(initial, "HH:mm"));
+
+  const reschedule = useMutation({
+    mutationFn: () => appointmentsService.reschedule(appointment.id, { scheduledFor: `${date}T${time}:00` }),
+    onSuccess: () => {
+      onDone();
+      toast.success("Appointment rescheduled");
+      onClose();
+    },
+    onError: (e) => toast.error(getFriendlyError(e).message),
+  });
+
   return (
-    <div className="flex flex-wrap justify-end gap-1">
-      {appt.status === "SCHEDULED" && (
-        <>
-          <Button variant="outline" size="sm" disabled={pending} onClick={onCheckIn}>
-            <UserCheck className="mr-1 h-3.5 w-3.5" /> Check in
-          </Button>
-          <Button variant="ghost" size="sm" disabled={pending} onClick={onConfirmCancel}>
-            <XCircle className="mr-1 h-3.5 w-3.5" /> Cancel
-          </Button>
-        </>
-      )}
-      {appt.status === "CHECKED_IN" && (
-        <>
-          <Button variant="outline" size="sm" disabled={pending} onClick={onStart}>
-            <PlayCircle className="mr-1 h-3.5 w-3.5" /> Start
-          </Button>
-          <Button variant="ghost" size="sm" disabled={pending} onClick={onConfirmNoShow}>
-            No show
-          </Button>
-        </>
-      )}
-      {appt.status === "IN_PROGRESS" && (
-        <Button variant="default" size="sm" disabled={pending} onClick={onConfirmComplete}>
-          <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Complete &amp; bill
-        </Button>
-      )}
-    </div>
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={`Reschedule ${appointment.patientName}'s appointment`}
+      description="Choose a new date and time for this appointment."
+      confirmLabel="Save new time"
+      pending={reschedule.isPending}
+      onConfirm={() => reschedule.mutate()}
+      footerExtra={
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Date</Label>
+            <DatePickerField value={date} onChange={setDate} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Time</Label>
+            <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="font-clinical" />
+          </div>
+        </div>
+      }
+    />
   );
 }

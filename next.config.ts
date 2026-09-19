@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   // Strict mode catches common React issues early
   reactStrictMode: true,
 
+  // The dev build-activity indicator defaults to bottom-left, which sits on
+  // top of the sidebar's pinned "Log out" button — move it out of the way.
+  devIndicators: {
+    position: "bottom-right",
+  },
+
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${backendOrigin}/api/:path*` }];
   },

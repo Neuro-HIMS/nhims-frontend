@@ -3,9 +3,10 @@
 A slice is done only when **every** box is ticked. Paste this list into your PR description and tick it.
 
 ## Look
-- [ ] Uses the v2 look: white dotted canvas, white bordered cards (`rounded-xl border-border`), black primary buttons, pastel status pills with icon + text.
+- [ ] Uses the v2 look: cool dotted canvas, white bordered cards (`rounded-xl border-border`), navy primary buttons, pastel status pills with icon + text.
 - [ ] No hex/rgb/hsl, no Tailwind palette colors (`red-500`, `slate-…`), no static inline styles in changed files.
-- [ ] Exactly one primary (solid black) button per screen/dialog; destructive solid red only inside `ConfirmDialog`.
+- [ ] Exactly one primary (solid navy) button per screen/dialog; destructive solid red only inside `ConfirmDialog`.
+- [ ] Radios, checkboxes and switches show a clear selected vs unselected state (`data-[state=checked]` + `--primary` fill). Labeled tiles use `ChoiceOption`.
 - [ ] Page starts with `PageCard` (title + one-line description), then `ModuleSubNav` if the section has tabs.
 - [ ] Tables follow the table pattern (toolbar band, grey header, 48px rows, pills, row actions, pagination/"Showing x–y of z").
 - [ ] Patient-specific screens show `PatientBanner`.

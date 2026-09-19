@@ -1,6 +1,6 @@
 ---
 name: nhims-ui-review
-description: Review an NHIMS screen or set of changed files against the v2 design system (monochrome, dotted canvas, black primary buttons, pastel status pills), component reuse and the loading/empty/error/success rules. Use before finishing any UI change or when asked to audit a screen.
+description: Review an NHIMS screen or set of changed files against the v2 design system (clinical navy, dotted canvas, navy primary buttons, visible selected radios/checkboxes, pastel status pills), component reuse and the loading/empty/error/success rules. Use before finishing any UI change or when asked to audit a screen.
 ---
 
 # NHIMS UI review
@@ -25,7 +25,8 @@ rg -n ">\s*\{[a-zA-Z.]*(status|role|station|priority)\}\s*<" <files>
 
 1. Starts with `PageCard` (title + real description); `ModuleSubNav` ≤ 5 visible tabs.
 2. Cards: `rounded-xl border-border bg-card`, dashed dividers between stacked sections.
-3. Exactly one `variant="default"` button visible per screen/dialog; destructive solid only inside `ConfirmDialog`.
+3. Exactly one `variant="default"` button visible per screen/dialog; destructive solid only inside `ConfirmDialog`. Primary is hospital navy, not black.
+3b. Radios/checkboxes/switches: unchecked outline is visible; checked fill is `--primary`. Labeled tiles use `ChoiceOption`. Reject `has-data-checked` without the Radix `data-state` custom variant, and reject near-black `--primary`.
 4. Lists use `DataTable`/`WaitingList`; statuses use `StatusPill` with icon + words.
 5. Patient screens show `PatientBanner`; critical info uses `CriticalAlert`, not toasts.
 6. Four states present for every query; skeletons match layout; empty state is the right kind with an action where possible.

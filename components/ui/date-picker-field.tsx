@@ -47,7 +47,7 @@ export function DatePickerField({
   const endY = toYear ?? new Date().getFullYear() + 10;
 
   const selectedDate = useMemo(() => parseLocalDate(value), [value]);
-  const dateLabel = selectedDate ? format(selectedDate, "PPP") : placeholder;
+  const dateLabel = selectedDate ? format(selectedDate, "dd/MM/yyyy") : placeholder;
 
   const startMonth = useMemo(() => new Date(fromYear, 0, 1), [fromYear]);
   const endMonth = useMemo(() => new Date(endY, 11, 1), [endY]);

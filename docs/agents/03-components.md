@@ -12,8 +12,8 @@ Status key: **Exists** = use as is · **Evolve** = exists but must be brought up
 |---|---|---|---|
 | `DashboardShell` | `components/layouts/dashboard-shell.tsx` | Exists | Sidebar + header + `<main className="canvas-dots">` |
 | `AppSidebar` | `components/layouts/app-sidebar.tsx` | Exists | Reads `NAV_ITEMS`, groups by `NAV_GROUP_ORDER`, filters by `canAccessWorkspaceModule` |
-| `AppHeader` | `components/layouts/app-header.tsx` | Evolve | Add greeting + role pill + black facility switcher per 02 §3 |
-| `ModuleSubNav` | `components/layouts/module-subnav.tsx` | Exists | `?view=` tabs, max 5 visible, rest under "More"; active tab = black text + black underline |
+| `AppHeader` | `components/layouts/app-header.tsx` | Evolve | Add greeting + role pill + navy facility badge per 02 §3 |
+| `ModuleSubNav` | `components/layouts/module-subnav.tsx` | Exists | `?view=` tabs, max 5 visible, rest under "More"; active tab = navy text + navy underline |
 | `PageHeader` → `PageCard` | `components/layouts/page-header.tsx` | Evolve | Wrap in a card (02 §5). Keep `PageHeader` name as alias until migrated |
 
 ```ts
@@ -33,7 +33,7 @@ interface PageCardProps {
 | `SectionCard` | `components/common/section-card.tsx` | Build | `{ title; description?; actions?; children; footer? }` — the standard white card |
 | `FormSection` | `components/common/form-section.tsx` | Build | `{ title; description?; children }` — bold subtitle + dashed divider above |
 | `StatCard` | `components/common/stat-card.tsx` | Build | `{ label; value: string \| number; hint?; tone?: PillTone; href? }` — uses `.stat-card-label` / `.stat-card-value` |
-| `StepIndicator` | `components/common/step-indicator.tsx` | Build | `{ steps: string[]; current: number }` — black for done/current, grey for upcoming |
+| `StepIndicator` | `components/common/step-indicator.tsx` | Build | `{ steps: string[]; current: number }` — navy for done/current, grey for upcoming |
 
 ## 3. Data display
 
@@ -146,7 +146,8 @@ interface WaitingListProps<T> {
 
 | Component | Path | Status | Notes |
 |---|---|---|---|
-| Form primitives | `components/ui/form.tsx`, `field.tsx`, `input.tsx`, `select.tsx`, `textarea.tsx`, `checkbox.tsx`, `radio-group.tsx` | Exists | Restyle only via tokens |
+| Form primitives | `components/ui/form.tsx`, `field.tsx`, `input.tsx`, `select.tsx`, `textarea.tsx`, `checkbox.tsx`, `radio-group.tsx`, `switch.tsx` | Exists | Restyle only via tokens. Checked = `data-[state=checked]` + `--primary` fill |
+| `ChoiceOption` | `components/ui/choice-option.tsx` | Exists | Wrap every labeled radio/checkbox tile. Uses `.choice-option` so selected is obvious |
 | `DatePickerField` | `components/ui/date-picker-field.tsx` | Exists | All dates. Display `DD/MM/YYYY` via `lib/dates.ts` |
 | `UnitInput` | `components/common/unit-input.tsx` | Build | Input with suffix unit ("°C", "mmHg", "kg", "%") + optional out-of-range warning under it |
 | `MoneyInput` | `components/common/money-input.tsx` | Build | "GH₵" prefix, 2 decimals, tabular |

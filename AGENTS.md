@@ -29,14 +29,15 @@ This file is the short version. The full rulebook lives in `docs/agents/` — re
 
 ## 1. Non-negotiable rules
 
-### Visual (design system v2 — monochrome, dotted canvas)
+### Visual (design system v2 — clinical navy, dotted canvas)
 1. **All colors come from tokens in `app/globals.css`.** No hex/rgb/hsl, no Tailwind palette colors (`bg-red-50`, `text-slate-500`, `bg-green-…`) in components. Need a new intent? Add a token + utility class in `globals.css` first.
-2. **Look:** dark charcoal sidebar (`--sidebar`), white top bar, white page canvas with a faint dotted grid (`.canvas-dots`), white cards with a 1px `border-border` and `rounded-xl`, **black primary buttons**, soft pastel status pills with icon + text.
-3. **One primary (solid black) button per screen or dialog.** Secondary = black outline (`variant="outline"`), tertiary = grey outline (`variant="secondary"`), row icons = `ghost`, red solid (`destructive`) only as the confirm button inside a confirmation dialog.
-4. **Color is never the only signal.** Every status = pill with icon + words.
-5. **Blue (`--accent`) is only for text links and focus rings.** Never for buttons.
+2. **Look:** deep navy sidebar (`--sidebar`), white top bar, cool off-white page canvas with a faint dotted grid (`.canvas-dots`), white cards with a 1px `border-border` and `rounded-xl`, **navy primary buttons**, soft pastel status pills with icon + text.
+3. **One primary (solid navy) button per screen or dialog.** Secondary = navy outline (`variant="outline"`), tertiary = grey outline (`variant="secondary"`), row icons = `ghost`, red solid (`destructive`) only as the confirm button inside a confirmation dialog.
+4. **Color is never the only signal.** Every status = pill with icon + words. Choice controls must still show selected vs unselected without relying on color alone (fill + border + label weight).
+5. **Bright blue (`--accent`) is only for text links.** Never for buttons. Selected radios/checkboxes/switches use `--primary` (hospital navy), styled with `data-[state=checked]`.
 6. **One red only** (`--destructive` = `--error`). Feedback colors (success/warning/pending/error/info/purple/neutral) and medical colors (`--clinical-*`, `--nhis-*`, `--result-*`) are separate systems — don't swap them.
 7. No inline `style={{}}` for static design. No ad-hoc font stacks — use `font-sans` (Inter), `font-clinical` (tabular numbers for IDs, vitals, money, results).
+8. **Do not regress to a black-and-white chrome.** `--primary` is hospital navy, not near-black. Unchecked controls use a visible 2px muted border; checked controls fill with navy. Labeled tiles use `ChoiceOption`.
 
 ### Words
 8. **No software jargon on screen** — never: module, token, API, sync, backend, server, payload, config/configuration, catalog, matrix, legacy, snapshot, SKU, MSISDN, TOTP, encounter, endpoint, status codes, raw error text, database IDs, enum values (`MEDICAL_OFFICER`, `AT_VITALS`). Use the glossary in `docs/agents/05-ui-copy.md`.

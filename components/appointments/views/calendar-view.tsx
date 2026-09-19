@@ -8,8 +8,10 @@ import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusPill } from "@/components/common/status-pill";
 import { appointmentsService } from "@/services/appointments.service";
-import { STATUS_LABEL, statusPillClass } from "@/components/appointments/appointment-utils";
+import { appointmentStatusLabel, appointmentStatusTone } from "@/lib/status-labels";
+import { queryKeys } from "@/lib/query-keys";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -20,13 +22,14 @@ export function CalendarView() {
   const monthStart = startOfMonth(cursor);
   const monthEnd = endOfMonth(cursor);
 
+  const monthlyParams = {
+    from: format(monthStart, "yyyy-MM-dd'T'00:00:00"),
+    to: format(addMonths(monthStart, 1), "yyyy-MM-dd'T'00:00:00"),
+  };
+
   const monthly = useQuery({
-    queryKey: ["appointments", "month", format(monthStart, "yyyy-MM")],
-    queryFn: () =>
-      appointmentsService.search({
-        from: format(monthStart, "yyyy-MM-dd'T'00:00:00"),
-        to: format(addMonths(monthStart, 1), "yyyy-MM-dd'T'00:00:00"),
-      }),
+    queryKey: queryKeys.appointments.search(monthlyParams),
+    queryFn: () => appointmentsService.search(monthlyParams),
   });
 
   const apptsByDay = useMemo(() => {
@@ -107,7 +110,7 @@ export function CalendarView() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{format(selectedDay, "PPP")}</CardTitle>
+          <CardTitle className="text-base">{format(selectedDay, "dd/MM/yyyy")}</CardTitle>
           <CardDescription>
             {selectedDayAppts.length} appointment{selectedDayAppts.length === 1 ? "" : "s"}
           </CardDescription>
@@ -129,8 +132,8 @@ export function CalendarView() {
                     <p className="text-sm font-medium text-foreground truncate">{a.patientName}</p>
                     <p className="text-xs text-muted-foreground">{a.serviceName}</p>
                   </div>
-                  <Badge variant="outline" className="shrink-0 text-xs">{a.clinicianName || "Unassigned"}</Badge>
-                  <span className={statusPillClass(a.status)}>{STATUS_LABEL[a.status] ?? a.status}</span>
+                  <Badge variant="outline" className="shrink-0 text-xs">{a.clinicianName || "Any available doctor"}</Badge>
+                  <StatusPill tone={appointmentStatusTone(a.status)}>{appointmentStatusLabel(a.status)}</StatusPill>
                 </div>
               ))}
             </div>

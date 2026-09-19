@@ -5,6 +5,7 @@ import { Check, Download } from "lucide-react";
 
 import { NAV_GROUP_LABELS, NAV_GROUP_ORDER, NAV_ITEMS, type NavGroup } from "@/config/navigation";
 import { ROLE_OPTIONS, defaultModulesForRole } from "@/components/users/users-management-constants";
+import { displayName } from "@/lib/display-name";
 import { roleLabel } from "@/lib/status-labels";
 import { StatusPill } from "@/components/common/status-pill";
 import { EmptyState } from "@/components/common/empty-state";
@@ -38,7 +39,7 @@ export function AccessReviewView({ users }: AccessReviewViewProps) {
     for (const user of rows) {
       const cells = visibleItems.map((item) => (user.assignedModules.includes(item.module) ? "Yes" : "No"));
       lines.push(
-        [`"${user.firstName} ${user.lastName}"`, user.username, `"${roleLabel(user.role)}"`, ...cells].join(",")
+        [`"${displayName(user)}"`, user.username, `"${roleLabel(user.role)}"`, ...cells].join(",")
       );
     }
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -113,9 +114,7 @@ export function AccessReviewView({ users }: AccessReviewViewProps) {
                 {rows.map((user) => (
                   <tr key={user.id}>
                     <td className="sticky left-0 z-10 min-w-[200px] bg-card px-3 py-2 align-top">
-                      <p className="font-medium text-foreground">
-                        {user.firstName} {user.lastName}
-                      </p>
+                      <p className="font-medium text-foreground">{displayName(user)}</p>
                       <p className="text-xs text-muted-foreground">{roleLabel(user.role)}</p>
                       {hasMoreThanUsual(user) && (
                         <StatusPill tone="warning" className="mt-1">

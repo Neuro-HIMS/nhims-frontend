@@ -72,6 +72,7 @@ export function BookingFormDialog({
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {ready && patient && patientId ? (
             <BookingForm
+              key={patientId}
               patient={patient}
               patientId={patientId}
               showPatientHeader={false}

@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Radix UI sets data-state="checked", not a data-checked attribute.
+   Map the shadcn shorthand so radios, checkboxes and switches actually paint. */
+@custom-variant data-checked (&[data-state="checked"]);
+@custom-variant data-unchecked (&[data-state="unchecked"]);
+@custom-variant data-indeterminate (&[data-state="indeterminate"]);
+@custom-variant has-data-checked (&:has([data-state="checked"]));
+
 /* HMIS Design System - CSS Custom Properties */
 @theme inline {
   --color-brand: hsl(var(--brand));
@@ -16,6 +23,8 @@
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
   --color-primary-hover: hsl(var(--primary-hover));
+  --color-primary-soft: hsl(var(--primary-soft));
+  --color-primary-border: hsl(var(--primary-border));
   --color-secondary: hsl(var(--secondary));
   --color-secondary-foreground: hsl(var(--secondary-foreground));
   --color-accent: hsl(var(--accent));
@@ -25,8 +34,6 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
-  --color-disabled-fg: hsl(var(--disabled-fg));
-  --color-disabled-bg: hsl(var(--disabled-bg));
 
   --color-success: hsl(var(--success));
   --color-success-bg: hsl(var(--success-bg));
@@ -49,6 +56,18 @@
   --color-neutral: hsl(var(--neutral));
   --color-neutral-bg: hsl(var(--neutral-bg));
   --color-neutral-border: hsl(var(--neutral-border));
+
+  /* Identity palette — decorative only (icon chips, avatars, charts). Never for status. */
+  --color-tint-blue: hsl(var(--tint-blue));
+  --color-tint-blue-bg: hsl(var(--tint-blue-bg));
+  --color-tint-teal: hsl(var(--tint-teal));
+  --color-tint-teal-bg: hsl(var(--tint-teal-bg));
+  --color-tint-violet: hsl(var(--tint-violet));
+  --color-tint-violet-bg: hsl(var(--tint-violet-bg));
+  --color-tint-amber: hsl(var(--tint-amber));
+  --color-tint-amber-bg: hsl(var(--tint-amber-bg));
+  --color-tint-rose: hsl(var(--tint-rose));
+  --color-tint-rose-bg: hsl(var(--tint-rose-bg));
 
   --color-canvas-dot: hsl(var(--canvas-dot));
   --color-surface-subtle: hsl(var(--surface-subtle));
@@ -73,53 +92,55 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
 
-  --shadow-card: 0 1px 3px hsl(221 39% 11% / 0.06);
+  --shadow-card: 0 1px 3px hsl(213 55% 16% / 0.08);
 }
 
 @layer base {
   :root {
-    /* ── Monochrome base (design brief v2 §3.1) ─────────────── */
-    --brand: 221 39% 11%;
+    /* ── Clinical canvas (hospital navy + cool surfaces) ─────────────── */
+    --brand: 213 55% 16%;
     --brand-foreground: 0 0% 100%;
 
-    --canvas-dot: 220 13% 91%;
-    --background: 0 0% 100%;
-    --foreground: 221 39% 11%;
+    --canvas-dot: 214 32% 84%;
+    --background: 222 40% 97%;
+    --foreground: 211 63% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 221 39% 11%;
+    --card-foreground: 211 63% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 221 39% 11%;
+    --popover-foreground: 211 63% 12%;
 
-    --surface-subtle: 210 20% 98%;
-    --surface-muted: 220 14% 96%;
+    --surface-subtle: 214 40% 96%;
+    --surface-muted: 214 32% 93%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --text-disabled: 218 11% 65%;
+    --muted: 214 32% 93%;
+    --muted-foreground: 215 16% 40%;
+    --text-disabled: 215 12% 58%;
 
-    /* the one primary action color — black. Buttons, facility switcher, checked checkboxes. */
-    --primary: 221 39% 11%;
+    /* Primary action + selected controls — hospital navy, never near-black. */
+    --primary: 213 67% 32%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 215 28% 17%;
+    --primary-hover: 210 100% 21%;
+    /* Selected option / row / card background + border (choice tiles, selected table rows). */
+    --primary-soft: 213 67% 96%;
+    --primary-border: 213 60% 80%;
 
-    --secondary: 217 19% 27%;
+    --secondary: 213 32% 28%;
     --secondary-foreground: 0 0% 100%;
 
     /* text links and focus rings only — never used for buttons */
     --accent: 221 83% 53%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 72% 51%;
+    /* 48% lightness (not the more common 51%) — needed to clear 4.5:1 against its own -bg pairs. */
+    --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 221 83% 53%;
-
-    --disabled-fg: 218 11% 65%;
-    --disabled-bg: 220 13% 91%;
+    --border: 214 22% 84%;
+    /* Control edges need >= 3:1 against white (WCAG 1.4.11) — noticeably darker than --border. */
+    --input: 214 16% 55%;
+    --ring: 213 67% 32%;
 
     --radius-sm: 6px;
     --radius: 8px;
@@ -140,24 +161,37 @@
     --pending-bg: 48 100% 96%;
     --pending-border: 48 97% 77%;
 
-    --error: 0 72% 51%;
+    --error: 0 72% 48%;
     --error-bg: 0 86% 97%;
     --error-border: 0 96% 89%;
 
-    --info: 224 76% 48%;
-    --info-bg: 214 100% 97%;
-    --info-border: 213 97% 87%;
+    /* Sky blue, kept clearly apart from the navy --primary so "in progress" never reads as "primary action". */
+    --info: 199 89% 34%;
+    --info-bg: 199 100% 96%;
+    --info-border: 199 90% 83%;
 
     --purple: 272 72% 47%;
     --purple-bg: 270 100% 98%;
     --purple-border: 269 100% 92%;
+
+    /* ── Identity palette — decorative section colour, never status. Each: strong / -bg. ── */
+    --tint-blue: 213 67% 32%;
+    --tint-blue-bg: 213 67% 95%;
+    --tint-teal: 174 72% 27%;
+    --tint-teal-bg: 170 60% 94%;
+    --tint-violet: 262 60% 50%;
+    --tint-violet-bg: 262 90% 97%;
+    --tint-amber: 32 90% 33%;
+    --tint-amber-bg: 40 100% 95%;
+    --tint-rose: 346 70% 45%;
+    --tint-rose-bg: 350 90% 97%;
 
     --neutral: 217 19% 27%;
     --neutral-bg: 0 0% 100%;
     --neutral-border: 218 11% 65%;
 
     /* ── Medical status colors — separate system, same palette (§3.3) ── */
-    --clinical-emergency: 0 72% 51%;
+    --clinical-emergency: 0 72% 48%;
     --clinical-emergency-bg: 0 86% 97%;
     --clinical-urgent: 17 88% 40%;
     --clinical-urgent-bg: 33 100% 96%;
@@ -168,7 +202,7 @@
 
     --nhis-active: 142 72% 29%;
     --nhis-active-bg: 138 76% 97%;
-    --nhis-inactive: 0 72% 51%;
+    --nhis-inactive: 0 72% 48%;
     --nhis-inactive-bg: 0 86% 97%;
     --nhis-pending: 26 90% 37%;
     --nhis-pending-bg: 48 100% 96%;
@@ -179,27 +213,27 @@
     --result-low-bg: 214 100% 97%;
     --result-high: 17 88% 40%;
     --result-high-bg: 33 100% 96%;
-    --result-critical: 0 72% 51%;
+    --result-critical: 0 72% 48%;
     --result-critical-bg: 0 86% 97%;
 
     /* login surface — plain dotted canvas, no gradient (design brief v2) */
-    --login-card-shadow: 221 39% 11% / 0.08;
+    --login-card-shadow: 213 55% 16% / 0.1;
     --notice-info-bg: 214 100% 97%;
     --notice-info-border: 213 97% 87%;
     --notice-info-foreground: 224 76% 40%;
 
-    /* sidebar — near-black charcoal (design brief v2 §2.3), driven by --brand */
-    --sidebar: 221 39% 11%;
-    --sidebar-foreground: 216 12% 84%;
-    --sidebar-primary: 215 28% 17%;
+    /* sidebar — deep navy chrome, driven by --brand */
+    --sidebar: 213 55% 16%;
+    --sidebar-foreground: 214 28% 86%;
+    --sidebar-primary: 213 48% 22%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 215 28% 17%;
+    --sidebar-accent: 213 48% 22%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 217 19% 27%;
-    --sidebar-ring: 221 83% 53%;
-    --sidebar-chip-bg: 215 28% 17%;
-    --sidebar-chip-label: 217 9% 62%;
-    --sidebar-icon-muted: 216 14% 74%;
+    --sidebar-border: 213 32% 26%;
+    --sidebar-ring: 213 67% 58%;
+    --sidebar-chip-bg: 213 48% 22%;
+    --sidebar-chip-label: 214 18% 72%;
+    --sidebar-icon-muted: 214 22% 78%;
     --sidebar-icon-strong: 0 0% 100%;
   }
 
@@ -219,6 +253,13 @@
     @apply bg-background text-foreground font-sans;
     font-size: 0.9375rem;
     line-height: 1.5;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: hsl(var(--primary));
+    width: 1.05rem;
+    height: 1.05rem;
   }
 
   .font-clinical {
@@ -342,7 +383,7 @@
 
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-color: hsl(var(--sidebar-border)) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -355,8 +396,12 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    background: hsl(var(--sidebar-border));
     border-radius: 2px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-button {
+    display: none;
   }
 
   .sidebar-shell {
@@ -410,7 +455,7 @@
     color: hsl(var(--notice-info-foreground));
   }
 
-  /* White canvas with a faint dotted grid — page background behind cards (design brief v2 §2.2). */
+  /* White canvas with a faint dotted grid — page background behind cards. */
   .canvas-dots {
     background-color: hsl(var(--background));
     background-image: radial-gradient(hsl(var(--canvas-dot)) 1px, transparent 1px);
@@ -547,7 +592,28 @@
     @apply border-primary/40 bg-accent/5;
   }
   .patient-result-card--selected {
-    @apply border-primary bg-primary/5;
+    @apply border-primary-border bg-primary-soft;
+  }
+
+  /* Labeled radio/checkbox tiles (Sex, Yes/No, visit type). Selected must be obvious. */
+  .choice-option {
+    @apply flex min-h-10 flex-1 cursor-pointer items-center gap-2.5 rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground transition-colors;
+  }
+  .choice-option:hover {
+    border-color: hsl(var(--primary) / 0.45);
+    background: hsl(var(--primary) / 0.04);
+  }
+  .choice-option:has([data-state="checked"]) {
+    border-color: hsl(var(--primary-border));
+    background: hsl(var(--primary-soft));
+    box-shadow: inset 0 0 0 1px hsl(var(--primary));
+    color: hsl(var(--primary));
+    font-weight: 600;
+  }
+  .choice-option:has([data-state="checked"]:disabled),
+  .choice-option:has(:disabled) {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 
   /* Booking form section */
@@ -564,14 +630,4 @@
     @apply space-y-4 px-4 py-4;
   }
 
-  /* Appointment status pill — distinct visuals per stage. */
-  .appt-pill {
-    @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium;
-  }
-  .appt-pill-scheduled    { background: hsl(var(--pending-bg));  border-color: hsl(var(--pending-border));  color: hsl(var(--pending)); }
-  .appt-pill-checked-in   { background: hsl(var(--info-bg));     border-color: hsl(var(--info-border));     color: hsl(var(--info)); }
-  .appt-pill-in-progress  { background: hsl(var(--warning-bg));  border-color: hsl(var(--warning-border));  color: hsl(var(--warning)); }
-  .appt-pill-completed    { background: hsl(var(--success-bg));  border-color: hsl(var(--success-border));  color: hsl(var(--success)); }
-  .appt-pill-no-show      { background: hsl(var(--error-bg));    border-color: hsl(var(--error-border));    color: hsl(var(--error)); }
-  .appt-pill-cancelled    { background: hsl(var(--neutral-bg));  border-color: hsl(var(--neutral-border));  color: hsl(var(--neutral)); }
 }

@@ -37,6 +37,14 @@ One entry per missing or changed endpoint the frontend needs, written for the ba
 - Need: `PatientSummaryDto` has `dobDisplay` but no raw birth date (so age can't be derived) and no last-visit date
 - Frontend status: `patient-result-card.tsx` shows DOB instead of age, and omits last-visit date, per the spec's result-card layout
 
+### REC-08 · No time-slot availability endpoint  (needed by: REC-08)
+- Need: the spec's booking screen shows "time slot chips (free / taken — words not only color)" — this needs a per-clinician/per-day list of free/taken slots, which no current endpoint provides
+- Frontend status: `booking-form.tsx` keeps a plain time input (`type="time"`) instead of slot chips. Not blocking — booking still works — but there's no way to see at a glance whether a time is already taken by another patient
+
+### REC-10 · Appointment details popover not built
+- The spec calls for "each booking a small card with time + name + status pill. Click → details popover with the same actions as REC-09" on the calendar view
+- Frontend status: `calendar-view.tsx` lets you click a day to see that day's list (with a status pill), but there's no popover with check-in/reschedule/cancel actions from the calendar itself — those all happen from Today's queue (`?view=queue`) today. Scoped down given the size of Stage 4; worth a follow-up if calendar-first workflows turn out to matter
+
 ### REC-02 · Duplicate check can only search by name
 - Method & path: `POST /patients/search` (`mode: "name"`)
 - Need: the actor doc asks for a name + DOB + phone duplicate search; the search endpoint only supports `id` / `nhis` / `name` modes, no combined filter

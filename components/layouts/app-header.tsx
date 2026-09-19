@@ -6,6 +6,7 @@ import { Bell, Search, ShieldCheck, User } from "lucide-react";
 
 import { canAccessWorkspaceModule } from "@/lib/access-control";
 import { formatRelative } from "@/lib/dates";
+import { displayName } from "@/lib/display-name";
 import { roleLabel } from "@/lib/status-labels";
 import { useFacility } from "@/hooks/use-facility";
 import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
@@ -37,6 +38,7 @@ export function AppHeader({ user }: AppHeaderProps) {
   useNotificationsFeed();
 
   const canSearchPatients = canAccessWorkspaceModule(user, "records");
+  const name = displayName(user);
   const facilityName = facility?.name ?? user.facilityName;
   const facilityCode = facility?.code ?? user.facilityCode;
   const facilityLogoDataUrl = facility?.logoDataUrl ?? user.facilityLogoDataUrl;
@@ -59,7 +61,13 @@ export function AppHeader({ user }: AppHeaderProps) {
               <User className="h-4 w-4" />
             </span>
             <span className="hidden truncate text-sm text-foreground sm:block">
-              Hello, <span className="font-semibold">{user.firstName} {user.lastName}</span>!
+              {name ? (
+                <>
+                  Hello, <span className="font-semibold">{name}</span>!
+                </>
+              ) : (
+                "Hello!"
+              )}
             </span>
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
@@ -70,7 +78,7 @@ export function AppHeader({ user }: AppHeaderProps) {
         <DropdownMenuContent align="start" className="w-56">
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col gap-0.5">
-              <p className="text-sm font-semibold">{user.firstName} {user.lastName}</p>
+              <p className="text-sm font-semibold">{name || user.username}</p>
               <p className="text-xs text-muted-foreground">{roleLabel(user.role)}</p>
             </div>
           </DropdownMenuLabel>

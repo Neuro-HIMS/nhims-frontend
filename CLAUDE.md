@@ -57,9 +57,11 @@ The full spec lives in `docs/agents/02-design-system.md` — this is the condens
 - Clinical identifiers/codes/numeric values, money and vitals use `font-clinical` (tabular numbers).
 - Heading hierarchy should remain consistent with global `h1-h6` defaults in `globals.css`.
 
-## Color & Semantics (design system v2 — monochrome, dotted canvas)
-- `--brand` (near-black charcoal, `#111827`) is sidebar/nav chrome only. `--primary` (black) is the one "main action" color — buttons, the facility switcher, checked checkboxes, selected items. `--accent` (blue, `#2563EB`) is text links and focus rings **only** — never buttons.
-- One red only: `--destructive` = `--error` (`#DC2626`). Never introduce a second red.
+## Color & Semantics (design system v2 — clinical navy, dotted canvas)
+- `--brand` (deep navy) is sidebar/nav chrome only. `--primary` (hospital navy) is the one "main action" color — buttons, the facility badge, checked radios/checkboxes/switches, selected tiles. `--accent` (bright blue) is text links **only** — never buttons and never selected controls.
+- Never set `--primary` to near-black. Black-on-white radios look unchecked; the UI must not read as greyscale.
+- Radix checked state is `data-state="checked"`. Use `data-[state=checked]:` (and `ChoiceOption` for labeled tiles). A `data-checked` attribute is not set.
+- One red only: `--destructive` = `--error` (also reused by `--clinical-emergency`, `--nhis-inactive`, `--result-critical` — keep all four in sync). Never introduce a second red.
 - Feedback sets — `success` / `warning` / `pending` / `error` / `info` / `purple` / `neutral` — each ship as a strong/`-bg`/`-border` trio, for system messages (saved/failed/waiting/tip). Medical status colors (`--clinical-*` triage, `--nhis-*`, `--result-*` lab flags) are a **separate** system — don't swap feedback tokens for triage/lab/NHIS status or vice versa, even where the hue overlaps.
 - Triage: Emergency = error red, Urgent = warning orange, Semi-urgent = pending amber, Routine = success green.
 - Lab results: low is blue (`--result-low`/info), high is orange (`--result-high`/warning), critical is red (`--result-critical`) — never the same color for low and high.
@@ -68,15 +70,15 @@ The full spec lives in `docs/agents/02-design-system.md` — this is the condens
 
 ## Workspace Layout Architecture
 
-Left-hand dark sidebar (`AppSidebar`) + white top bar (`AppHeader`) + dotted-canvas scrollable main:
+Left-hand navy sidebar (`AppSidebar`) + white top bar (`AppHeader`) + dotted-canvas scrollable main:
 
 ```
-<AppSidebar />   ← near-black charcoal, ~240px (icons-only when collapsed), white top-left
+<AppSidebar />   ← deep navy, ~240px (icons-only when collapsed), white top-left
                     header block ("NHIMS"), items grouped (Home/Patients/Care/Tests and
                     medicines/Money/Reports/Admin) filtered by access, Log out pinned at the bottom
 <AppHeader />    ← white, 64px. Left: avatar + greeting + role pill, itself the user menu
                     (My profile / Sign-in and security). Right: global "Find a patient"
-                    search, notifications, and a static black facility badge (NHIMS runs
+                    search, notifications, and a static navy facility badge (NHIMS runs
                     one facility per server — no facility switcher, no menu on it).
 <main className="canvas-dots">
   <PageContent />  ← scrollable, max-w-screen-2xl, white dotted-grid canvas behind cards
@@ -86,7 +88,7 @@ Left-hand dark sidebar (`AppSidebar`) + white top bar (`AppHeader`) + dotted-can
 - `components/layouts/app-sidebar.tsx` renders `NAV_ITEMS` from `config/navigation.ts`, filtered to accessible modules via `canAccessWorkspaceModule`, grouped by `NAV_GROUP_ORDER`/`NAV_GROUP_LABELS`. Collapse state persists to `localStorage`.
 - `components/layouts/app-header.tsx` is intentionally minimal: greeting + role pill, patient search (only for roles with `records` access), notifications, facility switcher. Do not add non-functional icons (no "Messages", no "Applications" grid) and do not add a permanent "Online" badge — only show connectivity state when actually offline (`OfflineBanner`).
 - Sign out lives in the sidebar (pinned at the bottom), not in a header dropdown.
-- Do not recreate the old `GlobalDhimsHeader` dark-blue tab-bar-with-dropdowns pattern, and don't reintroduce a blue/navy "brand" primary button color — primary is black.
+- Do not recreate the old `GlobalDhimsHeader` dark-blue tab-bar-with-dropdowns pattern. Primary actions use hospital navy (`--primary`), not near-black.
 - `sidebar.tsx` and `topbar.tsx` (the old, pre-`AppSidebar` files) stay deleted — `AppSidebar`/`AppHeader` are the current, authoritative shell.
 
 ## Module Page Pattern

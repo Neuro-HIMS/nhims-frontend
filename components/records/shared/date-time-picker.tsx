@@ -34,7 +34,7 @@ export function DateTimePicker({
     if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return undefined;
     return dt;
   }, [date]);
-  const dateLabel = selectedDate ? format(selectedDate, "PPP") : "Select appointment date";
+  const dateLabel = selectedDate ? format(selectedDate, "dd/MM/yyyy") : "Select appointment date";
 
   function setNow() {
     const now = new Date();

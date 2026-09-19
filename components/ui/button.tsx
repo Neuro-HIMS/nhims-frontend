@@ -9,11 +9,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary — solid black. One per screen/dialog: the main next step.
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary-hover",
-        // Secondary — white, black border, black text. Supporting actions.
+        // Primary — solid hospital navy. One per screen/dialog: the main next step.
+        default: "bg-primary text-primary-foreground hover:bg-primary-hover [a]:hover:bg-primary-hover",
+        // Secondary — white, navy border, navy text. Supporting actions.
         outline:
-          "border-foreground text-foreground bg-background hover:bg-muted aria-expanded:bg-muted dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-primary text-primary bg-background hover:bg-primary/5 aria-expanded:bg-primary/5 dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         // Tertiary — white, light-grey border, dark text. Low-importance actions.
         secondary:
           "border-border text-foreground bg-background hover:bg-muted aria-expanded:bg-muted",

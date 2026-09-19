@@ -35,7 +35,7 @@ A web-based hospital management system for Ghanaian health facilities (Ghana Hea
 1. **Safe** — critical information is prominent, consistent and never color-only.
 2. **Obvious** — each screen has one job, a clear title, a one-line description and one primary action.
 3. **Fast** — the most common task is the first thing on the screen; search is always one click away.
-4. **Calm** — monochrome base; color only means something. Friendly, blame-free wording.
+4. **Calm** — cool clinical canvas; navy for actions and selected controls; status color only for meaning. Friendly, blame-free wording.
 5. **Consistent** — the same pattern for every "waiting list → patient → record → next step" flow, in every department.
 6. **Forgiving** — confirm before anything destructive, never clear what the user typed, tell them how to recover.
 

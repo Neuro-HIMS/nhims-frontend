@@ -5,6 +5,7 @@ import type { UserListItem } from "@/types/users.types";
 import { ROLE_OPTIONS } from "@/components/users/users-management-constants";
 import { DataTable, type DataTableColumn, TableToolbar } from "@/components/common/data-table";
 import { StatusPill } from "@/components/common/status-pill";
+import { displayName } from "@/lib/display-name";
 import { roleLabel } from "@/lib/status-labels";
 import { formatLastLogin } from "@/components/users/users-management-utils";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -45,11 +46,17 @@ export function StaffAccountsView({
     {
       key: "name",
       header: "Name",
-      cell: (u) => (
-        <span className="font-medium text-foreground">
-          {u.firstName} {u.lastName}
-        </span>
-      ),
+      cell: (u) => {
+        const name = displayName(u);
+        return name ? (
+          <span className="font-medium text-foreground">{name}</span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-muted-foreground">{u.username}</span>
+            <span className="status-pill status-pill-neutral">Name not set</span>
+          </span>
+        );
+      },
     },
     { key: "username", header: "Username", cell: (u) => <span className="font-clinical text-xs">{u.username}</span> },
     { key: "job", header: "Job", cell: (u) => roleLabel(u.role) },
@@ -90,7 +97,7 @@ export function StaffAccountsView({
       }}
       toolbar={
         <TableToolbar
-          search={{ value: search, onChange: onSearchChange, placeholder: "Search by name or username" }}
+          search={{ value: search, onChange: onSearchChange, placeholder: "Search staff" }}
           filters={
             <>
               <Select value={roleFilter} onValueChange={(value) => onRoleFilterChange(value as "all" | UserRole)}>

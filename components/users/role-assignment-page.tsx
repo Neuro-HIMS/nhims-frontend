@@ -16,6 +16,7 @@ import {
   defaultModulesForRole,
 } from "@/components/users/users-management-constants";
 import { SectionsCheckboxGroups } from "@/components/users/sections-checkbox-groups";
+import { displayName } from "@/lib/display-name";
 import { roleLabel } from "@/lib/status-labels";
 import { getFriendlyError } from "@/lib/api-errors";
 import { notify } from "@/lib/notify";
@@ -84,7 +85,7 @@ export function RoleAssignmentPage({ userId }: RoleAssignmentPageProps) {
     try {
       const updated = await usersService.updateAccess(user.id, user.role, user.assignedModules);
       setUser(updated);
-      notify.success(`Access saved for ${updated.firstName} ${updated.lastName}.`);
+      notify.success(`Access saved for ${displayName(updated)}.`);
       if (currentUserId === updated.id) {
         const session = await authService.reissueSession();
         setSessionUser(session.user);
@@ -117,9 +118,7 @@ export function RoleAssignmentPage({ userId }: RoleAssignmentPageProps) {
         <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                {user.firstName} {user.lastName}
-              </CardTitle>
+              <CardTitle className="text-base">{displayName(user)}</CardTitle>
               <CardDescription>{user.username}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

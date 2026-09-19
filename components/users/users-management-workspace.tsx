@@ -21,6 +21,7 @@ import { ModuleSubNav } from "@/components/layouts/module-subnav";
 import { PageCard } from "@/components/layouts/page-card";
 import { Button } from "@/components/ui/button";
 import { getFriendlyError } from "@/lib/api-errors";
+import { displayName } from "@/lib/display-name";
 import { notify } from "@/lib/notify";
 
 const EMPTY_FORM: CreateFormState = {
@@ -89,7 +90,7 @@ export function UsersManagementWorkspace() {
       const textMatch =
         !q ||
         user.username.toLowerCase().includes(q) ||
-        `${user.firstName} ${user.lastName}`.toLowerCase().includes(q) ||
+        displayName(user).toLowerCase().includes(q) ||
         user.email.toLowerCase().includes(q);
       const roleMatch = roleFilter === "all" || user.role === roleFilter;
       const statusMatch = statusFilter === "all" || (statusFilter === "active" ? user.active : !user.active);
@@ -114,7 +115,7 @@ export function UsersManagementWorkspace() {
       });
       setUsers((prev) => [created, ...prev]);
       setJustCreated({
-        name: `${created.firstName} ${created.lastName}`,
+        name: displayName(created),
         username: created.username,
         password: createForm.password,
       });
@@ -146,7 +147,7 @@ export function UsersManagementWorkspace() {
     setIsActionLoading(true);
     try {
       const result = await usersService.resetPassword(user.id);
-      setIssuedReset({ name: `${user.firstName} ${user.lastName}`, token: result.passwordResetToken });
+      setIssuedReset({ name: displayName(user), token: result.passwordResetToken });
       setPendingPasswordResetUser(null);
     } catch (error) {
       notify.error(getFriendlyError(error).message);
@@ -284,7 +285,7 @@ export function UsersManagementWorkspace() {
       <ConfirmDialog
         open={pendingDisableUser !== null}
         onOpenChange={(open) => !open && setPendingDisableUser(null)}
-        title={pendingDisableUser ? `Deactivate ${pendingDisableUser.firstName} ${pendingDisableUser.lastName}'s account?` : ""}
+        title={pendingDisableUser ? `Deactivate ${displayName(pendingDisableUser)}'s account?` : ""}
         description="They won't be able to sign in. Their past work stays in the records."
         cancelLabel="Keep account"
         confirmLabel="Yes, deactivate"
@@ -299,7 +300,7 @@ export function UsersManagementWorkspace() {
       <ConfirmDialog
         open={pendingPasswordResetUser !== null}
         onOpenChange={(open) => !open && setPendingPasswordResetUser(null)}
-        title={pendingPasswordResetUser ? `Reset the password for ${pendingPasswordResetUser.firstName} ${pendingPasswordResetUser.lastName}?` : ""}
+        title={pendingPasswordResetUser ? `Reset the password for ${displayName(pendingPasswordResetUser)}?` : ""}
         description="You'll get a temporary password to share with them privately. Their current password stops working."
         cancelLabel="Go back"
         confirmLabel="Yes, reset password"

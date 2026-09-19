@@ -1,6 +1,6 @@
-# 02 — Design system (v2: monochrome with dotted canvas)
+# 02 — Design system (v2: clinical navy with dotted canvas)
 
-The visual language is **clean, calm and business-like**: black, white and greys, with color used **only** to carry meaning (status pills, alerts, destructive actions). Everything is defined as tokens in `app/globals.css` — this document explains how to use them.
+The visual language is **clean, calm and clinical**: a cool off-white canvas, white cards, and **hospital navy** for primary actions and selected controls. Status color is still reserved for meaning (pills, alerts, destructive actions). Everything is defined as tokens in `app/globals.css` — this document explains how to use them.
 
 > Rule zero: if you're about to type a hex code, a Tailwind palette color (`red-500`, `slate-400`, `emerald-…`), or `style={{ color }}` — stop. Use a token below, or add a new token to `globals.css` first.
 
@@ -10,24 +10,28 @@ The visual language is **clean, calm and business-like**: black, white and greys
 
 Tokens are HSL triplets in `:root` and exposed to Tailwind via `@theme inline`, so `--success-bg` becomes `bg-success-bg`, `--muted-foreground` becomes `text-muted-foreground`, etc.
 
-### 1.1 Base (monochrome)
+### 1.1 Base (clinical navy)
 
 | Token | Tailwind | Use |
 |---|---|---|
-| `--background` | `bg-background` | Page canvas (white) — use with `.canvas-dots` |
+| `--background` | `bg-background` | Page canvas (cool off-white) — use with `.canvas-dots` |
 | `--canvas-dot` | — | Dot color for the grid (used by `.canvas-dots`) |
 | `--card` | `bg-card` | Cards, tables, dialogs, inputs (white) |
 | `--surface-subtle` | `bg-surface-subtle` | Table header row, filter/toolbar band |
 | `--surface-muted` / `--muted` | `bg-surface-muted` / `bg-muted` | Upload areas, row hover, skeletons, icon-button fills |
-| `--border` | `border-border` | Every border and divider (1px) |
+| `--border` | `border-border` | Card and divider borders (1px) |
+| `--input` | `border-input` | Form control edges — **darker than `--border`** so fields are visible |
 | `--foreground` | `text-foreground` | Main text |
-| `--muted-foreground` | `text-muted-foreground` | Descriptions, helper text, section labels |
+| `--muted-foreground` | `text-muted-foreground` | Descriptions, helper text, section labels, **unchecked** control outlines |
 | `--text-disabled` | `text-text-disabled` | Disabled text |
-| `--primary` | `bg-primary` | **Black** — primary buttons, facility switcher, checked checkboxes, active sub-tab underline |
+| `--primary` | `bg-primary` | **Hospital navy** — primary buttons, facility badge, checked radios/checkboxes/switches, active sub-tab underline |
 | `--primary-hover` | `hover:bg-primary-hover` | Primary hover |
-| `--accent` / `--ring` | `text-accent`, focus ring | **Blue — text links and focus rings only** |
+| `--accent` | `text-accent` | **Bright blue — text links only** (not buttons, not selected controls) |
+| `--ring` | focus ring | Matches `--primary` so focus is visible on cool surfaces |
 | `--destructive` | `bg-destructive`, `text-destructive` | The one red: delete/cancel, error borders |
-| `--brand` / `--sidebar*` | via `.sidebar-*` classes | Sidebar chrome only |
+| `--brand` / `--sidebar*` | via `.sidebar-*` classes | Sidebar chrome only (deep navy) |
+
+Never set `--primary` to near-black. A black fill on a white radio/checkbox looks empty, and the product reads as greyscale.
 
 ### 1.2 Feedback and status sets (strong / soft background / border)
 
@@ -61,7 +65,7 @@ Each has three tokens: `--x`, `--x-bg`, `--x-border` → `text-x`, `bg-x-bg`, `b
 
 ## 2. Page canvas
 
-- The workspace `<main>` uses `.canvas-dots`: white with a faint 1px dot every 16px.
+- The workspace `<main>` uses `.canvas-dots`: cool off-white with a faint 1px dot every 16px.
 - Content sits in **white cards** on top, so dots only show in margins and gaps.
 - Content column: `mx-auto w-full max-w-screen-xl` (≈1200–1280px), page padding `px-6 py-6` (`px-4` on tablets), gaps between cards `space-y-6`.
 
@@ -69,8 +73,8 @@ Each has three tokens: `--x`, `--x-bg`, `--x-border` → `text-x`, `bg-x-bg`, `b
 
 | Part | File | Look |
 |---|---|---|
-| Sidebar | `components/layouts/app-sidebar.tsx` | ~240–260px, `--sidebar` charcoal; white "NHIMS" wordmark block aligned with the top bar; UPPERCASE group labels (11px, letter-spaced, muted); items = outline icon + label (`.sidebar-item`); active = lighter pill with hairline border (`.sidebar-item.active`); collapse (≡) to icons; Feedback + Log out pinned at bottom |
-| Top bar | `components/layouts/app-header.tsx` | White, ~64px, bottom border. Left: small black square avatar + "Hello, **First Last**!" + role pill (green dot + "Nurse") — this whole block is the user menu (My profile / Sign-in and security). Middle: "Find a patient" search (only for roles with records access). Right: notifications bell with count, **static black facility badge** (logo in white circle + facility name, no chevron, not clickable — NHIMS runs one facility per server) |
+| Sidebar | `components/layouts/app-sidebar.tsx` | ~240–260px, `--sidebar` deep navy; white "NHIMS" wordmark block aligned with the top bar; UPPERCASE group labels (11px, letter-spaced, muted); items = outline icon + label (`.sidebar-item`); active = lighter pill with hairline border (`.sidebar-item.active`); collapse (≡) to icons; Feedback + Log out pinned at bottom |
+| Top bar | `components/layouts/app-header.tsx` | White, ~64px, bottom border. Left: small navy square avatar + "Hello, **First Last**!" + role pill (green dot + "Nurse") — this whole block is the user menu (My profile / Sign-in and security). Middle: "Find a patient" search (only for roles with records access). Right: notifications bell with count, **static navy facility badge** (logo in white circle + facility name, no chevron, not clickable — NHIMS runs one facility per server) |
 | Offline bar | `components/common/offline-banner.tsx` | Slim `pending` band under the top bar — only when offline |
 
 ## 4. Page layout recipe
@@ -102,13 +106,13 @@ Every module page opens with a **header card** (title, one-line description, act
 
 | Intent | Variant | Look |
 |---|---|---|
-| Primary (one per screen/dialog) | `default` | Solid black, white text |
-| Secondary | `outline` | White, black 1px border, black text |
+| Primary (one per screen/dialog) | `default` | Solid hospital navy, white text |
+| Secondary | `outline` | White, navy 1px border, navy text |
 | Tertiary / low importance | `secondary` | White, grey border, dark text |
 | Row icon / quiet | `ghost` (`size="icon-sm"`) | Grey icon, darker on hover |
 | Risky action outside a dialog | `destructive-outline` | Red text + red border |
 | Confirm a risky action (inside `ConfirmDialog` only) | `destructive` | Solid red |
-| Inline text link | `link` | Blue underline on hover |
+| Inline text link | `link` | Bright blue underline on hover |
 
 - Sizes: `default` (36px) in tables/toolbars, `lg` (40px) for page-level primary actions and forms.
 - Icon placement: leading icon for verbs ("+ Add supplier"), trailing icon for "opens elsewhere" (Import ↗).
@@ -133,18 +137,28 @@ One component, one shape: `.status-pill` + one of `.status-pill-{success|warning
 ## 9. Upload areas and illustrations
 
 - Upload box: `rounded-xl bg-surface-muted p-6 text-center`, white circle with an upload-cloud icon, "**Click to upload** or drag and drop", grey line with allowed types + max size. Drag-over: `border-2 border-dashed border-foreground`. Error: red border + message.
-- Explanatory block beside it: bold title, short grey paragraph, one black button ("Download template").
+- Explanatory block beside it: bold title, short grey paragraph, one navy button ("Download template").
 - Illustrations: soft **greyscale** line drawings on a pale grey circle; used for all empty and error states. Store as inline SVG components in `components/common/illustrations/` using `currentColor` + muted tokens.
 
 ## 10. Forms
 
 - One column inside a card; `max-w-2xl` for long forms. Labels above fields (`text-sm font-medium`), helper text below (`text-xs text-muted-foreground`).
-- Inputs/selects: white, `border-border`, 8px radius, 40px tall, grey placeholder with an example ("e.g. 024 123 4567").
+- Inputs/selects: white, `border-input` (darker than card borders), 8px radius, 40px tall, grey placeholder with an example ("e.g. 024 123 4567").
 - Group fields under bold subtitles; separate groups with a dashed divider.
 - Mark optional fields "(optional)"; don't mark required ones with `*`.
 - Dates: always the date picker (`components/ui/date-picker-field.tsx`). Units shown as a suffix inside the input ("°C", "mmHg", "kg", "GH₵").
-- Long forms become steps with a simple black/grey step indicator (Personal details → Contact → NHIS → Review).
+- Long forms become steps with a simple navy/grey step indicator (Personal details → Contact → NHIS → Review).
 - Error state: red border + small red icon + message under the field (see 04).
+
+### 10.1 Choice controls (radios, checkboxes, switches)
+
+Selected vs unselected must be obvious at a glance — including the Sex field on patient details.
+
+- Use `RadioGroup` / `Checkbox` / `Switch` from `components/ui/`. Restyle only via tokens.
+- Radix sets `data-state="checked"`. Style with `data-[state=checked]:…`. Do **not** rely on a `data-checked` HTML attribute — it is never set.
+- Unchecked: 2px `border-muted-foreground/50` on a white fill. Checked: filled `--primary` with a white tick / inner dot.
+- Labeled option tiles (Male / Female, Yes / No) wrap the control in `ChoiceOption` (`.choice-option`). Selected tiles get a navy border, navy tint, navy label. Never copy the empty `border-input` box that looks like a text field.
+- Never use near-black as the checked fill. Never paint selected and unselected with the same pale border.
 
 ## 11. Patient banner
 

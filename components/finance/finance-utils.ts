@@ -30,6 +30,20 @@ export function showApiError(error: unknown, fallback = "Request failed"): strin
   return ax.response?.data?.message ?? ax.message ?? fallback;
 }
 
+export const SERVICE_GROUP_LABEL: Record<string, string> = {
+  CONSULTATION: "Consultation",
+  LAB: "Laboratory",
+  IMAGING: "Imaging",
+  PHARMACY: "Pharmacy",
+  PROCEDURE: "Procedure",
+  WARD: "Ward",
+  MATERNITY: "Maternity",
+  DENTAL: "Dental",
+  THEATRE: "Theatre",
+  EMERGENCY: "Emergency",
+  OTHER: "Other",
+};
+
 export const PAYER_LABEL: Record<string, string> = {
   NHIS: "NHIS",
   IGF: "IGF (Cash)",

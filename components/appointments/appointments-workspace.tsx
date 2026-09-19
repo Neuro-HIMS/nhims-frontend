@@ -1,9 +1,9 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { CalendarDays } from "lucide-react";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
+import { PageCard } from "@/components/layouts/page-card";
 import { QueueView } from "@/components/appointments/views/queue-view";
 import { CalendarView } from "@/components/appointments/views/calendar-view";
 import { HistoryView } from "@/components/appointments/views/history-view";
@@ -11,7 +11,7 @@ import { BookingSearchView } from "@/components/booking/booking-search-view";
 
 const SUB_NAV = [
   { label: "Book", view: "book", href: "/appointments?view=book" },
-  { label: "Today's Queue", view: "queue", href: "/appointments?view=queue" },
+  { label: "Today", view: "queue", href: "/appointments?view=queue" },
   { label: "Calendar", view: "calendar", href: "/appointments?view=calendar" },
   { label: "History", view: "history", href: "/appointments?view=history" },
 ];
@@ -22,17 +22,7 @@ export function AppointmentsWorkspace() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <CalendarDays className="h-5 w-5 text-primary" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-foreground">Appointments</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-            Booking, live queue operations, calendar load, and visit history.
-        </p>
-        </div>
-      </div>
+      <PageCard title="Appointments" description="Book a clinic slot, check patients in, and look up past appointments." />
 
       <ModuleSubNav items={SUB_NAV} basePath="/appointments" />
 

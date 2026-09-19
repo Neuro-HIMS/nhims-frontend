@@ -78,7 +78,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/records",
-    label: "Find or register a patient",
+    label: "Find a patient",
     icon: UserPlus,
     module: "records",
     group: "patients",

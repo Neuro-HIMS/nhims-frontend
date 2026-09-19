@@ -15,6 +15,7 @@ import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ChoiceOption } from "@/components/ui/choice-option";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InlineNotice } from "@/components/common/inline-notice";
@@ -386,12 +387,12 @@ export function RegistrationView() {
                   <FormItem>
                     <FormLabel>Sex</FormLabel>
                     <RadioGroup value={field.value} onValueChange={field.onChange} className="flex gap-3 pt-1.5">
-                      <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                      <ChoiceOption>
                         <RadioGroupItem value="M" /> Male
-                      </label>
-                      <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                      </ChoiceOption>
+                      <ChoiceOption>
                         <RadioGroupItem value="F" /> Female
-                      </label>
+                      </ChoiceOption>
                     </RadioGroup>
                     <FormMessage />
                   </FormItem>
@@ -619,12 +620,12 @@ export function RegistrationView() {
                   <FormItem>
                     <FormLabel>Does the patient have NHIS?</FormLabel>
                     <RadioGroup value={field.value} onValueChange={field.onChange} className="grid grid-cols-2 gap-2">
-                      <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                      <ChoiceOption>
                         <RadioGroupItem value="yes" /> Yes
-                      </label>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-data-checked:border-primary">
+                      </ChoiceOption>
+                      <ChoiceOption>
                         <RadioGroupItem value="no" /> No
-                      </label>
+                      </ChoiceOption>
                     </RadioGroup>
                   </FormItem>
                 )}

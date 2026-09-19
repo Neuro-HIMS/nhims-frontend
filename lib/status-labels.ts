@@ -61,3 +61,30 @@ export function encounterStatusLabel(status: string): string {
 export function encounterStatusTone(status: string): PillTone {
   return ENCOUNTER_STATUS_TONE[status] ?? "neutral";
 }
+
+/** Plain-language names for a booked appointment's status (scheduling, not the clinical visit itself). */
+export const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
+  SCHEDULED: "Booked",
+  CHECKED_IN: "Arrived",
+  IN_PROGRESS: "Being seen",
+  COMPLETED: "Done",
+  NO_SHOW: "Didn't come",
+  CANCELLED: "Cancelled",
+};
+
+const APPOINTMENT_STATUS_TONE: Record<string, PillTone> = {
+  SCHEDULED: "pending",
+  CHECKED_IN: "info",
+  IN_PROGRESS: "warning",
+  COMPLETED: "success",
+  NO_SHOW: "error",
+  CANCELLED: "neutral",
+};
+
+export function appointmentStatusLabel(status: string): string {
+  return APPOINTMENT_STATUS_LABELS[status] ?? status;
+}
+
+export function appointmentStatusTone(status: string): PillTone {
+  return APPOINTMENT_STATUS_TONE[status] ?? "neutral";
+}

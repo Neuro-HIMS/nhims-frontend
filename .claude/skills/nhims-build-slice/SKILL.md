@@ -31,7 +31,7 @@ Follow these steps in order. Don't skip the reading steps — older code in the 
 - `PageCard` first, `ModuleSubNav` if tabs, then `SectionCard`s.
 - Tables via `DataTable` / queues via `WaitingList`; statuses via `StatusPill` + `lib/status-labels.ts`.
 - Forms: zod schema in `schemas/`, react-hook-form, plain-language messages, `UnitInput`/`MoneyInput`/date picker as needed.
-- Only tokens/utility classes for color; one black primary button per screen/dialog.
+- Only tokens/utility classes for color; one navy primary button per screen/dialog. Choice tiles use `ChoiceOption`; checked controls use `data-[state=checked]` + `--primary`.
 - Mutations: invalidate own data + next role's list; success message from 05 §4 templates; move the user to the next logical place.
 
 ## 4. States and copy pass

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { addMinutes, format } from "date-fns";
-import { CalendarPlus, CheckCircle2, Loader2, Stethoscope } from "lucide-react";
+import { CalendarPlus, Loader2, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SuccessPanel } from "@/components/common/success-panel";
 import { MiniPatientCard } from "@/components/booking/mini-patient-card";
+import { NhisCheck } from "@/components/records/nhis-check";
 import {
   PRIORITIES,
   VISIT_TYPES,
@@ -31,17 +33,17 @@ import {
   visitTypeToGroups,
 } from "@/components/booking/lib/booking-utils";
 import type { Patient } from "@/components/records/lib/records-types";
+import { getFriendlyError } from "@/lib/api-errors";
+import { queryKeys } from "@/lib/query-keys";
 import { appointmentsService } from "@/services/appointments.service";
 import { financeService } from "@/services/finance.service";
-import { patientsService } from "@/services/patients.service";
 import type {
   AppointmentDto,
   CreateAppointmentPayload,
   VisitType,
 } from "@/types/appointments.types";
 import type { ServiceCatalogDto } from "@/types/finance.types";
-import { minorToGhs, PAYER_LABEL } from "@/components/finance/finance-utils";
-import type { ApiError } from "@/types/api.types";
+import { minorToGhs, PAYER_LABEL, SERVICE_GROUP_LABEL } from "@/components/finance/finance-utils";
 
 /**
  * The booking form proper. The mini patient card is rendered at the
@@ -81,11 +83,11 @@ export function BookingForm({
     queryFn: () => financeService.payerTypes(),
   });
   const clinicians = useQuery({
-    queryKey: ["appointments", "clinicians"],
+    queryKey: queryKeys.appointments.clinicians,
     queryFn: () => appointmentsService.clinicians(),
   });
   const patientVisits = useQuery({
-    queryKey: ["appointments", "by-patient", patientId],
+    queryKey: queryKeys.appointments.byPatient(patientId),
     queryFn: () => appointmentsService.byPatient(patientId),
     enabled: Boolean(patientId),
   });
@@ -110,7 +112,6 @@ export function BookingForm({
   const [notes, setNotes] = useState<string>("");
   const [feeOverride, setFeeOverride] = useState<string>("");
   const [booked, setBooked] = useState<BookingResult | null>(null);
-  const [nhisGateBusy, setNhisGateBusy] = useState(false);
 
   const filteredServices = useMemo(() => {
     const all = services.data ?? [];
@@ -135,10 +136,10 @@ export function BookingForm({
   const bookMut = useMutation({
     mutationFn: (payload: CreateAppointmentPayload) => appointmentsService.book(payload),
     onSuccess: (appt) => {
-      qc.invalidateQueries({ queryKey: ["appointments"] });
+      qc.invalidateQueries({ queryKey: queryKeys.appointments.all });
       toast.success(`Appointment ${appt.appointmentNumber} booked`, {
         description: `${appt.patientName} · ${appt.serviceName} · ${
-          appt.scheduledFor ? format(new Date(appt.scheduledFor), "PPp") : ""
+          appt.scheduledFor ? format(new Date(appt.scheduledFor), "dd/MM/yyyy HH:mm") : ""
         }`,
       });
       setBooked({
@@ -149,8 +150,8 @@ export function BookingForm({
       onBooked?.(appt);
     },
     onError: (e: unknown) => {
-      const ax = e as { response?: { data?: ApiError } };
-      toast.error(ax.response?.data?.message ?? "Booking failed");
+      const friendly = getFriendlyError(e);
+      toast.error(friendly.title, { description: friendly.message });
     },
   });
 
@@ -159,45 +160,18 @@ export function BookingForm({
     return `${date}T${safeTime}:00`;
   }
 
-  async function submit() {
+  function submit() {
     if (!serviceId) {
-      toast.error("Pick a service from the catalog");
+      toast.error("Pick a service to book");
       return;
     }
     if (!reason.trim()) {
-      toast.error("Visit reason is required");
+      toast.error("Enter a reason for the visit");
       return;
     }
-    if (payerType === "NHIS") {
-      const mem = nhisMemberNumber.trim();
-      if (!mem) {
-        toast.error("NHIS member number is required when payer is NHIS");
-        return;
-      }
-      setNhisGateBusy(true);
-      try {
-        const result = await patientsService.verifyNhis(mem);
-        if (result.status === "INVALID_FORMAT") {
-          toast.error(result.message ?? "Invalid NHIS member number format");
-          return;
-        }
-        if (result.status === "NOT_FOUND") {
-          toast.error(result.message ?? "NHIS membership not found — cannot confirm NHIS booking");
-          return;
-        }
-        if (result.status === "PENDING_GATEWAY") {
-          toast.error(
-            result.message ?? "NHIS verification is unavailable. Confirm eligibility before booking as NHIS.",
-          );
-          return;
-        }
-      } catch (e: unknown) {
-        const ax = e as { response?: { data?: ApiError } };
-        toast.error(ax.response?.data?.message ?? "NHIS verification failed");
-        return;
-      } finally {
-        setNhisGateBusy(false);
-      }
+    if (payerType === "NHIS" && !nhisMemberNumber.trim()) {
+      toast.error("Enter the patient's NHIS number, or change how they'll pay");
+      return;
     }
     const clinician = (clinicians.data ?? []).find((c) => c.userId === clinicianId);
     bookMut.mutate({
@@ -220,12 +194,6 @@ export function BookingForm({
       notes: notes.trim(),
     });
   }
-
-  useEffect(() => {
-    setPayerType(patient.nhisStatus === "active" ? "NHIS" : "CASH");
-    setNhisActive(patient.nhisStatus === "active");
-    setNhisMemberNumber(patient.nhisCard || "");
-  }, [patient.patientId, patient.nhisStatus, patient.nhisCard]);
 
   useEffect(() => {
     const y = Number.parseInt(date.slice(0, 4), 10);
@@ -269,7 +237,7 @@ export function BookingForm({
         </div>
         <div className="booking-section-body">
           <div className="grid gap-4 md:grid-cols-4">
-            <Field label="Date *">
+            <Field label="Date">
               <DatePickerField
                 value={date}
                 onChange={setDate}
@@ -278,7 +246,7 @@ export function BookingForm({
                 toYear={new Date().getFullYear() + 2}
               />
             </Field>
-            <Field label="Time *">
+            <Field label="Time">
               <Input
                 type="time"
                 value={time}
@@ -286,7 +254,7 @@ export function BookingForm({
                 className="font-clinical"
               />
             </Field>
-            <Field label="Duration (mins)">
+            <Field label="Duration (minutes)">
               <Input
                 type="number"
                 min={5}
@@ -321,7 +289,7 @@ export function BookingForm({
         </div>
         <div className="booking-section-body">
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Visit Type *">
+            <Field label="Visit type">
               <Select
                 value={visitType}
                 onValueChange={(v) => {
@@ -341,7 +309,7 @@ export function BookingForm({
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Service (from catalog) *">
+            <Field label="Service">
               <Select value={serviceId} onValueChange={setServiceId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Pick a service…" />
@@ -349,21 +317,21 @@ export function BookingForm({
                 <SelectContent className="max-h-[320px]">
                   {filteredServices.length === 0 && (
                     <div className="p-2 text-xs text-muted-foreground">
-                      No services in this group. Switch the visit type or add the service in
-                      Finance → Service Catalog.
+                      No services for this visit type yet. Switch the visit type, or add the service under
+                      Finance.
                     </div>
                   )}
                   {filteredServices.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.serviceName}{" "}
-                      <span className="text-xs text-muted-foreground">· {s.serviceGroup}</span>
+                      <span className="text-xs text-muted-foreground">· {SERVICE_GROUP_LABEL[s.serviceGroup] ?? s.serviceGroup}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
 
-            <Field label="Payer">
+            <Field label="How they'll pay">
               <Select value={payerType} onValueChange={setPayerType}>
                 <SelectTrigger>
                   <SelectValue />
@@ -378,14 +346,14 @@ export function BookingForm({
               </Select>
             </Field>
 
-            <Field label="Fee (auto from pricing matrix)">
+            <Field label="Fee">
               <div className="flex items-center gap-2">
                 <div className="flex-1 rounded-md border border-input bg-muted/30 px-3 py-2 text-sm font-clinical">
                   {tariff
                     ? `GH₵ ${minorToGhs(tariff.unitPriceMinor)}`
                     : selectedService
-                    ? "No tariff for this payer — falling back to CASH or 0"
-                    : "Pick a service to see the tariff"}
+                    ? "No price set for this payer — using self-pay or GH₵ 0"
+                    : "Pick a service to see the price"}
                 </div>
                 <Input
                   placeholder="Override (GH₵)"
@@ -396,12 +364,12 @@ export function BookingForm({
               </div>
               {selectedService && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  This fee will flow into a Finance bill when the appointment is completed.
+                  This fee becomes a Finance bill once the appointment is completed.
                 </p>
               )}
             </Field>
 
-            <Field label="Assigned clinician" className="md:col-span-2">
+            <Field label="Doctor (optional)" className="md:col-span-2">
               <Select
                 value={clinicianId || "__unassigned"}
                 onValueChange={(v) => setClinicianId(v === "__unassigned" ? "" : v)}
@@ -410,7 +378,7 @@ export function BookingForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
-                  <SelectItem value="__unassigned">— Unassigned —</SelectItem>
+                  <SelectItem value="__unassigned">Any available doctor</SelectItem>
                   {filteredCliniciansList.map((c) => (
                     <SelectItem key={c.userId} value={c.userId}>
                       {c.fullName}{" "}
@@ -426,61 +394,47 @@ export function BookingForm({
 
       <div className="booking-section">
         <div className="booking-section-header">
-          <h3 className="booking-section-title">Client status &amp; NHIS validation</h3>
+          <h3 className="booking-section-title">Client status</h3>
         </div>
         <div className="booking-section-body">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Client status (calendar year rule)">
-              <Select
-                value={clientStatus}
-                onValueChange={(v) => setClientStatus(v as "new" | "old")}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="new">New</SelectItem>
-                  <SelectItem value="old">Old</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Automatically derived: first visit in selected year is new; later visits are old.
-              </p>
-            </Field>
-            <Field label="NHIS active">
-              <Select
-                value={nhisActive ? "yes" : "no"}
-                onValueChange={(v) => setNhisActive(v === "yes")}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="yes">Yes</SelectItem>
-                  <SelectItem value="no">No</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="NHIS member number">
-              <Input
-                value={nhisMemberNumber}
-                onChange={(e) => setNhisMemberNumber(e.target.value)}
-                placeholder="NHIS member number"
-                className="font-clinical"
-              />
-            </Field>
-            <Field label="NHIS expiry date">
-              <DatePickerField
-                value={nhisExpiryDate}
-                onChange={setNhisExpiryDate}
-                placeholder="Select NHIS expiry"
-                fromYear={new Date().getFullYear() - 5}
-                toYear={new Date().getFullYear() + 10}
-              />
-            </Field>
-          </div>
+          <Field label="Client status" className="max-w-xs">
+            <Select
+              value={clientStatus}
+              onValueChange={(v) => setClientStatus(v as "new" | "old")}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">New</SelectItem>
+                <SelectItem value="old">Old</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Set automatically: their first visit in the selected year is new, later visits are old.
+            </p>
+          </Field>
         </div>
       </div>
+
+      {payerType === "NHIS" && (
+        <div className="booking-section">
+          <div className="booking-section-header">
+            <h3 className="booking-section-title">NHIS</h3>
+          </div>
+          <div className="booking-section-body max-w-md">
+            <NhisCheck
+              memberNumber={nhisMemberNumber}
+              onMemberNumberChange={setNhisMemberNumber}
+              onVerified={(result) => {
+                setNhisActive(result.status === "VERIFIED");
+                setNhisExpiryDate(result.validUntil ?? "");
+              }}
+              onContinueSelfPay={() => setPayerType("CASH")}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="booking-section">
         <div className="booking-section-header">
@@ -488,26 +442,26 @@ export function BookingForm({
         </div>
         <div className="booking-section-body">
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Visit reason *" className="md:col-span-2">
+            <Field label="Reason for the visit" className="md:col-span-2">
               <Textarea
                 rows={2}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Brief clinical complaint or reason for the visit"
+                placeholder="e.g. Fever and headache for 2 days"
               />
             </Field>
-            <Field label="Referral source">
+            <Field label="Referral source (optional)">
               <Input
                 value={referral}
                 onChange={(e) => setReferral(e.target.value)}
-                placeholder="Optional"
+                placeholder="e.g. Self, another facility"
               />
             </Field>
-            <Field label="Notes">
+            <Field label="Notes (optional)">
               <Input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional"
+                placeholder="Anything else worth noting"
               />
             </Field>
           </div>
@@ -532,9 +486,9 @@ export function BookingForm({
         </p>
         <Button
           onClick={submit}
-          disabled={bookMut.isPending || nhisGateBusy || !serviceId || !reason.trim()}
+          disabled={bookMut.isPending || !serviceId || !reason.trim()}
         >
-          {bookMut.isPending || nhisGateBusy ? (
+          {bookMut.isPending ? (
             <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
           ) : (
             <CalendarPlus className="mr-1.5 h-4 w-4" />
@@ -573,28 +527,18 @@ function BookedConfirmation({
   onGoToQueue: () => void;
 }) {
   const a = booking.appointment;
+  const when = a.scheduledFor ? format(new Date(a.scheduledFor), "EEE d MMM 'at' HH:mm") : "the booked time";
+  const withDoctor = a.clinicianName ? ` with ${a.clinicianName}` : "";
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-3 rounded-lg border border-[hsl(var(--nhis-active))]/30 bg-[hsl(var(--nhis-active-bg))] p-4 text-[hsl(var(--nhis-active))]">
-        <CheckCircle2 className="mt-0.5 h-5 w-5" />
-        <div>
-          <p className="font-medium">Appointment booked successfully</p>
-          <p className="mt-0.5 text-sm">
-            {a.appointmentNumber} · {booking.serviceName} ·{" "}
-            {a.scheduledFor ? format(new Date(a.scheduledFor), "PPpp") : ""}
-          </p>
-          <p className="mt-1 text-sm">
-            Fee: GH₵ {minorToGhs(a.feeMinor)} · {PAYER_LABEL[a.payerType] ?? a.payerType}. A bill
-            will open in Finance when the appointment is marked completed.
-          </p>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={onGoToQueue}>Go to today&apos;s queue</Button>
-        <Button variant="outline" onClick={onAnother}>
-          Book another
-        </Button>
-      </div>
-    </div>
+    <SuccessPanel
+      title={`Appointment booked for ${when}${withDoctor}.`}
+      description={`${booking.serviceName} · GH₵ ${minorToGhs(a.feeMinor)} · ${PAYER_LABEL[a.payerType] ?? a.payerType}. A bill opens in Finance once the appointment is marked completed.`}
+      actions={[
+        { label: "Print appointment slip", variant: "outline", onClick: () => window.print() },
+        { label: "Go to today's queue", variant: "outline", onClick: onGoToQueue },
+        { label: "Book another", variant: "default", onClick: onAnother },
+      ]}
+    />
   );
 }
