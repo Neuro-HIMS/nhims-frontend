@@ -326,7 +326,7 @@ export function FacilityDiagnosisClassificationsSettings() {
           <DialogHeader>
             <DialogTitle>Add many diagnoses at once</DialogTitle>
             <DialogDescription>
-              Upload a spreadsheet with a "name" column. Each row becomes a new diagnosis, or updates one with a
+              Upload a spreadsheet with a name column. Each row becomes a new diagnosis, or updates one with a
               matching name.
             </DialogDescription>
           </DialogHeader>

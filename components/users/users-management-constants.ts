@@ -11,13 +11,14 @@ export const PLACEHOLDER_CLINICAL_MODULES: ReadonlySet<AppModule> = new Set([
   "emergency",
 ]);
 
+/** Real, always-visible tabs. "new" (add staff) is reached via the primary button, not a tab. */
 export const VIEW_CONFIG = [
-  { id: "management", label: "User Management" },
-  { id: "staff", label: "Staff Accounts" },
-  { id: "access", label: "Access Review" },
+  { id: "staff", label: "Staff" },
+  { id: "access", label: "Check who can open what" },
 ] as const;
 
-export type ViewId = (typeof VIEW_CONFIG)[number]["id"];
+export type TabViewId = (typeof VIEW_CONFIG)[number]["id"];
+export type ViewId = TabViewId | "new";
 
 export const SUB_NAV = VIEW_CONFIG.map((v) => ({ label: v.label, view: v.id, href: `/users?view=${v.id}` }));
 
@@ -70,5 +71,5 @@ export function defaultModulesForRole(role: UserRole): AppModule[] {
 }
 
 export function isViewId(value: string | null): value is ViewId {
-  return value === "management" || value === "staff" || value === "access";
+  return value === "staff" || value === "access" || value === "new";
 }

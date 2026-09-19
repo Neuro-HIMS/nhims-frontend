@@ -26,6 +26,23 @@ export function formatTime(date: Date | string): string {
 }
 
 /**
+ * Table/list date: "21/09/2026" — non-clinical admin screens (staff lists, activity
+ * history). Clinical contexts keep the unambiguous `formatClinicalDate` above.
+ */
+export function formatTableDate(date: Date | string): string {
+  const d = typeof date === "string" ? parseISO(date) : date;
+  return format(d, "dd/MM/yyyy");
+}
+
+/**
+ * Table/list date-time: "21/09/2026, 14:05" (24h).
+ */
+export function formatTableDateTime(date: Date | string): string {
+  const d = typeof date === "string" ? parseISO(date) : date;
+  return format(d, "dd/MM/yyyy, HH:mm");
+}
+
+/**
  * Relative time: "3 hours ago" — for queue wait times and notification recency.
  */
 export function formatRelative(date: Date | string): string {
