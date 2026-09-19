@@ -300,9 +300,18 @@
     color: hsl(var(--result-critical));
     font-weight: 700;
   }
+  /* @deprecated use .result-low / .result-high — kept until every call site migrates (see 08-definition-of-done). */
   .result-abnormal {
     background: hsl(var(--result-low-bg));
     color: hsl(var(--result-low));
+    font-weight: 500;
+  }
+  .result-low {
+    color: hsl(var(--result-low));
+    font-weight: 500;
+  }
+  .result-high {
+    color: hsl(var(--result-high));
     font-weight: 500;
   }
 

@@ -1,10 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Loader2, Pencil, Plus, Upload } from "lucide-react";
-import { toast } from "sonner";
+import { Download, Loader2, Pencil, Plus } from "lucide-react";
 
+import { EmptyState } from "@/components/common/empty-state";
+import { StatusPill } from "@/components/common/status-pill";
+import { TableSkeleton } from "@/components/common/skeletons";
+import { UploadDropzone } from "@/components/common/upload-dropzone";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,11 +23,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { getFriendlyError } from "@/lib/api-errors";
+import { notify } from "@/lib/notify";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
 import { useAuthStore } from "@/store/auth.store";
 import type { UserRole } from "@/types/auth.types";
-import type { ApiError } from "@/types/api.types";
 import type { ClinicalConditionDto } from "@/types/clinical.types";
 
 const WRITE_ROLES: UserRole[] = ["MEDICAL_OFFICER", "FACILITY_ADMIN", "SUPER_ADMIN"];
@@ -48,7 +52,7 @@ export function FacilityDiagnosisClassificationsSettings() {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role as UserRole | undefined);
   const canWrite = role ? WRITE_ROLES.includes(role) : false;
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const [q, setQ] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
@@ -81,12 +85,11 @@ export function FacilityDiagnosisClassificationsSettings() {
     mutationFn: clinicalService.createCondition,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Classification created");
+      notify.success("Diagnosis added.");
       setEditorOpen(false);
       resetForm();
     },
-    onError: (e: unknown) =>
-      toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Could not save"),
+    onError: (e: unknown) => notify.error(getFriendlyError(e).message),
   });
 
   const updateMut = useMutation({
@@ -105,29 +108,26 @@ export function FacilityDiagnosisClassificationsSettings() {
     }) => clinicalService.updateCondition(id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Classification updated");
+      notify.success("Diagnosis saved.");
       setEditorOpen(false);
       setEditing(null);
     },
-    onError: (e: unknown) =>
-      toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Could not update"),
+    onError: (e: unknown) => notify.error(getFriendlyError(e).message),
   });
 
   const importMut = useMutation({
     mutationFn: (file: File) => clinicalService.importConditions(file),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      setImportOpen(false);
       const errPreview = res.errors.slice(0, 5).join("; ");
       if (res.errors.length === 0) {
-        toast.success(`Imported ${res.imported}; skipped ${res.skipped}`);
+        notify.success(`Added ${res.imported} diagnoses. Skipped ${res.skipped} already in the list.`);
       } else {
-        toast.message(`Imported ${res.imported}; skipped ${res.skipped}`, {
-          description: errPreview || undefined,
-        });
+        notify.error(`Added ${res.imported}, skipped ${res.skipped}. Some rows had problems: ${errPreview}`);
       }
     },
-    onError: (e: unknown) =>
-      toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Import failed"),
+    onError: (e: unknown) => notify.error(getFriendlyError(e).message),
   });
 
   function resetForm() {
@@ -169,9 +169,9 @@ export function FacilityDiagnosisClassificationsSettings() {
         q: searchApplied.trim() || undefined,
         activeOnly,
       });
-      downloadBlob(blob, format === "xlsx" ? "classifications.xlsx" : "classifications.csv");
+      downloadBlob(blob, format === "xlsx" ? "diagnosis-list.xlsx" : "diagnosis-list.csv");
     } catch (e: unknown) {
-      toast.error((e as { response?: { data?: ApiError } }).response?.data?.message ?? "Export failed");
+      notify.error(getFriendlyError(e).message);
     }
   }
 
@@ -179,12 +179,8 @@ export function FacilityDiagnosisClassificationsSettings() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Diagnosis classifications (ICD-11)</CardTitle>
-          <CardDescription>
-            Facility-wide catalogue used in consultations. Each row needs a <strong>name</strong>; description and ICD fields are optional.
-            Import CSV/XLSX requires a <code className="rounded bg-muted px-1">name</code> column (legacy files may use{" "}
-            <code className="rounded bg-muted px-1">code</code>).
-          </CardDescription>
+          <CardTitle className="text-base">Diagnosis list</CardTitle>
+          <CardDescription>The diagnoses your team can pick from a visit. Only the name is required.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
@@ -192,7 +188,7 @@ export function FacilityDiagnosisClassificationsSettings() {
               <Label className="text-xs text-muted-foreground">Search</Label>
               <div className="flex gap-2">
                 <Input
-                  placeholder="Name, description, ICD-11…"
+                  placeholder="e.g. diabetes"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   onKeyDown={(e) => {
@@ -211,7 +207,7 @@ export function FacilityDiagnosisClassificationsSettings() {
                     setPage(0);
                   }}
                 >
-                  Apply
+                  Search
                 </Button>
               </div>
             </div>
@@ -223,46 +219,24 @@ export function FacilityDiagnosisClassificationsSettings() {
                   setPage(0);
                 }}
               />
-              Active only
+              Show in use only
             </label>
             {canWrite ? (
               <div className="ml-auto flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => exportAs("csv")}>
+                <Button type="button" size="sm" variant="secondary" onClick={() => exportAs("csv")}>
                   <Download className="mr-1.5 h-4 w-4" />
-                  CSV
+                  Download (CSV)
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => exportAs("xlsx")}>
+                <Button type="button" size="sm" variant="secondary" onClick={() => exportAs("xlsx")}>
                   <Download className="mr-1.5 h-4 w-4" />
-                  XLSX
+                  Download (spreadsheet)
                 </Button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    e.target.value = "";
-                    if (f) importMut.mutate(f);
-                  }}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={importMut.isPending}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {importMut.isPending ? (
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="mr-1.5 h-4 w-4" />
-                  )}
-                  Import
+                <Button type="button" size="sm" variant="secondary" onClick={() => setImportOpen(true)}>
+                  Add many at once
                 </Button>
                 <Button type="button" size="sm" onClick={openCreate}>
                   <Plus className="mr-1.5 h-4 w-4" />
-                  Add
+                  Add diagnosis
                 </Button>
               </div>
             ) : null}
@@ -271,81 +245,101 @@ export function FacilityDiagnosisClassificationsSettings() {
           <div className="overflow-hidden rounded-md border border-border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b border-border bg-surface-subtle text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">Description</th>
-                  <th className="px-3 py-2">ICD-11</th>
-                  <th className="px-3 py-2">Legacy hint</th>
+                  <th className="px-3 py-2">ICD-11 code</th>
                   <th className="px-3 py-2">Status</th>
                   {canWrite ? <th className="px-3 py-2 w-28">Actions</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {listQuery.isLoading ? (
-                  <tr>
-                    <td colSpan={canWrite ? 6 : 5} className="px-3 py-8 text-center text-muted-foreground">
-                      <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                      Loading…
+                {content.map((row) => (
+                  <tr key={row.id} className={!row.active ? "bg-muted/20" : undefined}>
+                    <td className="px-3 py-2 align-top font-medium">{row.name?.trim() || "—"}</td>
+                    <td className="px-3 py-2 align-top text-muted-foreground">{row.description?.trim() || "—"}</td>
+                    <td className="px-3 py-2 align-top font-clinical text-xs text-muted-foreground">
+                      {row.icd11Code || "—"}
                     </td>
-                  </tr>
-                ) : content.length === 0 ? (
-                  <tr>
-                    <td colSpan={canWrite ? 6 : 5} className="px-3 py-8 text-center text-muted-foreground">
-                      No classifications match — adjust filters or create a row.
+                    <td className="px-3 py-2 align-top">
+                      <StatusPill tone={row.active ? "success" : "neutral"}>{row.active ? "In use" : "Not in use"}</StatusPill>
                     </td>
-                  </tr>
-                ) : (
-                  content.map((row) => (
-                    <tr key={row.id} className={!row.active ? "bg-muted/20" : undefined}>
-                      <td className="px-3 py-2 align-top font-medium">{row.name?.trim() || "—"}</td>
-                      <td className="px-3 py-2 align-top text-muted-foreground">{row.description?.trim() || "—"}</td>
-                      <td className="px-3 py-2 align-top font-clinical text-xs">{row.icd11Code || "—"}</td>
-                      <td className="px-3 py-2 align-top font-clinical text-xs text-muted-foreground">
-                        {row.icdHint || "—"}
+                    {canWrite ? (
+                      <td className="px-3 py-2 align-top">
+                        <Button type="button" variant="outline" size="sm" onClick={() => openEdit(row)}>
+                          <Pencil className="mr-1 h-4 w-4" /> Edit
+                        </Button>
                       </td>
-                      <td className="px-3 py-2 align-top">{row.active ? "Active" : "Inactive"}</td>
-                      {canWrite ? (
-                        <td className="px-3 py-2 align-top">
-                          <Button type="button" variant="outline" size="sm" onClick={() => openEdit(row)}>
-                            <Pencil className="mr-1 h-4 w-4" /> Edit
-                          </Button>
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))
-                )}
+                    ) : null}
+                  </tr>
+                ))}
               </tbody>
             </table>
+            {listQuery.isLoading && <TableSkeleton rows={5} columns={canWrite ? 5 : 4} />}
+            {!listQuery.isLoading && content.length === 0 && (
+              <EmptyState
+                illustration="no-results"
+                title={searchApplied ? `No diagnosis found for "${searchApplied}"` : "No diagnoses yet"}
+                description={
+                  searchApplied
+                    ? "Check the spelling, or add it as a new diagnosis."
+                    : "Diagnoses you add will appear here."
+                }
+                action={canWrite ? { label: "Add diagnosis", onClick: openCreate } : undefined}
+              />
+            )}
           </div>
 
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              Page {page + 1}
-              {totalPages > 0 ? ` of ${totalPages}` : ""} · {listQuery.data?.totalElements ?? 0} rows
-            </span>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={page <= 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={totalPages <= 0 || page >= totalPages - 1}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
+          {content.length > 0 && (
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                Page {page + 1}
+                {totalPages > 0 ? ` of ${totalPages}` : ""} · {listQuery.data?.totalElements ?? 0} diagnoses
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={totalPages <= 0 || page >= totalPages - 1}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add many diagnoses at once</DialogTitle>
+            <DialogDescription>
+              Upload a spreadsheet with a "name" column. Each row becomes a new diagnosis, or updates one with a
+              matching name.
+            </DialogDescription>
+          </DialogHeader>
+          <UploadDropzone
+            accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            maxSizeMb={10}
+            helperText="CSV or spreadsheet file, up to 10 MB"
+            onFile={(file) => importMut.mutate(file)}
+            disabled={importMut.isPending}
+          />
+          {importMut.isPending && <p className="text-sm text-muted-foreground">Adding diagnoses…</p>}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={editorOpen}
@@ -356,14 +350,12 @@ export function FacilityDiagnosisClassificationsSettings() {
       >
         <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit classification" : "New classification"}</DialogTitle>
-            <DialogDescription>
-              <strong>Name</strong> identifies the condition in your catalogue (required). Description and ICD fields are optional.
-            </DialogDescription>
+            <DialogTitle>{editing ? "Edit diagnosis" : "Add diagnosis"}</DialogTitle>
+            <DialogDescription>Only the name is required.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="space-y-1">
-              <Label className="text-xs">Name *</Label>
+              <Label className="text-xs">Name</Label>
               <Input
                 value={formName ?? ""}
                 onChange={(e) => setFormName(e.target.value)}
@@ -371,7 +363,7 @@ export function FacilityDiagnosisClassificationsSettings() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Description</Label>
+              <Label className="text-xs">Description (optional)</Label>
               <Textarea
                 value={formDescription ?? ""}
                 onChange={(e) => setFormDescription(e.target.value)}
@@ -382,11 +374,11 @@ export function FacilityDiagnosisClassificationsSettings() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label className="text-xs">ICD-11 code</Label>
+                <Label className="text-xs">ICD-11 code (optional)</Label>
                 <Input value={formIcd11 ?? ""} onChange={(e) => setFormIcd11(e.target.value)} className="font-clinical text-xs" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Legacy ICD hint</Label>
+                <Label className="text-xs">Old code, if there is one (optional)</Label>
                 <Input value={formHint ?? ""} onChange={(e) => setFormHint(e.target.value)} className="font-clinical text-xs" />
               </div>
             </div>
@@ -397,20 +389,20 @@ export function FacilityDiagnosisClassificationsSettings() {
                 onCheckedChange={(v) => setFormActive(v === true)}
               />
               <Label htmlFor="catalogue-active" className="cursor-pointer text-sm font-normal leading-snug">
-                Active in catalogue
+                Show this diagnosis in the list
               </Label>
             </div>
           </div>
           <DialogFooter>
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               onClick={() => {
                 setEditorOpen(false);
                 resetForm();
               }}
             >
-              Cancel
+              Go back
             </Button>
             {editing ? (
               <Button
@@ -447,7 +439,7 @@ export function FacilityDiagnosisClassificationsSettings() {
                 }
               >
                 {createMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Create
+                Add diagnosis
               </Button>
             )}
           </DialogFooter>
