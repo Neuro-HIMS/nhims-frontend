@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/store/auth.store";
 import { canViewFullFolder, canPlaceOrders, canRecordVitals } from "@/lib/permissions";
-import { FolderHeader } from "@/components/clinical/folder/folder-header";
+import { PatientBanner } from "@/components/clinical/patient-banner";
 import { FolderVisits } from "@/components/clinical/folder/folder-visits";
 import { FolderVitals } from "@/components/clinical/folder/folder-vitals";
 import { FolderConsultations } from "@/components/clinical/folder/folder-consultations";
@@ -29,8 +29,9 @@ import { FolderTreatments } from "@/components/clinical/folder/folder-treatments
 import { FolderAdmissions } from "@/components/clinical/folder/folder-admissions";
 import { FolderReferrals } from "@/components/clinical/folder/folder-referrals";
 import { FolderAlerts } from "@/components/clinical/folder/folder-alerts";
-import { FolderOrders } from "@/components/clinical/folder/folder-orders";
-import { FolderBilling } from "@/components/clinical/folder/folder-billing";
+import { FolderOrdersLab } from "@/components/clinical/folder/folder-orders-lab";
+import { FolderOrdersRadiology } from "@/components/clinical/folder/folder-orders-radiology";
+import { FolderOrdersRx } from "@/components/clinical/folder/folder-orders-rx";
 import {
   encounterToVisit,
   visitStatusToEncounterStatus,
@@ -41,15 +42,15 @@ import type { VisitStatus } from "@/lib/clinical-types";
 import type { ApiError } from "@/types/api.types";
 
 const FOLDER_TABS = [
-  { id: "overview", label: "Overview" },
+  { id: "overview", label: "Visits" },
   { id: "vitals", label: "Vitals" },
-  { id: "consultations", label: "Consultations" },
-  { id: "orders", label: "Orders & Results" },
+  { id: "consultations", label: "Notes" },
+  { id: "tests", label: "Tests" },
+  { id: "medicines", label: "Medicines" },
   { id: "treatments", label: "Treatments" },
   { id: "admissions", label: "Admissions" },
   { id: "referrals", label: "Referrals" },
-  { id: "alerts", label: "Medical Alerts" },
-  { id: "billing", label: "Billing" },
+  { id: "alerts", label: "Alerts" },
 ] as const;
 
 type FolderTab = (typeof FOLDER_TABS)[number]["id"];
@@ -270,13 +271,7 @@ export function PatientFolderView() {
         )}
       </div>
 
-      <FolderHeader
-        patientUuid={patientUuid}
-        patientPublicId={patientPublicId}
-        visit={visit}
-        visits={visits}
-        onRefresh={() => encountersQuery.refetch()}
-      />
+      <PatientBanner patientId={patientUuid!} encounterId={visit?.id} />
 
       <div className="overflow-x-auto">
         <nav className="module-subnav">
@@ -303,8 +298,14 @@ export function PatientFolderView() {
         {tab === "consultations" && (
           <FolderConsultations patientId={patientPublicId} visit={visit} authoredBy={userLabel} />
         )}
-        {tab === "orders" && (
-          <FolderOrders patientId={patientPublicId} visit={visit} user={userLabel} canOrder={canOrder} />
+        {tab === "tests" && (
+          <div className="space-y-4">
+            <FolderOrdersLab visit={visit} canOrder={canOrder} />
+            <FolderOrdersRadiology visit={visit} canOrder={canOrder} />
+          </div>
+        )}
+        {tab === "medicines" && (
+          <FolderOrdersRx visit={visit} canOrder={canOrder} />
         )}
         {tab === "treatments" && (
           <FolderTreatments patientUuid={patientUuid} visit={visit} />
@@ -317,9 +318,6 @@ export function PatientFolderView() {
         )}
         {tab === "alerts" && (
           <FolderAlerts patientUuid={patientUuid!} />
-        )}
-        {tab === "billing" && (
-          <FolderBilling visit={visit} />
         )}
       </div>
 

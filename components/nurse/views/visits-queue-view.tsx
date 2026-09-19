@@ -3,33 +3,16 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Clock, FolderOpen, Inbox, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { WaitingList } from "@/components/clinical/waiting-list";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { STATUS_LABEL, TRIAGE_LABELS, TRIAGE_ORDER, todayDateIso } from "@/components/nurse/lib/nurse-data";
-import { encounterToVisit } from "@/components/clinical/lib/encounter-adapter";
-import { clinicalService } from "@/services/clinical.service";
+import { encounterStatusLabel, encounterStatusTone } from "@/lib/status-labels";
+import { getFriendlyError } from "@/lib/api-errors";
 import { queryKeys } from "@/lib/query-keys";
-import type { VisitStatus } from "@/lib/clinical-types";
-import type { ApiError } from "@/types/api.types";
-
-/** In-visit statuses through diagnostics so patients never “vanish” after lab/Rx orders. */
-const ACTIVE_STATUSES: VisitStatus[] = [
-  "booked",
-  "checked-in",
-  "awaiting-triage",
-  "in-triage",
-  "awaiting-vitals",
-  "in-vitals",
-  "awaiting-consultation",
-  "in-consultation",
-  "awaiting-lab",
-  "awaiting-pharmacy",
-];
+import { clinicalService } from "@/services/clinical.service";
+import type { EncounterDto, TriagePriorityCode } from "@/types/clinical.types";
 
 export function VisitsQueueView() {
   const router = useRouter();
@@ -44,224 +27,146 @@ export function VisitsQueueView() {
   const checkInMut = useMutation({
     mutationFn: (id: string) => clinicalService.transition(id, { to: "AT_VITALS" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.clinical.all }),
-    onError: (e: unknown) => {
-      const ax = e as { response?: { data?: ApiError } };
-      toast.error(ax.response?.data?.message ?? "Could not advance encounter");
-    },
+    onError: (e: unknown) => toast.error(getFriendlyError(e).message),
   });
 
-  const [filter, setFilter] = useState<"active" | "all">("active");
+  const [stageFilter, setStageFilter] = useState("ALL");
+  const [triageFilter, setTriageFilter] = useState("ALL");
+  const [clinicFilter, setClinicFilter] = useState("ALL");
   const [query, setQuery] = useState("");
 
-  const today = todayDateIso();
+  const list = useMemo(() => todayQuery.data ?? [], [todayQuery.data]);
 
-  const rows = useMemo(
-    () =>
-      (todayQuery.data ?? []).map((e) => ({
-        encounter: e,
-        visit: encounterToVisit(e),
-      })),
-    [todayQuery.data],
+  const clinics = useMemo(
+    () => Array.from(new Set(list.map((e) => e.department).filter(Boolean))).sort(),
+    [list],
   );
 
-  const todaysRows = useMemo(() => {
-    return rows
-      .filter((r) => r.visit.appointmentDate === today)
-      .filter((r) => (filter === "active" ? ACTIVE_STATUSES.includes(r.visit.status) : true))
-      .filter((r) => {
-        if (!query.trim()) return true;
-        const q = query.trim().toLowerCase();
-        return (
-          r.visit.patientName.toLowerCase().includes(q) ||
-          r.visit.patientId.toLowerCase().includes(q) ||
-          r.visit.visitNo.toLowerCase().includes(q)
-        );
-      })
-      .sort(
-        (a, b) =>
-          TRIAGE_ORDER[a.visit.priority] - TRIAGE_ORDER[b.visit.priority] ||
-          a.visit.appointmentTime.localeCompare(b.visit.appointmentTime),
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return list.filter((e) => {
+      if (stageFilter !== "ALL" && e.status !== stageFilter) return false;
+      if (triageFilter !== "ALL" && e.priority !== triageFilter) return false;
+      if (clinicFilter !== "ALL" && e.department !== clinicFilter) return false;
+      if (!q) return true;
+      return (
+        e.patientName.toLowerCase().includes(q) ||
+        e.patientPublicId.toLowerCase().includes(q) ||
+        e.encounterNumber.toLowerCase().includes(q)
       );
-  }, [rows, filter, query, today]);
+    });
+  }, [list, stageFilter, triageFilter, clinicFilter, query]);
 
-  function openFolder(encounterId: string, patientUuid: string, currentStatus: VisitStatus) {
-    if (currentStatus === "booked") {
-      checkInMut.mutate(encounterId);
+  const stats = useMemo(
+    () => ({
+      waitingForVitals: list.filter((e) => e.status === "AT_VITALS").length,
+      waitingForDoctor: list.filter((e) => e.status === "AT_CONSULTATION").length,
+      withDoctor: list.filter((e) => e.status === "IN_CONSULTATION").length,
+      finishedToday: list.filter((e) => e.status === "COMPLETED").length,
+    }),
+    [list],
+  );
+
+  function openEncounter(e: EncounterDto) {
+    if (e.status === "SCHEDULED") {
+      checkInMut.mutate(e.id, {
+        onSuccess: () => router.push(`/nurse?view=triage&encounterId=${e.id}&patientId=${e.patientId}`),
+      });
+      return;
     }
-    router.push(`/nurse?view=folder&patientId=${patientUuid}&visitId=${encounterId}`);
+    if (e.status === "AT_VITALS") {
+      router.push(`/nurse?view=triage&encounterId=${e.id}&patientId=${e.patientId}`);
+      return;
+    }
+    router.push(`/nurse?view=folder&patientId=${e.patientId}&visitId=${e.id}`);
   }
 
-  const stats = useMemo(() => {
-    const todays = rows.filter((r) => r.visit.appointmentDate === today).map((r) => r.visit);
-    return {
-      total: todays.length,
-      awaiting: todays.filter((v) => v.status === "awaiting-triage" || v.status === "awaiting-vitals" || v.status === "checked-in").length,
-      inProgress: todays.filter((v) =>
-        [
-          "in-triage",
-          "in-vitals",
-          "awaiting-consultation",
-          "in-consultation",
-          "awaiting-lab",
-          "awaiting-pharmacy",
-        ].includes(v.status),
-      ).length,
-      emergency: todays.filter((v) => v.priority === "emergency").length,
-    };
-  }, [rows, today]);
+  function actionLabel(e: EncounterDto): string {
+    if (e.status === "SCHEDULED" || e.status === "CHECKED_IN") return "Start triage";
+    if (e.status === "AT_VITALS") return "Record vitals";
+    return "Open";
+  }
 
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatChip label="Total Today" value={stats.total} />
-        <StatChip label="Awaiting Triage" value={stats.awaiting} accent="urgent" />
-        <StatChip label="In Progress" value={stats.inProgress} accent="info" />
-        <StatChip label="Emergency" value={stats.emergency} accent="emergency" />
+        <StatChip label="Waiting for vitals" value={stats.waitingForVitals} />
+        <StatChip label="Waiting for doctor" value={stats.waitingForDoctor} />
+        <StatChip label="With doctor" value={stats.withDoctor} />
+        <StatChip label="Finished today" value={stats.finishedToday} />
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Inbox className="h-4 w-4 text-muted-foreground" />
-            Today&apos;s Visits Routed from Records
-          </CardTitle>
-          <CardDescription>
-            Patients booked at registration appear here. Open a folder to triage, take vitals, and continue care.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-[1fr_180px_auto]">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter by name, patient ID, or visit no…"
-            />
-            <Select value={filter} onValueChange={(v: "active" | "all") => setFilter(v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active only</SelectItem>
-                <SelectItem value="all">All today</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" onClick={() => todayQuery.refetch()} disabled={todayQuery.isFetching}>
-              {todayQuery.isFetching ? (
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-1.5 h-4 w-4" />
-              )}
-              Refresh
-            </Button>
-          </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name, hospital number, or visit number"
+          className="max-w-xs"
+        />
+        <Select value={stageFilter} onValueChange={setStageFilter}>
+          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Every stage</SelectItem>
+            <SelectItem value="SCHEDULED">Booked</SelectItem>
+            <SelectItem value="CHECKED_IN">Checked in</SelectItem>
+            <SelectItem value="AT_VITALS">Waiting for vitals</SelectItem>
+            <SelectItem value="AT_CONSULTATION">Waiting for doctor</SelectItem>
+            <SelectItem value="IN_CONSULTATION">With doctor</SelectItem>
+            <SelectItem value="COMPLETED">Finished</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={triageFilter} onValueChange={setTriageFilter}>
+          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Every urgency</SelectItem>
+            <SelectItem value="EMERGENCY">Emergency</SelectItem>
+            <SelectItem value="URGENT">Urgent</SelectItem>
+            <SelectItem value="ROUTINE">Routine</SelectItem>
+          </SelectContent>
+        </Select>
+        {clinics.length > 1 && (
+          <Select value={clinicFilter} onValueChange={setClinicFilter}>
+            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Every clinic</SelectItem>
+              {clinics.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
-          {todayQuery.isLoading ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" /> Loading queue…
-            </div>
-          ) : todaysRows.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-10 text-center">
-              <Inbox className="h-7 w-7 text-muted-foreground/50" />
-              <p className="text-sm font-medium text-foreground">No visits in queue</p>
-              <p className="text-xs text-muted-foreground">
-                When records books an appointment, the patient will appear here automatically.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-border bg-card">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    <Th>Time</Th>
-                    <Th>Patient</Th>
-                    <Th>Visit / Service</Th>
-                    <Th>Reason</Th>
-                    <Th>Priority</Th>
-                    <Th>Status</Th>
-                    <Th className="w-12" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {todaysRows.map(({ encounter, visit: v }) => {
-                    const triage = TRIAGE_LABELS[v.priority];
-                    return (
-                      <tr
-                        key={v.id}
-                        className={`table-row-interactive ${triage.rowClass}`}
-                        onClick={() => openFolder(encounter.id, encounter.patientId, v.status)}
-                      >
-                        <td className="px-4 py-3 font-clinical text-xs text-foreground">
-                          <span className="inline-flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                            {v.appointmentTime}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-foreground">{v.patientName}</p>
-                          <p className="patient-id mt-0.5">{v.patientId}</p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="text-foreground">{v.serviceName}</p>
-                          <p className="patient-id mt-0.5">{v.visitNo} · {v.department}</p>
-                        </td>
-                        <td className="px-4 py-3 text-foreground">{v.reason}</td>
-                        <td className="px-4 py-3">
-                          <span className={`status-pill text-xs ${triage.badgeClass}`}>{triage.label}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="status-pill status-pill-pending">{STATUS_LABEL[v.status]}</span>
-                            <span className="text-[10px] text-muted-foreground">At: {v.currentStationLabel}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Button size="sm" variant="ghost" className="gap-1">
-                            <FolderOpen className="h-4 w-4" />
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <WaitingList
+        items={todayQuery.isPending ? undefined : filtered}
+        isLoading={todayQuery.isPending}
+        error={todayQuery.isError ? todayQuery.error : undefined}
+        onRetry={() => void todayQuery.refetch()}
+        getRowId={(e) => e.id}
+        getPatient={(e) => ({ name: e.patientName, hospitalNumber: e.patientPublicId })}
+        getPriority={(e) => (e.priority as TriagePriorityCode) || "PENDING"}
+        getArrivedAt={(e) => e.checkedInAt ?? e.scheduledFor ?? e.createdAt ?? new Date().toISOString()}
+        getWhat={(e) => e.reason || e.serviceName}
+        getStatus={(e) => ({ label: encounterStatusLabel(e.status), tone: encounterStatusTone(e.status) })}
+        primaryActionLabel={actionLabel}
+        onOpen={openEncounter}
+        refetchIntervalMs={30_000}
+        empty={{
+          illustration: "all-done",
+          tone: "good-news",
+          title: "No patients waiting",
+          description: "Everyone has been seen.",
+        }}
+      />
     </div>
   );
 }
 
-function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
+function StatChip({ label, value }: { label: string; value: number }) {
   return (
-    <th className={`px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className ?? ""}`}>
-      {children}
-    </th>
-  );
-}
-
-function StatChip({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: number;
-  accent?: "emergency" | "urgent" | "info";
-}) {
-  const cls =
-    accent === "emergency"
-      ? "border-[hsl(var(--clinical-emergency))] bg-[hsl(var(--clinical-emergency-bg))] text-[hsl(var(--clinical-emergency))]"
-      : accent === "urgent"
-      ? "border-[hsl(var(--clinical-urgent))] bg-[hsl(var(--clinical-urgent-bg))] text-[hsl(var(--clinical-urgent))]"
-      : accent === "info"
-      ? "border-[hsl(var(--notice-info-border))] bg-[hsl(var(--notice-info-bg))] text-[hsl(var(--notice-info-foreground))]"
-      : "border-border bg-card text-foreground";
-  return (
-    <div className={`rounded-lg border px-3 py-2.5 ${cls}`}>
-      <p className="text-xs font-medium uppercase tracking-wider opacity-80">{label}</p>
-      <p className="font-clinical text-2xl font-semibold">{value}</p>
+    <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <p className="stat-card-label">{label}</p>
+      <p className="stat-card-value">{value}</p>
     </div>
   );
 }

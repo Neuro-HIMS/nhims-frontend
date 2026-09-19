@@ -45,6 +45,15 @@ One entry per missing or changed endpoint the frontend needs, written for the ba
 - The spec calls for "each booking a small card with time + name + status pill. Click → details popover with the same actions as REC-09" on the calendar view
 - Frontend status: `calendar-view.tsx` lets you click a day to see that day's list (with a status pill), but there's no popover with check-in/reschedule/cancel actions from the calendar itself — those all happen from Today's queue (`?view=queue`) today. Scoped down given the size of Stage 4; worth a follow-up if calendar-first workflows turn out to matter
 
+### NUR-01 · Can't tell "not yet triaged" from "triaged as Routine" in the queue list
+- Need: the actor doc's NUR-01 screen wants a "Not triaged yet" pill distinct from an actual Routine triage decision
+- `EncounterDto.status` has one combined `AT_VITALS` station covering both "hasn't been triaged" and "triaged, still needs vitals" — and `EncounterDto.priority` defaults to something before any triage is recorded, indistinguishable from a genuine Routine choice, without an extra per-row call to check for a triage record
+- Frontend status: `visits-queue-view.tsx`'s stat row and status pill follow the real backend granularity (Waiting for vitals / Waiting for doctor / With doctor / Finished today) rather than inventing a distinction the list endpoint can't actually support. The "Start triage" vs "Record vitals" action label is derived from `status` (SCHEDULED/CHECKED_IN → "Start triage", AT_VITALS → "Record vitals") as a reasonable proxy instead
+
+### NUR-02/03 · `TriagePriorityCode` (4 values) vs `EncounterDto.priority` (3 values)
+- `RecordTriagePayload.priority` accepts `SEMI_URGENT`, but `EncounterDto.priority`'s type is only `ROUTINE | URGENT | EMERGENCY` — need to confirm the backend actually persists and returns `SEMI_URGENT` on the encounter after a semi-urgent triage, or whether it collapses to one of the other three
+- Frontend status: `triage-view.tsx` sends `SEMI_URGENT` as recorded; `PatientBanner`/`visits-queue-view.tsx` display whatever `encounter.priority` comes back as, without assuming it round-trips cleanly
+
 ### REC-02 · Duplicate check can only search by name
 - Method & path: `POST /patients/search` (`mode: "name"`)
 - Need: the actor doc asks for a name + DOB + phone duplicate search; the search endpoint only supports `id` / `nhis` / `name` modes, no combined filter

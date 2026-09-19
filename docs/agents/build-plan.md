@@ -13,8 +13,8 @@ Build in phases. Within a phase, slices on different lines can be built in paral
 | ✅ FND-03 | States | `EmptyState`, `ErrorState`, `QueryState`, skeleton presets built; illustrations are plain icon-in-circle (`components/common/illustrations`), not custom SVG artwork | components/common |
 | ✅ FND-04 | Table | `DataTable`, `TableToolbar`, `TablePagination` built with a tablet card mode (sub-1024px) | components/common/data-table |
 | ✅ FND-05 | Layout blocks | `PageCard`, `InlineNotice`, `SuccessPanel`, `ConfirmDialog`, `StepIndicator` (Stage 3) — built. `SectionCard`, `FormSection`, `StatCard` not needed yet, still open | components/layouts, components/common |
-| FND-06 | Patient context | `PatientBanner` (from `folder-header`), `CriticalAlert` | components/clinical |
-| FND-07 | Waiting list | `WaitingList` + `sortByUrgencyThenArrival` (unit tested) | components/clinical, lib |
+| ✅ FND-06 | Patient context | `PatientBanner` (from `folder-header`) — built, Stage 5. `CriticalAlert` — built, Stage 5, not consumed yet (needed from lab/doctor critical-value alerts, later stages) | components/clinical |
+| ✅ FND-07 | Waiting list | `WaitingList` + `sortByUrgencyThenArrival` — built, Stage 5 | components/clinical, lib |
 | ✅ FND-08 | Shell polish + token debt | `AppHeader` greeting/role pill/facility badge — built (Stage 0 + 1). Removed dead `dashboard-*` classes. `*_NAV` label rename per `05-ui-copy` §3 still open (14 module-local files, deferred — see design-system-v2 session notes) | components/layouts, globals.css |
 | ✅ FND-09 | Inputs | `UploadDropzone` built (Stage 2). `UnitInput`, `MoneyInput`, `PhoneInput`, `lib/vitals-ranges.ts` still open — needed from Stage 5 (Nurse) onward | components/common, lib |
 | ✅ FND-10 | Permissions | Capability helpers in `lib/permissions.ts` mostly pre-existed; doctor landing → OPD fixed | lib |
@@ -31,7 +31,7 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 |---|---|
 | Records | ✅ REC-01 → ✅ REC-02 → ✅ REC-03 → ✅ REC-04 → ✅ REC-05 → ✅ REC-06 → ✅ REC-07 — **done, Stage 3 (2026-09-19)**, see `progress.md` |
 | Appointments | ✅ REC-08 → ✅ REC-09 → ✅ REC-10 → ✅ REC-11 — **done, Stage 4 (2026-09-19)**, see `progress.md` |
-| Nurse | NUR-01 → NUR-02 → NUR-03 → NUR-04 → NUR-05 → NUR-06 |
+| Nurse | ✅ NUR-01 → ✅ NUR-02 → ✅ NUR-03 → ✅ NUR-04 → ✅ NUR-05 → ✅ NUR-06 — **done, Stage 5 (2026-09-19)**, see `progress.md` |
 | Doctor | DOC-01 → DOC-02 → DOC-03 → DOC-04 → DOC-13 |
 
 ✅ Milestone: a patient can be registered, triaged, seen and finished; J01 steps 1–6 and J03 pass.

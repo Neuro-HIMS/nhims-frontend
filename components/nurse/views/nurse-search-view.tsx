@@ -15,9 +15,9 @@ export function NurseSearchView() {
 
   return (
     <PatientSearchPanel
-      cardTitle="Patient Search"
-      cardDescription="Search registered patients from your facility MPI to open their folder for vitals, notes, and care continuation."
-      actionLabel="Open Folder"
+      cardTitle="Find a patient"
+      cardDescription="Search by hospital number, NHIS number, or name to open their folder."
+      actionLabel="Open folder"
       onSelectPatient={openFolder}
     />
   );

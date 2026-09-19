@@ -1,10 +1,9 @@
 import type { TriagePriority, VisitStatus } from "@/lib/clinical-types";
 
 export const NURSE_NAV = [
-  { label: "Today's Visits", view: "visits", href: "/nurse?view=visits" },
-  { label: "Patient Search", view: "search", href: "/nurse?view=search" },
-  { label: "Triage Queue", view: "triage", href: "/nurse?view=triage" },
-  { label: "Patient Folder", view: "folder", href: "/nurse?view=folder" },
+  { label: "Today's patients", view: "visits", href: "/nurse?view=visits" },
+  { label: "Find a patient", view: "search", href: "/nurse?view=search" },
+  { label: "Patient folder", view: "folder", href: "/nurse?view=folder" },
 ];
 
 export const TRIAGE_LABELS: Record<TriagePriority, { label: string; rowClass: string; badgeClass: string }> = {

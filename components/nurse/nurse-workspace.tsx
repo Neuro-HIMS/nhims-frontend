@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 
 import { ModuleSubNav } from "@/components/layouts/module-subnav";
+import { PageCard } from "@/components/layouts/page-card";
 import { NURSE_NAV } from "@/components/nurse/lib/nurse-data";
 import { VisitsQueueView } from "@/components/nurse/views/visits-queue-view";
 import { NurseSearchView } from "@/components/nurse/views/nurse-search-view";
@@ -15,16 +16,14 @@ export function NurseWorkspace() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Nurse Station</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Today's visits, triage, vitals, and patient folder management.
-        </p>
-      </div>
+      {view !== "triage" && (
+        <>
+          <PageCard title="Nurse station" description="Today's patients, triage, vitals, and patient folders." />
+          <ModuleSubNav items={NURSE_NAV} basePath="/nurse" />
+        </>
+      )}
 
-      <ModuleSubNav items={NURSE_NAV} basePath="/nurse" />
-
-      <div className="pt-2">
+      <div className={view !== "triage" ? "pt-2" : undefined}>
         {view === "visits" && <VisitsQueueView />}
         {view === "search" && <NurseSearchView />}
         {view === "triage" && <TriageView />}
