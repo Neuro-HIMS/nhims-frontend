@@ -85,7 +85,8 @@ function forceLoginRedirect(): void {
     const path = window.location.pathname;
     const onAuthPage = path.endsWith("/login") || path.endsWith("/change-password");
     if (!onAuthPage) {
-      window.location.href = "/login";
+      const next = encodeURIComponent(`${path}${window.location.search}`);
+      window.location.href = `/login?reason=expired&next=${next}`;
     }
   }
 }

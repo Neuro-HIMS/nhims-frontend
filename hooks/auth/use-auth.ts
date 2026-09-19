@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { AxiosError } from "axios";
+
 import { authService } from "@/services/auth.service";
 import { useAuthStore } from "@/store/auth.store";
 import type { AuthResult } from "@/types/auth.types";
@@ -22,11 +24,7 @@ export function useAuth() {
       setUser(response.user);
       return { ok: true, user: response.user };
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? mapLoginError(err.message)
-          : "Unable to sign in. Please try again.";
-      return { ok: false, error: message };
+      return { ok: false, ...mapLoginError(err) };
     } finally {
       setIsLoading(false);
     }
@@ -45,27 +43,41 @@ export function useAuth() {
   return { login, logout, isLoading };
 }
 
-// ── Map backend error messages to user-facing strings
-// The Java backend sends generic error messages — we humanise them here.
-function mapLoginError(message: string): string {
-  if (message.toLowerCase().includes("bad credentials") ||
-      message.toLowerCase().includes("invalid username or password")) {
-    return "Incorrect username or password. Please check your credentials.";
+export type LoginErrorKind = "credentials" | "account" | "totp-required" | "totp-invalid" | "offline" | "unknown";
+
+interface LoginErrorResult {
+  error: string;
+  kind: LoginErrorKind;
+}
+
+// ── Map the backend's login error into plain words and a kind the form can react to
+// (e.g. reveal the 6-digit code field only once the server asks for it).
+function mapLoginError(err: unknown): LoginErrorResult {
+  if (err instanceof AxiosError && !err.response) {
+    return { kind: "offline", error: "You're offline. Connect to the internet to sign in." };
   }
-  if (message.toLowerCase().includes("account locked") ||
-      message.toLowerCase().includes("user account is locked")) {
-    return "Your account has been locked after multiple failed attempts. Contact your Facility Administrator.";
+
+  const raw = (err instanceof AxiosError ? err.response?.data?.message : undefined) ?? "";
+  const message = raw.toLowerCase();
+
+  if (message.includes("locked")) {
+    return { kind: "account", error: "Your account is locked. Ask your facility administrator." };
   }
-  if (message.toLowerCase().includes("account disabled") ||
-      message.toLowerCase().includes("user is disabled")) {
-    return "Your account is inactive. Contact your Facility Administrator.";
+  if (message.includes("disabled")) {
+    return { kind: "account", error: "Your account is inactive. Ask your facility administrator." };
   }
-  if (message.toLowerCase().includes("account expired")) {
-    return "Your account has expired. Contact your Facility Administrator.";
+  if (message.includes("expired")) {
+    return { kind: "account", error: "Your account has expired. Ask your facility administrator." };
   }
-  if (message.toLowerCase().includes("two-factor") || message.toLowerCase().includes("authentication code")) {
-    return message;
+  if ((message.includes("two-factor") || message.includes("totp") || message.includes("authentication code")) && message.includes("required")) {
+    return { kind: "totp-required", error: "Enter the 6-digit code from your phone to finish signing in." };
   }
-  return "Unable to sign in. Please check your credentials and try again.";
+  if (message.includes("two-factor") || message.includes("totp") || message.includes("authentication code")) {
+    return { kind: "totp-invalid", error: "That code didn't work. Check your phone and try again." };
+  }
+  if (message.includes("bad credentials") || message.includes("invalid username or password")) {
+    return { kind: "credentials", error: "Username or password is incorrect." };
+  }
+  return { kind: "unknown", error: "Username or password is incorrect." };
 }
 

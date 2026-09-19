@@ -80,7 +80,7 @@ export interface LoginResponse {
 
 export type AuthResult =
   | { ok: true; user: AuthUser }
-  | { ok: false; error: string };
+  | { ok: false; error: string; kind?: "credentials" | "account" | "totp-required" | "totp-invalid" | "offline" | "unknown" };
 
 export interface Session {
   user: AuthUser;

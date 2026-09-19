@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InlineNotice } from "@/components/common/inline-notice";
+import { PasswordRuleChecklist } from "@/components/common/password-rule-checklist";
 import {
   Form,
   FormControl,
@@ -20,16 +22,18 @@ import {
 import { authService } from "@/services/auth.service";
 import { useAuthStore } from "@/store/auth.store";
 import { getLandingPathForUser } from "@/lib/access-control";
-import type { ApiError } from "@/types/api.types";
+import { getFriendlyError } from "@/lib/api-errors";
+import { notify } from "@/lib/notify";
+import { newPasswordSchema } from "@/schemas/password.schema";
 
 const schema = z
   .object({
-    currentPassword: z.string().min(1, "Current password is required"),
-    newPassword: z.string().min(12, "At least 12 characters"),
+    currentPassword: z.string().min(1, "Enter your temporary password"),
+    newPassword: newPasswordSchema,
     confirmPassword: z.string().min(1, "Confirm your new password"),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
-    message: "Passwords do not match",
+    message: "Passwords don't match.",
     path: ["confirmPassword"],
   });
 
@@ -47,6 +51,7 @@ export function ChangePasswordForm() {
     resolver: zodResolver(schema),
     defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
   });
+  const newPassword = useWatch({ control: form.control, name: "newPassword" });
 
   async function onSubmit(values: FormValues) {
     setServerError(null);
@@ -57,40 +62,30 @@ export function ChangePasswordForm() {
         newPassword: values.newPassword,
       });
       setUser(res.user);
+      notify.success(`Password changed. Welcome, ${res.user.firstName}.`);
       router.replace(getLandingPathForUser(res.user));
     } catch (err: unknown) {
-      const ax = err as { response?: { data?: ApiError } };
-      setServerError(ax.response?.data?.message ?? "Could not update password.");
+      setServerError(getFriendlyError(err).message);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="login-card rounded-lg border border-border bg-card p-6 shadow-sm">
-      <h1 className="text-xl font-semibold text-foreground">Set a new password</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Your administrator reset your credentials. Choose a strong password before continuing to the workspace.
-      </p>
+    <div className="login-card rounded-xl border border-border bg-card p-6">
+      <h1 className="text-xl font-semibold text-foreground">Choose a new password</h1>
+      <p className="mt-1 text-sm text-muted-foreground">Please choose a new password to continue.</p>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-4 space-y-4">
-          {serverError ? (
-            <div
-              className="alert-critical flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
-              role="alert"
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{serverError}</span>
-            </div>
-          ) : null}
+        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-4 space-y-4" noValidate>
+          {serverError ? <InlineNotice tone="error">{serverError}</InlineNotice> : null}
 
           <FormField
             control={form.control}
             name="currentPassword"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Temporary / current password</FormLabel>
+                <FormLabel>Current (temporary) password</FormLabel>
                 <FormControl>
                   <div className="relative">
                     <Input
@@ -142,6 +137,7 @@ export function ChangePasswordForm() {
                     </button>
                   </div>
                 </FormControl>
+                <PasswordRuleChecklist value={newPassword} />
                 <FormMessage />
               </FormItem>
             )}
@@ -170,10 +166,10 @@ export function ChangePasswordForm() {
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Updating…
+                Saving…
               </>
             ) : (
-              "Save and continue"
+              "Save new password"
             )}
           </Button>
         </form>

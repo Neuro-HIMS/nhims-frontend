@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 import { loginSchema, type LoginInput } from "@/schemas/auth.schema";
-import { useAuth } from "@/hooks/auth/use-auth";
+import { useAuth, type LoginErrorKind } from "@/hooks/auth/use-auth";
 import { getLandingPathForUser } from "@/lib/access-control";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InlineNotice } from "@/components/common/inline-notice";
 import {
   Form,
   FormControl,
@@ -21,11 +23,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-export function LoginForm() {
+interface LoginFormProps {
+  sessionExpired?: boolean;
+  next?: string;
+}
+
+export function LoginForm({ sessionExpired, next }: LoginFormProps) {
   const router = useRouter();
   const { login, isLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [showTotp, setShowTotp] = useState(false);
+  const [serverError, setServerError] = useState<{ message: string; kind: LoginErrorKind } | null>(null);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
@@ -51,41 +59,46 @@ export function LoginForm() {
     setServerError(null);
     const result = await login(values);
     if (!result.ok) {
-      setServerError(result.error);
+      setServerError({ message: result.error, kind: result.kind ?? "unknown" });
+      if (result.kind === "totp-required" || result.kind === "totp-invalid") {
+        setShowTotp(true);
+      }
       return;
     }
     if (result.user.mustChangePassword) {
       router.replace("/change-password");
       return;
     }
-    router.replace(getLandingPathForUser(result.user));
+    router.replace(next && next.startsWith("/") ? next : getLandingPathForUser(result.user));
   }
 
   return (
     <div className="space-y-4">
-      <div className="login-card rounded-[5px] bg-card p-6 text-card-foreground">
+      <div className="login-card rounded-xl bg-card p-6 text-card-foreground">
         <h3 className="mb-1 text-xl font-semibold">Sign in</h3>
         <p className="mb-5 text-sm text-muted-foreground">
-          Enter your credentials to access your workspace.
+          Use the username and password your facility gave you.
         </p>
+
+        {sessionExpired && !serverError && (
+          <div className="mb-4">
+            <InlineNotice tone="pending">
+              You were signed out to keep patient records safe. Sign in again to continue.
+            </InlineNotice>
+          </div>
+        )}
 
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
             method="post"
-            action="/login"
             className="space-y-4"
             noValidate
           >
             {serverError && (
-              <div
-                className="alert-critical flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
-                role="alert"
-                aria-live="assertive"
-              >
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{serverError}</span>
-              </div>
+              <InlineNotice tone={serverError.kind === "totp-required" ? "info" : "error"}>
+                {serverError.message}
+              </InlineNotice>
             )}
 
             <FormField
@@ -102,7 +115,6 @@ export function LoginForm() {
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
-                      placeholder="Enter your username"
                       disabled={isLoading}
                       className="login-input h-10 rounded-md font-clinical"
                     />
@@ -117,14 +129,18 @@ export function LoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-sm text-card-foreground">Password</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel className="text-sm text-card-foreground">Password</FormLabel>
+                    <Link href="/login?step=forgot" className="text-xs font-medium text-accent hover:underline">
+                      Forgot your password?
+                    </Link>
+                  </div>
                   <FormControl>
                     <div className="relative">
                       <Input
                         {...field}
                         type={showPassword ? "text" : "password"}
                         autoComplete="current-password"
-                        placeholder="Enter your password"
                         disabled={isLoading}
                         className="login-input h-10 rounded-md pr-10"
                       />
@@ -148,27 +164,42 @@ export function LoginForm() {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="totpCode"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm text-card-foreground">Authenticator code (if enabled)</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      placeholder="6-digit code"
-                      disabled={isLoading}
-                      className="login-input h-10 rounded-md font-clinical"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!showTotp && (
+              <button
+                type="button"
+                onClick={() => setShowTotp(true)}
+                className="text-xs font-medium text-accent hover:underline"
+              >
+                I use a code from my phone
+              </button>
+            )}
+
+            {showTotp && (
+              <FormField
+                control={form.control}
+                name="totpCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm text-card-foreground">
+                      6-digit code from your phone (only if you&apos;ve turned this on)
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="e.g. 123456"
+                        disabled={isLoading}
+                        className="login-input h-10 rounded-md font-clinical"
+                        autoFocus
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <Button
               type="submit"

@@ -33,7 +33,7 @@ export const MODULE_PATHS: Record<AppModule, string> = {
 const DEFAULT_MODULE_BY_ROLE: Record<UserRole, AppModule> = {
   RECORDS_OFFICER: "records",
   NURSE: "nurse",
-  MEDICAL_OFFICER: "nurse",
+  MEDICAL_OFFICER: "opd",
   MIDWIFE: "anc",
   LAB_SCIENTIST: "laboratory",
   LAB_TECH: "laboratory",

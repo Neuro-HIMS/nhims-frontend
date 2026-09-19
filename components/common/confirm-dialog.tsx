@@ -15,10 +15,12 @@ import { Button } from "@/components/ui/button";
 export interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Name the exact thing: "Cancel Ama Mensah's appointment on 21/09/2026?" */
   title: string;
   description: React.ReactNode;
   cancelLabel?: string;
-  confirmLabel?: string;
+  /** Required — say exactly what happens: "Yes, cancel appointment". Never "Confirm"/"OK". */
+  confirmLabel: string;
   destructive?: boolean;
   pending?: boolean;
   /** Fields between description and actions (e.g. cancellation reason). */
@@ -31,8 +33,8 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  cancelLabel = "Cancel",
-  confirmLabel = "Confirm",
+  cancelLabel = "Go back",
+  confirmLabel,
   destructive,
   pending,
   footerExtra,

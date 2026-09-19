@@ -188,15 +188,6 @@
     --notice-info-border: 213 97% 87%;
     --notice-info-foreground: 224 76% 40%;
 
-    /* dashboard shell header (legacy top tab bar — kept for reference, no longer used by AppHeader) */
-    --dashboard-header-bg: 221 39% 11%;
-    --dashboard-header-border: 217 19% 27%;
-    --dashboard-header-foreground: 0 0% 100%;
-    --dashboard-tab-bg: 221 39% 14%;
-    --dashboard-tab-hover: 215 28% 17%;
-    --dashboard-tab-active: 221 83% 53%;
-    --dashboard-online: 142 72% 40%;
-
     /* sidebar — near-black charcoal (design brief v2 §2.3), driven by --brand */
     --sidebar: 221 39% 11%;
     --sidebar-foreground: 216 12% 84%;
@@ -430,80 +421,6 @@
   .login-input {
     border-color: hsl(var(--border));
     background: hsl(var(--card));
-  }
-
-  .dashboard-panel {
-    @apply overflow-hidden rounded-lg border border-border bg-card;
-  }
-
-  .dashboard-shell-header {
-    background: hsl(var(--dashboard-header-bg));
-    color: hsl(var(--dashboard-header-foreground));
-  }
-
-  .dashboard-shell-divider {
-    border-color: hsl(var(--dashboard-header-border));
-  }
-
-  .dashboard-shell-title {
-    color: hsl(var(--dashboard-header-foreground));
-  }
-
-  .dashboard-icon-btn {
-    @apply inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors;
-    color: hsl(var(--dashboard-header-foreground));
-  }
-
-  .dashboard-icon-btn:hover {
-    background: hsl(var(--dashboard-tab-hover));
-  }
-
-  .dashboard-online-badge {
-    @apply inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium;
-    background: hsl(var(--dashboard-tab-hover));
-    color: hsl(var(--dashboard-header-foreground));
-  }
-
-  .dashboard-online-dot {
-    @apply h-2.5 w-2.5 rounded-full;
-    background: hsl(var(--dashboard-online));
-    box-shadow: 0 0 0 3px hsl(var(--dashboard-online) / 0.25);
-  }
-
-  .dashboard-counter-badge {
-    @apply absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold;
-    background: hsl(var(--destructive));
-    color: hsl(var(--destructive-foreground));
-  }
-
-  .dashboard-tabbar {
-    @apply flex items-center gap-1 overflow-x-auto px-3 py-2;
-    background: hsl(var(--dashboard-tab-bg));
-    border-top: 1px solid hsl(var(--dashboard-header-border));
-  }
-
-  .dashboard-tab {
-    @apply inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap;
-    color: hsl(var(--dashboard-header-foreground) / 0.88);
-  }
-
-  .dashboard-tab:hover {
-    background: hsl(var(--dashboard-tab-hover));
-    color: hsl(var(--dashboard-header-foreground));
-  }
-
-  .dashboard-tab.active {
-    background: hsl(var(--dashboard-tab-active));
-    color: hsl(var(--dashboard-header-foreground));
-  }
-
-  .dashboard-tab.disabled {
-    color: hsl(var(--dashboard-header-foreground) / 0.45);
-  }
-
-  .dashboard-embed {
-    @apply h-[500px] w-full rounded-b-lg bg-background;
-    border: 0;
   }
 
   /* compatibility utilities used by layout components */

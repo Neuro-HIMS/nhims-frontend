@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ComponentType } from "react";
-import { Loader2, Mail, RefreshCw, Shield, User, Building2, Layers } from "lucide-react";
-import { toast } from "sonner";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, Mail, RefreshCw, Shield, User } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { PageCard } from "@/components/layouts/page-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { extractErrorMessage, formatRole } from "@/components/users/users-management-utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { authService } from "@/services/auth.service";
 import { useAuthStore } from "@/store/auth.store";
+import { getFriendlyError } from "@/lib/api-errors";
+import { notify } from "@/lib/notify";
+import { roleLabel } from "@/lib/status-labels";
+import { NAV_ITEMS } from "@/config/navigation";
 
 export default function ProfileSettingsPage() {
   const storeUser = useAuthStore((s) => s.user);
@@ -21,9 +23,8 @@ export default function ProfileSettingsPage() {
     try {
       const fresh = await authService.getCurrentUser();
       setUser(fresh);
-      toast.success("Profile refreshed");
     } catch (e) {
-      toast.error(extractErrorMessage(e, "Could not load your profile."));
+      notify.error(getFriendlyError(e).message);
     } finally {
       setBusy(false);
     }
@@ -36,9 +37,25 @@ export default function ProfileSettingsPage() {
   const user = storeUser;
   if (!user) {
     return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading profile…
+      <div className="mx-auto max-w-3xl space-y-6">
+        <PageCard title="My profile" description="Your name and contact details." />
+        <Card>
+          <CardHeader>
+            <div className="flex items-start gap-4">
+              <div className="h-14 w-14 shrink-0 animate-pulse rounded-full bg-muted" />
+              <div className="min-w-0 flex-1 space-y-2 pt-1">
+                <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-56 animate-pulse rounded bg-muted" />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="h-14 animate-pulse rounded-md bg-muted" />
+              <div className="h-14 animate-pulse rounded-md bg-muted" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -48,34 +65,34 @@ export default function ProfileSettingsPage() {
     user.username.slice(0, 2)
   ).toUpperCase();
 
+  const sectionLabels = (user.assignedModules ?? [])
+    .map((m) => NAV_ITEMS.find((item) => item.module === m)?.label)
+    .filter((label): label is string => Boolean(label));
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-foreground">Profile</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Identity details are managed by your administrator. Refresh to pull the latest facility branding and
-          permissions from the server.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap justify-end">
-        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void refreshProfile()}>
-          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-          Refresh profile
-        </Button>
-      </div>
+      <PageCard
+        title="My profile"
+        description="Your name and contact details."
+        actions={
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void refreshProfile()}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Refresh
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>
           <div className="flex items-start gap-4">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold text-foreground">
               {initials}
             </span>
             <div className="min-w-0 flex-1 space-y-1">
               <CardTitle className="text-lg">
                 {user.firstName} {user.lastName}
               </CardTitle>
-              <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <User className="h-3.5 w-3.5" />
                   {user.username}
@@ -86,103 +103,40 @@ export default function ProfileSettingsPage() {
                     {user.email}
                   </span>
                 ) : null}
-              </CardDescription>
+              </div>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Detail label="Role" value={formatRole(user.role)} icon={Shield} />
-            <Detail label="User ID" value={user.userId} monospace />
+            <Detail label="Job" value={roleLabel(user.role)} icon={Shield} />
+            <Detail label="Facility" value={user.facilityName} />
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">Facility</CardTitle>
-          </div>
-          <CardDescription>The site you are signed into.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <Detail label="Name" value={user.facilityName} />
-          <Detail label="Code" value={user.facilityCode} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Layers className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">Workspace access</CardTitle>
-          </div>
-          <CardDescription>Modules assigned to your account and enabled for this facility.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Your modules</p>
-            <div className="flex flex-wrap gap-1.5">
-              {user.assignedModules?.length ? (
-                user.assignedModules.map((m) => (
-                  <Badge key={m} variant="secondary">
-                    {moduleLabel(m)}
-                  </Badge>
-                ))
-              ) : (
-                <span className="text-sm text-muted-foreground">None listed</span>
-              )}
-            </div>
-          </div>
-          {user.enabledHmisModuleKeys?.length ? (
+          {sectionLabels.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Facility-enabled HMIS modules
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {user.enabledHmisModuleKeys.map((m) => (
-                  <Badge key={m} variant="outline">
-                    {moduleLabel(m)}
-                  </Badge>
-                ))}
-              </div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">What you can open</p>
+              <p className="text-sm text-foreground">{sectionLabels.join(" · ")}</p>
             </div>
-          ) : null}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Shield className="h-4 w-4 shrink-0" />
-            <span>
-              Two-factor authentication:{" "}
-              <span className="font-medium text-foreground">{user.totpEnabled ? "On" : "Off"}</span>
-            </span>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function moduleLabel(key: string): string {
-  return key.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function Detail({
   label,
   value,
-  monospace,
   icon: Icon,
 }: {
   label: string;
   value: string;
-  monospace?: boolean;
-  icon?: ComponentType<{ className?: string }>;
+  icon?: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="rounded-md border bg-muted/20 px-3 py-2">
+    <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p
-        className={`mt-0.5 flex items-center gap-1.5 text-sm text-foreground ${monospace ? "font-mono text-xs break-all" : ""}`}
-      >
+      <p className="mt-0.5 flex items-center gap-1.5 text-sm text-foreground">
         {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
         {value || "—"}
       </p>

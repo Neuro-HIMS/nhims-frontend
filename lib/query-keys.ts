@@ -21,6 +21,11 @@ export const queryKeys = {
       profile: ["facility", "profile"] as const,
     },
 
+    // ── Notifications (header bell)
+    notifications: {
+      feed: ["notifications", "feed"] as const,
+    },
+
     // ── Patients
     patients: {
       all: ["patients"] as const,

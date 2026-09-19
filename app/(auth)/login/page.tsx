@@ -2,10 +2,15 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/layouts/login-form";
+import { ForgotPasswordForm } from "@/components/layouts/forgot-password-form";
 import { getLandingPathForUser } from "@/lib/access-control";
 import { getServerSession } from "@/lib/auth-server";
 
-export default async function LoginPage() {
+interface LoginPageProps {
+  searchParams: Promise<{ step?: string; reason?: string; next?: string }>;
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   const session = await getServerSession();
   if (session) {
     if (session.user.mustChangePassword) {
@@ -13,6 +18,8 @@ export default async function LoginPage() {
     }
     redirect(getLandingPathForUser(session.user));
   }
+
+  const { step, reason, next } = await searchParams;
 
   return (
     <main className="min-h-screen grid lg:grid-cols-2">
@@ -30,7 +37,11 @@ export default async function LoginPage() {
       </section>
       <section className="flex min-h-screen items-center justify-center bg-white p-6 lg:p-10">
         <div className="w-full max-w-[520px] space-y-5">
-          <LoginForm /> 
+          {step === "forgot" ? (
+            <ForgotPasswordForm />
+          ) : (
+            <LoginForm sessionExpired={reason === "expired"} next={next} />
+          )}
         </div>
       </section>
     </main>

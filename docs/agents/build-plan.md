@@ -8,20 +8,22 @@ Build in phases. Within a phase, slices on different lines can be built in paral
 
 | ID | Slice | Delivers | Files |
 |---|---|---|---|
-| FND-01 | Shared helpers | `lib/status-labels.ts` (all label maps + `ROLE_LABELS`), `lib/api-errors.ts` (`getFriendlyError`, replaces 3 ad-hoc helpers), `lib/notify.ts` | lib/ |
+| ✅ FND-01 | Shared helpers | `lib/status-labels.ts` (`ROLE_LABELS`/`roleLabel` — other maps added just-in-time by the stages that need them), `lib/api-errors.ts` (`getFriendlyError`), `lib/notify.ts` | lib/ |
 | FND-02 | Pills | `StatusPill`, `TriagePill`, `NhisPill`, `AllergyPill`, `LabResultValue`; add `.result-low` / `.result-high` utilities | components/common, components/clinical, globals.css |
 | FND-03 | States | `EmptyState`, `ErrorState`, `QueryState`, skeleton presets, greyscale illustrations | components/common |
 | FND-04 | Table | `DataTable`, `TableToolbar`, `TablePagination`, tablet card mode | components/common/data-table |
-| FND-05 | Layout blocks | `PageCard` (evolve `PageHeader`), `SectionCard`, `FormSection`, `StatCard`, `StepIndicator`, `InlineNotice`, `SuccessPanel`; `ConfirmDialog` requires explicit labels | components/layouts, components/common |
+| ✅ FND-05 | Layout blocks | `PageCard` (evolve `PageHeader`), `InlineNotice`, `SuccessPanel`, `ConfirmDialog` requires explicit labels — built. `SectionCard`, `FormSection`, `StatCard`, `StepIndicator` not needed yet, still open | components/layouts, components/common |
 | FND-06 | Patient context | `PatientBanner` (from `folder-header`), `CriticalAlert` | components/clinical |
 | FND-07 | Waiting list | `WaitingList` + `sortByUrgencyThenArrival` (unit tested) | components/clinical, lib |
-| FND-08 | Shell polish + token debt | `AppHeader` greeting/role pill/facility switcher; remove deprecated `dashboard-*` classes when unused; rename `*_NAV` labels per `05-ui-copy` §3 | components/layouts, globals.css |
+| ✅ FND-08 | Shell polish + token debt | `AppHeader` greeting/role pill/facility badge — built (Stage 0 + 1). Removed dead `dashboard-*` classes. `*_NAV` label rename per `05-ui-copy` §3 still open (14 module-local files, deferred — see design-system-v2 session notes) | components/layouts, globals.css |
 | FND-09 | Inputs | `UnitInput`, `MoneyInput`, `PhoneInput`, `UploadDropzone`; `lib/vitals-ranges.ts` | components/common, lib |
-| FND-10 | Permissions | Named capability helpers in `lib/permissions.ts` (07 §4); doctor landing → OPD | lib |
+| ✅ FND-10 | Permissions | Capability helpers in `lib/permissions.ts` mostly pre-existed; doctor landing → OPD fixed | lib |
 
-## Phase 1 — Getting in (`ALL`)
+## Phase 1 — Getting in (`ALL`) ✅ done (2026-09-19)
 
-ALL-01 Sign in · ALL-02 Forced password change · ALL-07 Session expiry · ALL-09 Not found / no access · ALL-06 Header (without feed) · ALL-04 Profile · ALL-05 Security · ALL-03 Forgot password · ALL-08 Feedback
+ALL-01 Sign in · ALL-02 Forced password change · ALL-07 Session expiry · ALL-09 Not found / no access · ALL-06 Header (mocked feed) · ALL-04 Profile · ALL-05 Security · ALL-03 Forgot password · ALL-08 Feedback (mocked)
+
+See `progress.md` for what shipped and the two open backend gaps (`GET /notifications`, `POST /feedback`).
 
 ## Phase 2 — The core outpatient visit (journey J01, J03)
 

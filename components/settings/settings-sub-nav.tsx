@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
-  { href: "/settings/profile", label: "Profile" },
-  { href: "/settings/security", label: "Security" },
+  { href: "/settings/profile", label: "My profile" },
+  { href: "/settings/security", label: "Sign-in and security" },
 ] as const;
 
 export function SettingsSubNav() {

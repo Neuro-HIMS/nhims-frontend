@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu } from "lucide-react";
+import { LogOut, Menu, MessageSquare } from "lucide-react";
 
 import { NAV_GROUP_LABELS, NAV_GROUP_ORDER, NAV_ITEMS, type NavGroup } from "@/config/navigation";
 import { canAccessWorkspaceModule } from "@/lib/access-control";
@@ -15,6 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { FeedbackDialog } from "@/components/layouts/feedback-dialog";
 
 interface AppSidebarProps {
   user: AuthUser;
@@ -25,6 +27,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const router = useRouter();
   const { logout } = useAuth();
   const [collapsed, setCollapsed] = useSidebarCollapsed();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   function toggleCollapsed() {
     setCollapsed(!collapsed);
@@ -130,28 +133,51 @@ export function AppSidebar({ user }: AppSidebarProps) {
         </div>
       )}
 
-      <div className="shrink-0 border-t sidebar-divider p-2">
+      <div className="shrink-0 space-y-0.5 border-t sidebar-divider p-2">
         {collapsed ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="sidebar-item mx-auto flex h-9 w-9 items-center justify-center"
-                aria-label="Log out"
-              >
-                <LogOut className="h-4 w-4 sidebar-icon-muted" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">Log out</TooltipContent>
-          </Tooltip>
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setFeedbackOpen(true)}
+                  className="sidebar-item mx-auto flex h-9 w-9 items-center justify-center"
+                  aria-label="Feedback"
+                >
+                  <MessageSquare className="h-4 w-4 sidebar-icon-muted" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Feedback</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="sidebar-item mx-auto flex h-9 w-9 items-center justify-center"
+                  aria-label="Log out"
+                >
+                  <LogOut className="h-4 w-4 sidebar-icon-muted" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Log out</TooltipContent>
+            </Tooltip>
+          </>
         ) : (
-          <button type="button" onClick={handleLogout} className="sidebar-item w-full">
-            <LogOut className="h-4 w-4 sidebar-icon-muted" aria-hidden="true" />
-            <span>Log out</span>
-          </button>
+          <>
+            <button type="button" onClick={() => setFeedbackOpen(true)} className="sidebar-item w-full">
+              <MessageSquare className="h-4 w-4 sidebar-icon-muted" aria-hidden="true" />
+              <span>Feedback</span>
+            </button>
+            <button type="button" onClick={handleLogout} className="sidebar-item w-full">
+              <LogOut className="h-4 w-4 sidebar-icon-muted" aria-hidden="true" />
+              <span>Log out</span>
+            </button>
+          </>
         )}
       </div>
+
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </aside>
   );
 }

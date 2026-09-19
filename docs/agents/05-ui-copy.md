@@ -18,6 +18,7 @@ Write the way a friendly senior colleague talks. Short, specific, calm, never bl
 10. **Names before numbers**: show "Ama Mensah · KBTH-12345678-26", never the number alone as a headline.
 11. **Never show**: enum values, database IDs/UUIDs, HTTP codes, raw server messages, `null`/`undefined`/`NaN`, "N/A" (use "—" or "Not recorded").
 12. **Numbers**: "1 patient", "3 patients" (pluralise correctly).
+13. **Always render role/status text through `roleLabel()` / the `*_LABELS` maps in `lib/status-labels.ts`.** Never format an enum client-side (title-case, replace `_` with a space, etc.) — that produces nonsense like `HIO` → "Hio" and misses deliberate renames like `BILLING_OFFICER` → "Cashier".
 
 ## 2. Glossary — replace these
 

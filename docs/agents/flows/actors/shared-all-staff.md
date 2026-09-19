@@ -45,7 +45,7 @@ Applies to every role. Build these first after the foundation slices — every o
 
 ### ALL-06 · Header: greeting, role pill, facility, notifications
 **Where** — every workspace page · **Existing** — `components/layouts/app-header.tsx` (Evolve), `store/notification.store.ts`.
-**Screen** — "Hello, **Ama Mensah**!" + role pill (green dot + "Nurse"); "Find a patient" (roles with records access); bell with count → popover list of the user's alerts (critical lab results for the requesting doctor, results ready, referrals received, low stock for pharmacists). Each item is a sentence + time + link. Empty: "You're all caught up." Black facility switcher (logo + facility name); for single-facility users it's a static label, for super admins a menu (SUP-01).
+**Screen** — "Hello, **Ama Mensah**!" + role pill (green dot + "Nurse") — this block is the user menu (My profile / Sign-in and security); "Find a patient" (roles with records access); bell with count → popover list of the user's alerts (critical lab results for the requesting doctor, results ready, referrals received, low stock for pharmacists). Each item is a sentence + time + link. Empty: "You're all caught up." Black facility badge (logo + facility name) — a static label for every role, including super admin (SUP-01 "switch facility" is retired; NHIMS runs one facility per server).
 **Data** — **Backend needed**: a notifications feed endpoint. Until then, compose from `labCriticalAlertsInbox` (doctor), `referralInbox`, stock overview low/expiring (pharmacist).
 **Done when** — no dead icons; count matches the list; clicking an item deep-links to the right view.
 

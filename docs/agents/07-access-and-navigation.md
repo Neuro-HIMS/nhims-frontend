@@ -61,7 +61,7 @@ The source of truth is `NAV_ITEMS[].allowedRoles`; this table must be kept in st
 |---|---|---|
 | Records officer | `/records?view=search` | Find or register a patient, Appointments, OPD (read-only list), Reports |
 | Nurse | `/nurse?view=visits` | Nurse station, OPD, Emergency, Wards, Theatre |
-| Doctor | `/opd?view=queue` *(change from nurse default)* | OPD, Nurse station, Emergency, Wards, ANC, Lab, Imaging, specialist clinics, Reports |
+| Doctor | `/opd?view=queue` | OPD, Nurse station, Emergency, Wards, ANC, Lab, Imaging, specialist clinics, Reports |
 | Midwife | `/anc` | Antenatal care |
 | Lab scientist / tech | `/laboratory?view=worklist` | Laboratory, Blood bank |
 | Radiographer | `/radiology?view=worklist` | Imaging |
@@ -71,8 +71,6 @@ The source of truth is `NAV_ITEMS[].allowedRoles`; this table must be kept in st
 | HIO | `/reports` | Home, Reports |
 | Facility admin | `/dashboard` | Everything in their facility |
 | Super admin | `/dashboard` | Everything |
-
-> Change needed: `DEFAULT_MODULE_BY_ROLE.MEDICAL_OFFICER` is `"nurse"` today; doctors should land on OPD (their queue). Slice `DOC-01`.
 
 ## 4. Inside-section permissions (target helpers)
 

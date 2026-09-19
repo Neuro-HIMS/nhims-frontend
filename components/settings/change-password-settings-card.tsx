@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,18 +17,22 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { extractErrorMessage } from "@/components/users/users-management-utils";
+import { InlineNotice } from "@/components/common/inline-notice";
+import { PasswordRuleChecklist } from "@/components/common/password-rule-checklist";
 import { authService } from "@/services/auth.service";
 import { useAuthStore } from "@/store/auth.store";
+import { getFriendlyError } from "@/lib/api-errors";
+import { notify } from "@/lib/notify";
+import { newPasswordSchema } from "@/schemas/password.schema";
 
 const schema = z
   .object({
-    currentPassword: z.string().min(1, "Current password is required"),
-    newPassword: z.string().min(12, "At least 12 characters"),
+    currentPassword: z.string().min(1, "Enter your current password"),
+    newPassword: newPasswordSchema,
     confirmPassword: z.string().min(1, "Confirm your new password"),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
-    message: "Passwords do not match",
+    message: "Passwords don't match.",
     path: ["confirmPassword"],
   });
 
@@ -46,6 +49,7 @@ export function ChangePasswordSettingsCard() {
     resolver: zodResolver(schema),
     defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
   });
+  const newPassword = useWatch({ control: form.control, name: "newPassword" });
 
   async function onSubmit(values: FormValues) {
     setServerError(null);
@@ -57,9 +61,9 @@ export function ChangePasswordSettingsCard() {
       });
       setUser(res.user);
       form.reset();
-      toast.success("Password updated. Your session has been refreshed.");
+      notify.success("Password changed.");
     } catch (err: unknown) {
-      setServerError(extractErrorMessage(err, "Could not update password."));
+      setServerError(getFriendlyError(err).message);
     } finally {
       setLoading(false);
     }
@@ -68,21 +72,13 @@ export function ChangePasswordSettingsCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Password</CardTitle>
-        <CardDescription>Change your sign-in password. Use at least 12 characters.</CardDescription>
+        <CardTitle className="text-base">Change password</CardTitle>
+        <CardDescription>Choose a new password for signing in.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-lg">
-            {serverError ? (
-              <div
-                className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                role="alert"
-              >
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{serverError}</span>
-              </div>
-            ) : null}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-lg" noValidate>
+            {serverError ? <InlineNotice tone="error">{serverError}</InlineNotice> : null}
 
             <FormField
               control={form.control}
@@ -141,6 +137,7 @@ export function ChangePasswordSettingsCard() {
                       </button>
                     </div>
                   </FormControl>
+                  <PasswordRuleChecklist value={newPassword} />
                   <FormMessage />
                 </FormItem>
               )}
@@ -164,10 +161,10 @@ export function ChangePasswordSettingsCard() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating…
+                  Saving…
                 </>
               ) : (
-                "Update password"
+                "Save new password"
               )}
             </Button>
           </form>

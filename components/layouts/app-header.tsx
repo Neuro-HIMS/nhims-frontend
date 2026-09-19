@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { Bell, Search, ShieldCheck, User } from "lucide-react";
 
 import { canAccessWorkspaceModule } from "@/lib/access-control";
+import { formatRelative } from "@/lib/dates";
+import { roleLabel } from "@/lib/status-labels";
 import { useFacility } from "@/hooks/use-facility";
+import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
 import { isAnyMockEnabled } from "@/services/mocks/mock-config";
 import { useNotificationStore } from "@/store/notification.store";
 import type { AuthUser } from "@/types/auth.types";
@@ -31,6 +34,7 @@ export function AppHeader({ user }: AppHeaderProps) {
   const markAllRead = useNotificationStore((s) => s.markAllRead);
   const [searchValue, setSearchValue] = useState("");
   const { data: facility } = useFacility();
+  useNotificationsFeed();
 
   const canSearchPatients = canAccessWorkspaceModule(user, "records");
   const facilityName = facility?.name ?? user.facilityName;
@@ -59,7 +63,7 @@ export function AppHeader({ user }: AppHeaderProps) {
             </span>
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
-              {formatRole(user.role)}
+              {roleLabel(user.role)}
             </span>
           </button>
         </DropdownMenuTrigger>
@@ -67,7 +71,7 @@ export function AppHeader({ user }: AppHeaderProps) {
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col gap-0.5">
               <p className="text-sm font-semibold">{user.firstName} {user.lastName}</p>
-              <p className="text-xs text-muted-foreground">{formatRole(user.role)}</p>
+              <p className="text-xs text-muted-foreground">{roleLabel(user.role)}</p>
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -140,12 +144,16 @@ export function AppHeader({ user }: AppHeaderProps) {
                   <DropdownMenuItem
                     key={n.id}
                     className="flex flex-col items-start gap-0.5 whitespace-normal"
-                    onSelect={() => markRead(n.id)}
+                    onSelect={() => {
+                      markRead(n.id);
+                      router.push(n.href ?? "#");
+                    }}
                   >
                     <span className={n.read ? "font-medium text-foreground" : "font-semibold text-foreground"}>
                       {n.title}
                     </span>
                     <span className="text-xs text-muted-foreground">{n.message}</span>
+                    <span className="text-[11px] text-muted-foreground">{formatRelative(n.createdAt)}</span>
                   </DropdownMenuItem>
                 ))}
               </div>
@@ -175,13 +183,6 @@ export function AppHeader({ user }: AppHeaderProps) {
       </div>
     </header>
   );
-}
-
-function formatRole(role: string): string {
-  return role
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function initialsForFacility(code: string, name: string): string {

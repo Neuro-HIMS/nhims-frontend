@@ -16,7 +16,7 @@ export default async function ChangePasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+    <main className="login-hero flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-md">
         <ChangePasswordForm />
       </div>

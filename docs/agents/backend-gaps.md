@@ -17,16 +17,16 @@ One entry per missing or changed endpoint the frontend needs, written for the ba
 - Frontend status: `facilityId` is no longer sent by `UsersManagementWorkspace`; the field stays optional and `@deprecated` on `CreateUserPayload` for old backends that still expect it
 
 ### ALL-06 · Notifications feed for the header bell  (needed by: ALL-06)
-- Method & path: not yet defined — compose from `labCriticalAlertsInbox` (doctor), `referralInbox`, stock overview low/expiring (pharmacist) until a dedicated feed exists
-- Frontend status: `store/notification.store.ts` is wired and renders empty ("You're all caught up.") until a feed is connected
+- Method & path: `GET /notifications` — not yet defined server-side; eventually compose from `labCriticalAlertsInbox` (doctor), `referralInbox`, stock overview low/expiring (pharmacist), or a dedicated feed
+- Frontend status: `services/notifications.service.ts` calls the real endpoint (will 404 today); with `NEXT_PUBLIC_MOCK_AREAS=notifications` it shows `services/mocks/fixtures/notifications.ts` instead, refreshed every 30s. Without it, the bell correctly shows the empty state ("You're all caught up.") rather than an error.
 
 ### ALL-04 · Profile edit  (needed by: ALL-04)
 - Method & path: not yet defined
 - Frontend status: My profile is read-only until this exists
 
 ### ALL-08 · Feedback submission  (needed by: ALL-08)
-- Method & path: not yet defined — or a `mailto:` fallback if no endpoint is planned
-- Frontend status: not built yet
+- Method & path: `POST /feedback` — not yet defined server-side
+- Frontend status: `services/feedback.service.ts` calls the real endpoint (will 404 today); with `NEXT_PUBLIC_MOCK_AREAS=feedback` it succeeds without a network call, so the dialog's happy path is fully testable
 
 ### REC-05 · Single "start walk-in visit" call  (needed by: REC-05, J01)
 - Today: book + check in as two calls
