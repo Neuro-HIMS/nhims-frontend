@@ -61,6 +61,6 @@ One short block per stage. Read this first when resuming — it's the source of 
 - Could not visually verify the authenticated screens (security page's QR/3-step flow, profile page, header notifications dropdown, sidebar Feedback dialog) — no test credentials available in this session. Should be checked against a real login on the next session before calling ALL-05/ALL-06 fully done.
 - Two real backend gaps logged: `GET /notifications` and `POST /feedback` don't exist yet; frontend runs against mocks (opt-in via `NEXT_PUBLIC_MOCK_AREAS`) or a graceful empty/error state until they ship.
 
-**Commit:** (this stage, about to commit)
+**Commit:** `2c57960`
 
 **Next stage:** Stage 2 — Facility admin: set up the facility and staff (J12): ADM-08 → ADM-09 → ADM-10 → ADM-11 → ADM-02 → ADM-03 → ADM-04 → ADM-05 → ADM-06 → ADM-07 → ADM-12 (ADM-01 Home deferred to Stage 13). Reads: `flows/actors/facility-admin.md`, `flows/journeys/J12-staff-onboarding.md`, `03-components.md`. Builds FND-02 (StatusPill), FND-03 (states), FND-04 (DataTable), FND-09 (UploadDropzone).
