@@ -109,7 +109,6 @@ export default function ProfileSettingsPage() {
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <Detail label="Name" value={user.facilityName} />
           <Detail label="Code" value={user.facilityCode} />
-          <Detail label="Facility ID" value={user.facilityId} monospace />
         </CardContent>
       </Card>
 

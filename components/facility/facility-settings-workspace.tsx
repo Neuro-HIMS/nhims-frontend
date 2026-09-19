@@ -62,13 +62,11 @@ type ViewId = (typeof VIEW_CONFIG)[number]["id"];
 type WorkspaceModel = FacilitySettingsPayload;
 
 interface FacilitySettingsWorkspaceProps {
-  facilityId: string;
   facilityName: string;
   facilityCode: string;
 }
 
 export function FacilitySettingsWorkspace({
-  facilityId,
   facilityName,
   facilityCode,
 }: FacilitySettingsWorkspaceProps) {
@@ -103,13 +101,13 @@ export function FacilitySettingsWorkspace({
   useEffect(() => {
     void loadFacility();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facilityId]);
+  }, []);
 
   async function loadFacility() {
     setLoading(true);
     setFeedback(null);
     try {
-      const dto = await facilityService.get(facilityId);
+      const dto = await facilityService.get();
       const merged = mergeFromApi(dto, defaults);
       setModel(merged);
       setBaseline(structuredClone(merged));
@@ -174,7 +172,7 @@ export function FacilitySettingsWorkspace({
         }
       }
 
-      const dto = await facilityService.update(facilityId, {
+      const dto = await facilityService.update({
         name: model.profile.facilityName.trim(),
         code: model.profile.facilityCode.trim(),
         settings: model,

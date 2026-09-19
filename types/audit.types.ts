@@ -1,6 +1,7 @@
 export interface AuditEventDto {
   id: string;
-  facilityId: string | null;
+  /** @deprecated NHIMS runs one facility per server — don't read or display this. */
+  facilityId?: string | null;
   actorUserId: string | null;
   actorUsername: string;
   action: string;

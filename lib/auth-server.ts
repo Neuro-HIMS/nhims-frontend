@@ -13,7 +13,8 @@ interface JwtPayload {
   role: Session["user"]["role"];
   assignedModules?: AppModule[];
   enabledHmisModuleKeys?: AppModule[];
-  facilityId: string;
+  /** @deprecated NHIMS runs one facility per server. Kept only for the legacy facility-fallback path. */
+  facilityId?: string;
   facilityName: string;
   facilityCode: string;
   email: string;

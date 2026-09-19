@@ -6,7 +6,6 @@ export default async function Page() {
 
   return (
     <FacilitySettingsWorkspace
-      facilityId={session.user.facilityId}
       facilityName={session.user.facilityName}
       facilityCode={session.user.facilityCode}
     />

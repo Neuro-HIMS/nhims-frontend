@@ -4,11 +4,6 @@ import { requireModuleAccess } from "@/lib/auth-guards";
 export default async function Page() {
   const session = await requireModuleAccess("users");
 
-  return (
-    <UsersManagementWorkspace
-      facilityId={session.user.facilityId}
-      facilityName={session.user.facilityName}
-    />
-  );
+  return <UsersManagementWorkspace facilityName={session.user.facilityName} />;
 }
 

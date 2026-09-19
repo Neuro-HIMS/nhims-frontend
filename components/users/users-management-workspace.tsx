@@ -24,11 +24,10 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
 interface UsersManagementWorkspaceProps {
-  facilityId: string;
   facilityName: string;
 }
 
-export function UsersManagementWorkspace({ facilityId, facilityName }: UsersManagementWorkspaceProps) {
+export function UsersManagementWorkspace({ facilityName }: UsersManagementWorkspaceProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -129,7 +128,6 @@ export function UsersManagementWorkspace({ facilityId, facilityName }: UsersMana
         email: createForm.email.trim(),
         password: createForm.password,
         role: createForm.role,
-        facilityId,
         assignedModules: defaultModulesForRole(createForm.role),
       });
       setUsers((prev) => [created, ...prev]);

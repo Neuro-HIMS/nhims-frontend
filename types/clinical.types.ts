@@ -30,7 +30,8 @@ export type EncounterPriority = "ROUTINE" | "URGENT" | "EMERGENCY";
 
 export interface EncounterDto {
   id: string;
-  facilityId: string;
+  /** @deprecated NHIMS runs one facility per server — don't read or display this. */
+  facilityId?: string;
   encounterNumber: string;
   patientId: string;
   patientPublicId: string;

@@ -9,7 +9,8 @@ export interface UserListItem {
   role: UserRole;
   active: boolean;
   lastLoginAt: string | null;
-  facilityId: string;
+  /** @deprecated NHIMS runs one facility per server — don't read or display this. */
+  facilityId?: string;
   facilityCode: string;
   facilityName: string;
   assignedModules: AppModule[];
@@ -22,6 +23,7 @@ export interface CreateUserPayload {
   email: string;
   password: string;
   role: UserRole;
+  /** @deprecated NHIMS runs one facility per server — the backend assigns the server's facility. */
   facilityId?: string;
   assignedModules?: AppModule[];
 }

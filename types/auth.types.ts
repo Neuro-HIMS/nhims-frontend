@@ -45,7 +45,8 @@ export interface AuthUser {
   lastName: string;
   role: UserRole;
   assignedModules: AppModule[];
-  facilityId: string;
+  /** @deprecated NHIMS runs one facility per server — don't read, pass or display this. Kept only for the legacy `/facilities/{id}` fallback in facility.service.ts. */
+  facilityId?: string;
   facilityName: string;
   facilityCode: string;
   email: string;

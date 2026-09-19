@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
@@ -8,6 +7,7 @@ import { LogOut, Menu } from "lucide-react";
 import { NAV_GROUP_LABELS, NAV_GROUP_ORDER, NAV_ITEMS, type NavGroup } from "@/config/navigation";
 import { canAccessWorkspaceModule } from "@/lib/access-control";
 import { useAuth } from "@/hooks/auth/use-auth";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import type { AuthUser } from "@/types/auth.types";
 import { cn } from "@/lib/utils";
 import {
@@ -20,32 +20,14 @@ interface AppSidebarProps {
   user: AuthUser;
 }
 
-const COLLAPSE_STORAGE_KEY = "nhims.sidebar.collapsed";
-
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    try {
-      setCollapsed(window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === "1");
-    } catch {
-      // Private browsing or blocked storage — default to expanded.
-    }
-  }, []);
+  const [collapsed, setCollapsed] = useSidebarCollapsed();
 
   function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(COLLAPSE_STORAGE_KEY, next ? "1" : "0");
-      } catch {
-        // Nothing we can do if storage is blocked — the toggle still works for this visit.
-      }
-      return next;
-    });
+    setCollapsed(!collapsed);
   }
 
   async function handleLogout() {

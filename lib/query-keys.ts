@@ -15,7 +15,12 @@ export const queryKeys = {
     auth: {
       currentUser: ["auth", "currentUser"] as const,
     },
-  
+
+    // ── Facility (NHIMS runs one facility per server — no id in the key)
+    facility: {
+      profile: ["facility", "profile"] as const,
+    },
+
     // ── Patients
     patients: {
       all: ["patients"] as const,
