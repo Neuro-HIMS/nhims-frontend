@@ -79,11 +79,22 @@ export function getFriendlyError(error: unknown, context?: string): FriendlyErro
  */
 export function plainLanguageMessage(message: string | null | undefined): string | null {
   if (!message) return null;
+  const known = KNOWN_MESSAGES.find(([pattern]) => pattern.test(message));
+  if (known) return known[1];
   if (message.length > 160) return null;
   if (/exception|stack trace|\bat java\.|\bnull\b|\bundefined\b|:\s*\d{3}\b/i.test(message)) return null;
   if (!/^[A-Z]/.test(message.trim())) return null;
   return message;
 }
+
+/** Backend rule messages that need rewording for the screen. */
+const KNOWN_MESSAGES: [RegExp, string][] = [
+  // backend-gaps.md#BIL-APPEND-CLOSED — a settled visit bill can't take new charges.
+  [
+    /bill is closed; cannot append/i,
+    "This visit's bill is already settled, so new tests or medicines can't be added to it yet. Tell your facility administrator.",
+  ],
+];
 
 function shortReference(): string {
   return Date.now().toString(36).slice(-4).toUpperCase();

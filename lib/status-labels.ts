@@ -27,9 +27,9 @@ export function roleLabel(role: UserRole | string): string {
 export const ENCOUNTER_STATUS_LABELS: Record<string, string> = {
   SCHEDULED: "Booked",
   CHECKED_IN: "Checked in",
-  AT_VITALS: "With the nurse",
-  AT_CONSULTATION: "Waiting for the doctor",
-  IN_CONSULTATION: "With the doctor",
+  AT_VITALS: "Waiting for vitals",
+  AT_CONSULTATION: "Waiting for doctor",
+  IN_CONSULTATION: "With doctor",
   AT_LAB: "At the lab",
   AT_PHARMACY: "At pharmacy",
   AT_BILLING: "At billing",
@@ -88,3 +88,71 @@ export function appointmentStatusLabel(status: string): string {
 export function appointmentStatusTone(status: string): PillTone {
   return APPOINTMENT_STATUS_TONE[status] ?? "neutral";
 }
+
+type Labelled = { label: string; tone: PillTone };
+const pick = (map: Record<string, Labelled>, code: string, fallback: Labelled): Labelled => map[code] ?? fallback;
+
+/** Referrals — Sent · Accepted · Declined · Done. */
+export function referralStatus(code: string): Labelled {
+  return pick(
+    {
+      PENDING: { label: "Sent", tone: "pending" },
+      ACCEPTED: { label: "Accepted", tone: "info" },
+      REJECTED: { label: "Declined", tone: "error" },
+      COMPLETED: { label: "Done", tone: "success" },
+    },
+    code,
+    { label: "Sent", tone: "pending" },
+  );
+}
+
+export function referralUrgency(code: string): Labelled {
+  return pick(
+    { ROUTINE: { label: "Routine", tone: "neutral" }, URGENT: { label: "Urgent", tone: "warning" }, STAT: { label: "Immediately", tone: "error" } },
+    code,
+    { label: "Routine", tone: "neutral" },
+  );
+}
+
+export const ALERT_CATEGORY_LABELS: Record<string, string> = {
+  ALLERGY: "Allergy",
+  CHRONIC: "Long-term condition",
+  INFECTIOUS: "Infection risk",
+  IMPLANT: "Implant or device",
+  GENERAL: "Other",
+};
+
+export function alertSeverity(code: string): Labelled {
+  return pick(
+    {
+      LOW: { label: "Low", tone: "neutral" },
+      MEDIUM: { label: "Medium", tone: "warning" },
+      HIGH: { label: "High", tone: "error" },
+      CRITICAL: { label: "Critical", tone: "error" },
+    },
+    code,
+    { label: "Medium", tone: "warning" },
+  );
+}
+
+export function treatmentStatus(code: string): Labelled {
+  return pick(
+    {
+      ORDERED: { label: "Ordered", tone: "pending" },
+      ADMINISTERED: { label: "Given", tone: "success" },
+      WITHHELD: { label: "Held back", tone: "warning" },
+      CANCELLED: { label: "Cancelled", tone: "neutral" },
+    },
+    code,
+    { label: "Ordered", tone: "pending" },
+  );
+}
+
+export const DISCHARGE_OUTCOME_LABELS: Record<string, string> = {
+  IMPROVED: "Improved",
+  STABLE: "Stable",
+  AMA: "Left against medical advice",
+  TRANSFERRED: "Transferred",
+  DECEASED: "Died",
+  OTHER: "Other",
+};

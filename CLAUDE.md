@@ -121,6 +121,7 @@ See `docs/agents/08-definition-of-done.md` for the full list. Minimum bar:
 - New visual variants are tokenized in `globals.css` and reused.
 - Login and shell pages preserve design consistency with the global theme.
 - Module pages must use `ModuleSubNav` for sub-navigation.
+- Dialogs with a form of more than ~3 fields use `FormDialog` + `FormDialogSection` (wide, grouped, scrolling body, pinned footer) — never a narrow hand-rolled `DialogContent`.
 - Module pages must follow the page → workspace pattern.
 - Every data view has loading, empty, error and success states.
 - No jargon in user-facing text — check against `docs/agents/05-ui-copy.md`.

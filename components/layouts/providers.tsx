@@ -36,9 +36,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         }}
       />
 
-      {/* Query devtools — only in development */}
-      {process.env.NODE_ENV === "development" && (
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+      {/* Query devtools — development only, opt-in with NEXT_PUBLIC_QUERY_DEVTOOLS=true.
+          Bottom-left sat on the sidebar's Log out; bottom-right is taken by the Next.js indicator. */}
+      {process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_QUERY_DEVTOOLS === "true" && (
+        <ReactQueryDevtools initialIsOpen={false} buttonPosition="top-left" />
       )}
     </QueryClientProvider>
   );

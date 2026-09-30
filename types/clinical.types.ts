@@ -26,7 +26,7 @@ export type EncounterStation =
   | "WARD"
   | "COMPLETED";
 
-export type EncounterPriority = "ROUTINE" | "URGENT" | "EMERGENCY";
+export type EncounterPriority = "ROUTINE" | "SEMI_URGENT" | "URGENT" | "EMERGENCY";
 
 export interface EncounterDto {
   id: string;

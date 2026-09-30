@@ -12,9 +12,9 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
 import {
   Select,
   SelectContent,
@@ -25,9 +25,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { RecordsField } from "@/components/records/shared/records-field";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
+import { ErrorState } from "@/components/common/error-state";
+import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
+import { CardSkeleton } from "@/components/common/skeletons";
+import { DISCHARGE_OUTCOME_LABELS } from "@/lib/status-labels";
+import { getFriendlyError } from "@/lib/api-errors";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
-import type { ApiError } from "@/types/api.types";
+
 import type { AdmitPayload, DischargePayload } from "@/types/clinical.types";
 import type { Visit } from "@/lib/clinical-types";
 
@@ -75,14 +80,11 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
     mutationFn: (payload: AdmitPayload) => clinicalService.admit(visit!.id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Patient admitted");
+      toast.success("Patient admitted.");
       setShowForm(false);
       setForm(EMPTY_ADMIT);
     },
-    onError: (e: unknown) => {
-      const ax = e as { response?: { data?: ApiError } };
-      toast.error(ax.response?.data?.message ?? "Could not admit patient");
-    },
+    onError: (e: unknown) => toast.error(getFriendlyError(e).message),
   });
 
   const dischargeMut = useMutation({
@@ -90,7 +92,7 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
       clinicalService.discharge(id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Patient discharged");
+      toast.success("Patient discharged.");
       setDischargeForId(null);
       setDischargeNotes("");
       setDischargeOutcome("");
@@ -98,10 +100,7 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
       setDischargeMeds("");
       setDischargeFollow("");
     },
-    onError: (e: unknown) => {
-      const ax = e as { response?: { data?: ApiError } };
-      toast.error(ax.response?.data?.message ?? "Could not discharge");
-    },
+    onError: (e: unknown) => toast.error(getFriendlyError(e).message),
   });
 
   const [showForm, setShowForm] = useState(false);
@@ -113,7 +112,7 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
   const [dischargeMeds, setDischargeMeds] = useState("");
   const [dischargeFollow, setDischargeFollow] = useState("");
 
-  const list = admissionsQuery.data ?? [];
+  const list = useMemo(() => admissionsQuery.data ?? [], [admissionsQuery.data]);
   const activeAdmission = list.find((a) => a.status === "ADMITTED");
   const sorted = useMemo(
     () => [...list].sort((a, b) => (b.admittedAt ?? "").localeCompare(a.admittedAt ?? "")),
@@ -126,7 +125,7 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
       return;
     }
     if (!form.ward.trim()) {
-      toast.error("Ward is required");
+      toast.error("Enter the ward.");
       return;
     }
     admitMut.mutate({
@@ -138,7 +137,7 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
 
   function handleDischarge(id: string) {
     if (!dischargeNotes.trim()) {
-      toast.error("Discharge summary is required");
+      toast.error("Write the discharge summary first.");
       return;
     }
     dischargeMut.mutate({
@@ -157,7 +156,7 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-foreground">Admissions &amp; Discharges</p>
+          <p className="text-sm font-semibold text-foreground">Admissions and discharges</p>
           <p className="text-xs text-muted-foreground">
             {activeAdmission
               ? `Currently admitted to ${activeAdmission.ward}${activeAdmission.bed ? ", Bed " + activeAdmission.bed : ""}`
@@ -166,65 +165,54 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
         </div>
         <Button
           size="sm"
-          onClick={() => setShowForm((s) => !s)}
+          onClick={() => setShowForm(true)}
           disabled={!visit || Boolean(activeAdmission) || admitMut.isPending}
         >
           <Plus className="mr-1.5 h-4 w-4" />
-          {showForm ? "Cancel" : "Admit Patient"}
+          Admit patient
         </Button>
       </div>
 
-      {showForm && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">New Admission</CardTitle>
-            <CardDescription>Patient will be marked as admitted on this visit.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <RecordsField label="Ward *">
-                <Input
-                  value={form.ward}
-                  onChange={(e) => setForm({ ...form, ward: e.target.value })}
-                  placeholder="Male Medical Ward"
-                />
-              </RecordsField>
-              <RecordsField label="Bed">
-                <Input
-                  value={form.bed}
-                  onChange={(e) => setForm({ ...form, bed: e.target.value })}
-                  placeholder="MM-12"
-                  className="font-clinical"
-                />
-              </RecordsField>
-              <RecordsField label="Admitting Reason" className="sm:col-span-3">
-                <Textarea
-                  value={form.reason}
-                  onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                  rows={2}
-                />
-              </RecordsField>
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={handleAdmit} disabled={admitMut.isPending}>
-                {admitMut.isPending ? (
-                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-1.5 h-4 w-4" />
-                )}
-                Confirm Admission
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <FormDialog
+        open={showForm}
+        onOpenChange={(o) => {
+          setShowForm(o);
+          if (!o) setForm(EMPTY_ADMIT);
+        }}
+        size="md"
+        title="Admit this patient"
+        description="The visit is marked as admitted and the ward can see the patient."
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => { setShowForm(false); setForm(EMPTY_ADMIT); }}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleAdmit} disabled={admitMut.isPending || !form.ward.trim()}>
+              {admitMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+              Admit patient
+            </Button>
+          </>
+        }
+      >
+        <FormDialogSection title="Ward and bed">
+          <RecordsField label="Ward" htmlFor="admissions-ward">
+            <Input id="admissions-ward" value={form.ward} onChange={(e) => setForm({ ...form, ward: e.target.value })} placeholder="e.g. Male Medical Ward" />
+          </RecordsField>
+          <RecordsField label="Bed (optional)" htmlFor="admissions-bed">
+            <Input id="admissions-bed" value={form.bed} onChange={(e) => setForm({ ...form, bed: e.target.value })} placeholder="e.g. MM-12" className="font-clinical" />
+          </RecordsField>
+        </FormDialogSection>
+        <FormDialogSection title="Why" columns={1}>
+          <RecordsField label="Reason for admission (optional)" htmlFor="admissions-reason-for-admission">
+            <Textarea id="admissions-reason-for-admission" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} rows={3} />
+          </RecordsField>
+        </FormDialogSection>
+      </FormDialog>
 
-      {admissionsQuery.isLoading ? (
-        <Card className="border-dashed">
-          <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading admissions…
-          </CardContent>
-        </Card>
+      {admissionsQuery.isPending ? (
+        <CardSkeleton />
+      ) : admissionsQuery.isError ? (
+        <ErrorState error={admissionsQuery.error} onRetry={() => void admissionsQuery.refetch()} />
       ) : list.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
@@ -235,7 +223,7 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
       ) : (
         <div className="space-y-3">
           <FolderRecordFeedBanner>
-            Expand an admission for clinical reason, discharge summary, and to complete a discharge when applicable.
+            Open an admission to see why the patient was admitted and the discharge details.
           </FolderRecordFeedBanner>
           {sorted.map((a, idx) => (
             <FolderRecordExpandableRow
@@ -263,7 +251,7 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
               }
               badges={
                 a.status === "DISCHARGED" ? (
-                  <span className="status-pill status-pill-inactive text-xs">
+                  <span className="status-pill status-pill-neutral text-xs">
                     Discharged{a.dischargedAt ? ` · ${formatDateTime(a.dischargedAt)}` : ""}
                   </span>
                 ) : (
@@ -305,93 +293,98 @@ export function FolderAdmissions({ patientUuid, visit }: FolderAdmissionsProps) 
                 {a.status === "DISCHARGED" && (a.dischargeOutcome || a.dischargeIcd11Codes || a.dischargeMedicationSummary || a.followUpPlan) ? (
                   <>
                     {a.dischargeOutcome ? (
-                      <FolderRecordField label="Discharge outcome" value={a.dischargeOutcome} />
+                      <FolderRecordField label="Outcome" value={DISCHARGE_OUTCOME_LABELS[a.dischargeOutcome] ?? a.dischargeOutcome} />
                     ) : null}
                     {a.dischargeIcd11Codes ? (
-                      <FolderRecordField label="ICD-11 (discharge)" value={a.dischargeIcd11Codes} />
+                      <FolderRecordField label="Diagnosis codes" value={a.dischargeIcd11Codes} />
                     ) : null}
                     {a.dischargeMedicationSummary ? (
-                      <FolderRecordField label="Medications on discharge" value={a.dischargeMedicationSummary} />
+                      <FolderRecordField label="Medicines to take home" value={a.dischargeMedicationSummary} />
                     ) : null}
                     {a.followUpPlan ? <FolderRecordField label="Follow-up plan" value={a.followUpPlan} /> : null}
                   </>
                 ) : null}
-                {dischargeForId === a.id && (
-                  <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Complete discharge
-                    </p>
-                    <Textarea
-                      value={dischargeNotes}
-                      onChange={(e) => setDischargeNotes(e.target.value)}
-                      placeholder="Discharge summary — course in hospital, condition at discharge…"
-                      rows={3}
-                    />
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Outcome</Label>
-                      <Select
-                        value={dischargeOutcome || "__none__"}
-                        onValueChange={(v) => setDischargeOutcome(v === "__none__" ? "" : v)}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Outcome" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DISCHARGE_OUTCOME_OPTIONS.map((o) => (
-                            <SelectItem key={o.value || "none"} value={o.value || "__none__"}>
-                              {o.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Input
-                      value={dischargeIcd}
-                      onChange={(e) => setDischargeIcd(e.target.value)}
-                      placeholder="ICD-11 codes (comma-separated)"
-                      className="font-clinical"
-                    />
-                    <Textarea
-                      value={dischargeMeds}
-                      onChange={(e) => setDischargeMeds(e.target.value)}
-                      placeholder="Medications on discharge"
-                      rows={2}
-                    />
-                    <Textarea
-                      value={dischargeFollow}
-                      onChange={(e) => setDischargeFollow(e.target.value)}
-                      placeholder="Follow-up plan"
-                      rows={2}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setDischargeForId(null);
-                          setDischargeNotes("");
-                          setDischargeOutcome("");
-                          setDischargeIcd("");
-                          setDischargeMeds("");
-                          setDischargeFollow("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={() => handleDischarge(a.id)} disabled={dischargeMut.isPending}>
-                        {dischargeMut.isPending ? (
-                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                        ) : null}
-                        Confirm discharge
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </div>
             </FolderRecordExpandableRow>
           ))}
         </div>
       )}
+
+      <FormDialog
+        open={dischargeForId !== null}
+        onOpenChange={(o) => {
+          if (!o) (() => {
+            setDischargeForId(null);
+            setDischargeNotes("");
+            setDischargeOutcome("");
+            setDischargeIcd("");
+            setDischargeMeds("");
+            setDischargeFollow("");
+          })();
+        }}
+        size="lg"
+        title="Discharge patient"
+        description="Write the discharge summary. The bed is freed once the nurse confirms the patient has left."
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => {
+            setDischargeForId(null);
+            setDischargeNotes("");
+            setDischargeOutcome("");
+            setDischargeIcd("");
+            setDischargeMeds("");
+            setDischargeFollow("");
+          }}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => dischargeForId && handleDischarge(dischargeForId)}
+              disabled={dischargeMut.isPending || !dischargeNotes.trim()}
+            >
+              {dischargeMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              Discharge patient
+            </Button>
+          </>
+        }
+      >
+        <FormDialogSection title="Hospital stay" columns={1}>
+          <RecordsField label="Discharge summary" htmlFor="admissions-discharge-summary">
+            <Textarea id="admissions-discharge-summary"               value={dischargeNotes}
+              onChange={(e) => setDischargeNotes(e.target.value)}
+              placeholder="Course in hospital, key tests, condition when leaving…"
+              rows={5}
+            />
+          </RecordsField>
+        </FormDialogSection>
+        <FormDialogSection title="Outcome and diagnoses">
+          <RecordsField label="Outcome (optional)" htmlFor="admissions-outcome">
+            <Select value={dischargeOutcome || "__none__"} onValueChange={(v) => setDischargeOutcome(v === "__none__" ? "" : v)}>
+              <SelectTrigger id="admissions-outcome" className="w-full">
+                <SelectValue placeholder="Outcome" />
+              </SelectTrigger>
+              <SelectContent>
+                {DISCHARGE_OUTCOME_OPTIONS.map((o) => (
+                  <SelectItem key={o.value || "none"} value={o.value || "__none__"}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </RecordsField>
+          <RecordsField label="Diagnosis codes (optional)" htmlFor="admissions-diagnosis-codes">
+            <Input id="admissions-diagnosis-codes" value={dischargeIcd} onChange={(e) => setDischargeIcd(e.target.value)} placeholder="e.g. 1A00, 5A11" className="font-clinical" />
+          </RecordsField>
+        </FormDialogSection>
+        <FormDialogSection title="Going home">
+          <RecordsField label="Medicines to take home (optional)" htmlFor="admissions-medicines-to-take-home">
+            <Textarea id="admissions-medicines-to-take-home" value={dischargeMeds} onChange={(e) => setDischargeMeds(e.target.value)} placeholder="Medicine, dose, how long…" rows={3} />
+          </RecordsField>
+          <RecordsField label="Follow-up plan (optional)" htmlFor="admissions-follow-up-plan">
+            <Textarea id="admissions-follow-up-plan" value={dischargeFollow} onChange={(e) => setDischargeFollow(e.target.value)} placeholder="Clinic review date, warning signs…" rows={3} />
+          </RecordsField>
+        </FormDialogSection>
+      </FormDialog>
     </div>
   );
 }

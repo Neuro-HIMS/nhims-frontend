@@ -11,14 +11,19 @@ import {
   FolderRecordField,
 } from "@/components/clinical/folder/folder-record-expandable";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsField } from "@/components/records/shared/records-field";
+import { ErrorState } from "@/components/common/error-state";
+import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
+import { CardSkeleton } from "@/components/common/skeletons";
+import { StatusPill } from "@/components/common/status-pill";
+import { referralStatus, referralUrgency } from "@/lib/status-labels";
+import { getFriendlyError } from "@/lib/api-errors";
+import { appointmentsService } from "@/services/appointments.service";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
-import type { ApiError } from "@/types/api.types";
 import type {
   CreateReferralPayload,
   ReferralUrgency,
@@ -67,20 +72,23 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
     mutationFn: (payload: CreateReferralPayload) => clinicalService.placeReferral(visit!.id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Referral sent");
+      toast.success("Referral sent.");
       setShowForm(false);
       setForm(EMPTY_REF);
     },
-    onError: (e: unknown) => {
-      const ax = e as { response?: { data?: ApiError } };
-      toast.error(ax.response?.data?.message ?? "Could not send referral");
-    },
+    onError: (e: unknown) => toast.error(getFriendlyError(e).message),
   });
 
   const [showForm, setShowForm] = useState(false);
+  const cliniciansQuery = useQuery({
+    queryKey: queryKeys.appointments.clinicians,
+    queryFn: () => appointmentsService.clinicians(),
+    enabled: showForm,
+    staleTime: 60_000,
+  });
   const [form, setForm] = useState<CreateReferralPayload>(EMPTY_REF);
 
-  const list = refsQuery.data ?? [];
+  const list = useMemo(() => refsQuery.data ?? [], [refsQuery.data]);
   const sorted = useMemo(
     () => [...list].sort((a, b) => (b.referredAt ?? "").localeCompare(a.referredAt ?? "")),
     [list],
@@ -92,7 +100,7 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
       return;
     }
     if (!form.reason.trim()) {
-      toast.error("Reason for referral is required");
+      toast.error("Add a reason for the referral.");
       return;
     }
     placeMut.mutate({
@@ -104,116 +112,119 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
     });
   }
 
+  const close = () => {
+    setShowForm(false);
+    setForm(EMPTY_REF);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-foreground">Internal Referrals</p>
+          <p className="text-sm font-semibold text-foreground">Referrals</p>
           <p className="text-xs text-muted-foreground">
             {list.length} referral{list.length === 1 ? "" : "s"}
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowForm((s) => !s)} disabled={!visit || placeMut.isPending}>
+        <Button size="sm" onClick={() => setShowForm(true)} disabled={!visit || placeMut.isPending}>
           <Plus className="mr-1.5 h-4 w-4" />
-          {showForm ? "Cancel" : "Refer Patient"}
+          Refer patient
         </Button>
       </div>
 
-      {showForm && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">New Internal Referral</CardTitle>
-            <CardDescription>The receiving department will see this patient in their queue.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <RecordsField label="From">
-                <Select
-                  value={form.fromDepartment ?? ""}
-                  onValueChange={(v) => setForm({ ...form, fromDepartment: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["Nurse Station", ...DEPARTMENTS].map((d) => (
-                      <SelectItem key={d} value={d}>
-                        {d}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </RecordsField>
-              <RecordsField label="To *">
-                <Select
-                  value={form.toDepartment}
-                  onValueChange={(v) => setForm({ ...form, toDepartment: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DEPARTMENTS.map((d) => (
-                      <SelectItem key={d} value={d}>
-                        {d}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </RecordsField>
-              <RecordsField label="Urgency">
-                <Select
-                  value={form.urgency ?? "ROUTINE"}
-                  onValueChange={(v: ReferralUrgency) => setForm({ ...form, urgency: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ROUTINE">Routine</SelectItem>
-                    <SelectItem value="URGENT">Urgent</SelectItem>
-                    <SelectItem value="STAT">STAT</SelectItem>
-                  </SelectContent>
-                </Select>
-              </RecordsField>
-            </div>
-            <RecordsField label="Assign to clinician (optional UUID)">
-              <Input
-                className="font-mono text-xs"
-                placeholder="User UUID — appears in assignee inbox"
-                value={form.assignedToUserId ?? ""}
-                onChange={(e) =>
-                  setForm({ ...form, assignedToUserId: e.target.value.trim() || undefined })
-                }
-              />
-            </RecordsField>
-            <RecordsField label="Reason *">
-              <Textarea
-                value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                rows={2}
-              />
-            </RecordsField>
-            <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={placeMut.isPending}>
-                {placeMut.isPending ? (
-                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-1.5 h-4 w-4" />
-                )}
-                Send Referral
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <FormDialog
+        open={showForm}
+        onOpenChange={(o) => (o ? setShowForm(true) : close())}
+        size="md"
+        title="Refer this patient"
+        description="The department you choose will see the patient in their list."
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={close}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleSave} disabled={placeMut.isPending || !form.reason.trim()}>
+              {placeMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+              Send referral
+            </Button>
+          </>
+        }
+      >
+        <FormDialogSection title="Where to">
+          <RecordsField label="From" htmlFor="referrals-from">
+            <Select value={form.fromDepartment ?? ""} onValueChange={(v) => setForm({ ...form, fromDepartment: v })}>
+              <SelectTrigger id="referrals-from" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["Nurse Station", ...DEPARTMENTS].map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d === "Nurse Station" ? "Nurse station" : d}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </RecordsField>
+          <RecordsField label="To" htmlFor="referrals-to">
+            <Select value={form.toDepartment} onValueChange={(v) => setForm({ ...form, toDepartment: v })}>
+              <SelectTrigger id="referrals-to" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DEPARTMENTS.map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </RecordsField>
+          <RecordsField label="How soon" htmlFor="referrals-how-soon">
+            <Select value={form.urgency ?? "ROUTINE"} onValueChange={(v: ReferralUrgency) => setForm({ ...form, urgency: v })}>
+              <SelectTrigger id="referrals-how-soon" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ROUTINE">Routine</SelectItem>
+                <SelectItem value="URGENT">Urgent</SelectItem>
+                <SelectItem value="STAT">Immediately</SelectItem>
+              </SelectContent>
+            </Select>
+          </RecordsField>
+          <RecordsField label="Doctor (optional)" htmlFor="referrals-doctor">
+            <Select
+              value={form.assignedToUserId ?? "__any__"}
+              onValueChange={(v) => setForm({ ...form, assignedToUserId: v === "__any__" ? undefined : v })}
+            >
+              <SelectTrigger id="referrals-doctor" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__any__">Anyone in that department</SelectItem>
+                {(cliniciansQuery.data ?? []).map((c) => (
+                  <SelectItem key={c.userId} value={c.userId}>
+                    {c.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </RecordsField>
+        </FormDialogSection>
+        <FormDialogSection title="Why" columns={1}>
+          <RecordsField label="Reason for referral" htmlFor="referrals-reason-for-referral">
+            <Textarea id="referrals-reason-for-referral"               value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              rows={3}
+              placeholder="What you'd like them to look at, and anything they should know"
+            />
+          </RecordsField>
+        </FormDialogSection>
+      </FormDialog>
 
-      {refsQuery.isLoading ? (
-        <Card className="border-dashed">
-          <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading referrals…
-          </CardContent>
-        </Card>
+      {refsQuery.isPending && visit ? (
+        <CardSkeleton />
+      ) : refsQuery.isError ? (
+        <ErrorState error={refsQuery.error} onRetry={() => void refsQuery.refetch()} />
       ) : list.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
@@ -242,8 +253,8 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
               footerTime={r.referredAt}
               badges={
                 <>
-                  <span className={urgencyClass(r.urgency)}>{r.urgency}</span>
-                  <span className={statusClass(r.status)}>{r.status.toLowerCase()}</span>
+                  <StatusPill tone={referralUrgency(r.urgency).tone}>{referralUrgency(r.urgency).label}</StatusPill>
+                  <StatusPill tone={referralStatus(r.status).tone}>{referralStatus(r.status).label}</StatusPill>
                 </>
               }
             >
@@ -265,14 +276,3 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
   );
 }
 
-function urgencyClass(u: string) {
-  if (u === "STAT") return "status-pill text-xs bg-[hsl(var(--clinical-emergency))] text-white";
-  if (u === "URGENT") return "status-pill text-xs bg-[hsl(var(--clinical-urgent))] text-white";
-  return "status-pill text-xs status-pill-pending";
-}
-
-function statusClass(s: string) {
-  if (s === "ACCEPTED" || s === "COMPLETED") return "status-pill text-xs status-pill-active";
-  if (s === "REJECTED") return "status-pill text-xs status-pill-inactive";
-  return "status-pill text-xs status-pill-pending";
-}

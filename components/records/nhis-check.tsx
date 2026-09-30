@@ -56,6 +56,11 @@ export function NhisCheck({
             className="font-clinical"
             disabled={disabled}
             aria-invalid={invalidFormat}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              if (!disabled && memberNumber.trim() && !checkMutation.isPending) checkMutation.mutate();
+            }}
           />
           {invalidFormat && (
             <p className="text-xs text-destructive">

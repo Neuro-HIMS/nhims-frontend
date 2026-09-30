@@ -147,3 +147,11 @@ Labels, receipts, referral letters and discharge summaries open via the service 
 - Every slice lists acceptance criteria — verify each manually in the running app with a user of that role.
 - Add unit tests for pure helpers (`status-labels`, `api-errors`, sorting of waiting lists, dose/vitals range checks).
 - If Playwright is added, one spec per journey in `e2e/<journey-id>.spec.ts`, logging in as each role in turn.
+
+## Mocked features (backend not ready)
+
+Missing endpoints are mocked behind the service layer (`services/mocks/`, `withMock(area, real, mock)`), switched on with `NEXT_PUBLIC_MOCK_AREAS` in development. **Mocks are always off in production builds**, so the *real* branch of every mocked method must never call an endpoint that doesn't exist:
+
+- If an existing endpoint can do most of the job (e.g. cancel via `PATCH …/status`), the real branch uses it and keeps any extra detail (a reason) on screen only, with a `TODO(backend)` pointing at `backend-gaps.md`.
+- Otherwise the real branch returns an empty/neutral result, and the UI hides or disables the feature with plain words ("Attaching images isn't available yet") — use an `available()` / `…Editable()` helper on the service backed by `isMockEnabled(area)`.
+- Never let a missing endpoint surface as an error toast on every save.

@@ -631,3 +631,31 @@
   }
 
 }
+
+/* ── Print one area only (lib/print.ts → printArea) ────────────────────── */
+.print-root {
+  display: none;
+}
+@media print {
+  body[data-printing] > *:not(.print-root) {
+    display: none !important;
+  }
+  body[data-printing] {
+    background: none;
+  }
+  body[data-printing] .print-root {
+    display: block;
+    padding: 12mm;
+  }
+  body[data-printing] .print-root [data-print-area] {
+    margin: 0;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+  /* Keep the card's navy fill — browsers drop backgrounds when printing by default. */
+  body[data-printing] .print-root,
+  body[data-printing] .print-root * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

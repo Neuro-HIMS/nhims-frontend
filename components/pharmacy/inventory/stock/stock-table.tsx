@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, Package, ScanLine } from "lucide-react";
-
-import { formatDateTime } from "@/components/nurse/lib/nurse-data";
+import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
-import type { StockOverviewRowDto, StockOverviewStatus } from "@/types/pharmacy-inventory.types";
+import { formatClinicalDate } from "@/lib/dates";
+import { hasExpiredStock, stockStatus } from "@/lib/pharmacy";
+import type { StockOverviewRowDto } from "@/types/pharmacy-inventory.types";
 
 interface StockTableProps {
   rows: StockOverviewRowDto[];
@@ -12,102 +12,62 @@ interface StockTableProps {
   onViewLots: (itemId: string) => void;
 }
 
-function statusPill(status: StockOverviewStatus) {
-  switch (status) {
-    case "ADEQUATE":
-      return <span className="status-pill text-xs status-pill-active">Adequate</span>;
-    case "LOW":
-      return (
-        <span className="status-pill text-xs bg-[hsl(var(--clinical-urgent-bg))] text-[hsl(var(--clinical-urgent))]">
-          <AlertTriangle className="mr-1 inline h-3 w-3" />
-          Low stock
-        </span>
-      );
-    case "OUT":
-      return <span className="status-pill text-xs status-pill-inactive">Out of stock</span>;
-    case "EXPIRING_SOON":
-      return (
-        <span className="status-pill text-xs bg-muted text-foreground ring-1 ring-border">
-          <ScanLine className="mr-1 inline h-3 w-3" />
-          Expiring soon
-        </span>
-      );
-    default:
-      return null;
-  }
-}
+const TH = "px-4 py-2.5 text-xs font-medium tracking-wide text-muted-foreground uppercase";
 
 export function StockTable({ rows, onReceive, onViewLots }: StockTableProps) {
   return (
-    <div className="space-y-3">
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Medicine
-              </th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                SKU
-              </th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Form / Strength
-              </th>
-              <th className="px-4 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Total qty
-              </th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Status
-              </th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Nearest expiry
-              </th>
-              <th className="px-4 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
-                  No inventory rows yet — create items and receive stock.
+    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <table className="w-full min-w-[760px] text-sm">
+        <thead>
+          <tr className="border-b border-border bg-surface-subtle text-left">
+            <th className={TH}>Medicine</th>
+            <th className={`${TH} text-right`}>Quantity</th>
+            <th className={`${TH} text-right`}>Reorder at</th>
+            <th className={TH}>Status</th>
+            <th className={TH}>Earliest expiry</th>
+            <th className={TH}>
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r) => {
+            const s = stockStatus(r.stockStatus);
+            const expired = hasExpiredStock(r.nearestExpiry);
+            return (
+              <tr key={r.itemId} className="hover:bg-muted/30">
+                <td className="px-4 py-3">
+                  <p className="font-medium text-foreground">{r.displayName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {[r.dosageForm, r.strength, r.skuCode].filter(Boolean).join(" · ") || "—"}
+                  </p>
+                </td>
+                <td className="px-4 py-3 text-right font-clinical font-medium">{Number(r.totalQuantityOnHand)}</td>
+                <td className="px-4 py-3 text-right font-clinical text-muted-foreground">{Number(r.reorderLevel) || "—"}</td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1">
+                    <StatusPill tone={s.tone}>{s.label}</StatusPill>
+                    {expired && <StatusPill tone="error">Has expired stock</StatusPill>}
+                  </div>
+                </td>
+                <td className={`px-4 py-3 font-clinical ${expired ? "text-destructive" : "text-muted-foreground"}`}>
+                  {r.nearestExpiry ? formatClinicalDate(r.nearestExpiry.slice(0, 10)) : "—"}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex justify-end gap-1">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => onViewLots(r.itemId)} aria-label={`See batches of ${r.displayName}`}>
+                      See batches
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => onReceive(r.itemId)} aria-label={`Receive stock of ${r.displayName}`}>
+                      Receive
+                    </Button>
+                  </div>
                 </td>
               </tr>
-            ) : (
-              rows.map((r) => (
-                <tr key={r.itemId} className="table-row-interactive hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <p className="flex items-center gap-2 font-medium text-foreground">
-                      <Package className="h-4 w-4 text-muted-foreground" />
-                      {r.displayName}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 patient-id">{r.skuCode || "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {[r.dosageForm, r.strength].filter(Boolean).join(" · ") || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right font-clinical font-medium">{Number(r.totalQuantityOnHand)}</td>
-                  <td className="px-4 py-3">{statusPill(r.stockStatus)}</td>
-                  <td className="px-4 py-3 font-clinical text-muted-foreground">
-                    {r.nearestExpiry ? formatDateTime(`${r.nearestExpiry}T00:00:00Z`) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button type="button" size="sm" variant="outline" onClick={() => onReceive(r.itemId)}>
-                        Receive
-                      </Button>
-                      <Button type="button" size="sm" variant="secondary" onClick={() => onViewLots(r.itemId)}>
-                        Lots
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

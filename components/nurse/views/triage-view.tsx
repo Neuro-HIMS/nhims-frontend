@@ -10,25 +10,52 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/common/empty-state";
+import { ErrorState } from "@/components/common/error-state";
 import { InlineNotice } from "@/components/common/inline-notice";
 import { SaveIndicator } from "@/components/common/save-indicator";
+import { FormSkeleton } from "@/components/common/skeletons";
 import { UnitInput } from "@/components/common/unit-input";
 import { PatientBanner } from "@/components/clinical/patient-banner";
 import { getFriendlyError } from "@/lib/api-errors";
 import { queryKeys } from "@/lib/query-keys";
+import { encounterStatusLabel } from "@/lib/status-labels";
+import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui.store";
-import { bmiCategory, flagVital, isDangerFlag, vitalRangeFor, type VitalKey } from "@/lib/vitals-ranges";
+import { ageInYears, bmiCategory, describeRange, flagVital, isDangerFlag, vitalRangeFor, type VitalKey } from "@/lib/vitals-ranges";
 import { appointmentsService } from "@/services/appointments.service";
 import { clinicalService } from "@/services/clinical.service";
 import { patientsService } from "@/services/patients.service";
-import type { RecordVitalsPayload, TriagePriorityCode, VitalsDto } from "@/types/clinical.types";
+import type { EncounterStatus, RecordVitalsPayload, TriagePriorityCode, VitalsDto } from "@/types/clinical.types";
 
-const PRIORITY_CARDS: Array<{ value: TriagePriorityCode; label: string; guide: string; tone: string }> = [
-  { value: "EMERGENCY", label: "Emergency", guide: "Life-threatening, needs care now", tone: "emergency" },
-  { value: "URGENT", label: "Urgent", guide: "Needs care soon", tone: "urgent" },
-  { value: "SEMI_URGENT", label: "Semi-urgent", guide: "Can wait a short while", tone: "semi-urgent" },
-  { value: "ROUTINE", label: "Routine", guide: "Not urgent", tone: "routine" },
+const PRIORITY_CARDS: Array<{ value: TriagePriorityCode; label: string; guide: string }> = [
+  { value: "EMERGENCY", label: "Emergency", guide: "Life-threatening, needs care now" },
+  { value: "URGENT", label: "Urgent", guide: "Needs care soon" },
+  { value: "SEMI_URGENT", label: "Semi-urgent", guide: "Can wait a short while" },
+  { value: "ROUTINE", label: "Routine", guide: "Not urgent" },
 ];
+
+/** Static class names per urgency (Tailwind can't see classes built by string interpolation). */
+const PRIORITY_SELECTED: Record<TriagePriorityCode, { card: string; label: string }> = {
+  EMERGENCY: {
+    card: "border-[hsl(var(--clinical-emergency))] bg-[hsl(var(--clinical-emergency-bg))]",
+    label: "text-[hsl(var(--clinical-emergency))]",
+  },
+  URGENT: {
+    card: "border-[hsl(var(--clinical-urgent))] bg-[hsl(var(--clinical-urgent-bg))]",
+    label: "text-[hsl(var(--clinical-urgent))]",
+  },
+  SEMI_URGENT: {
+    card: "border-[hsl(var(--clinical-semi-urgent))] bg-[hsl(var(--clinical-semi-urgent-bg))]",
+    label: "text-[hsl(var(--clinical-semi-urgent))]",
+  },
+  ROUTINE: {
+    card: "border-[hsl(var(--clinical-routine))] bg-[hsl(var(--clinical-routine-bg))]",
+    label: "text-[hsl(var(--clinical-routine))]",
+  },
+};
+
+/** Stages at which the nurse can still triage and record vitals. */
+const TRIAGE_STAGES: EncounterStatus[] = ["SCHEDULED", "CHECKED_IN", "AT_VITALS"];
 
 type SimpleVitalKey = "temperature" | "pulse" | "respiratoryRate" | "spo2";
 
@@ -36,7 +63,7 @@ const VITAL_FIELDS: Array<{ key: SimpleVitalKey; label: string; unit: string }> 
   { key: "temperature", label: "Temperature", unit: "°C" },
   { key: "pulse", label: "Pulse", unit: "/min" },
   { key: "respiratoryRate", label: "Breathing rate", unit: "/min" },
-  { key: "spo2", label: "SpO₂", unit: "%" },
+  { key: "spo2", label: "Oxygen level (SpO₂)", unit: "%" },
 ];
 
 function numOrNull(s: string): number | null {
@@ -44,17 +71,6 @@ function numOrNull(s: string): number | null {
   if (!t) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
-}
-
-function ageInYears(birthDate: string | null, statedAgeValue: number | null, statedAgeUnit: string | null): number {
-  if (birthDate) {
-    const diff = Date.now() - new Date(birthDate).getTime();
-    if (!Number.isNaN(diff)) return diff / (365.25 * 24 * 60 * 60 * 1000);
-  }
-  if (statedAgeValue != null) {
-    return statedAgeUnit === "months" ? statedAgeValue / 12 : statedAgeValue;
-  }
-  return 30; // Unknown age — assume adult ranges rather than block the form.
 }
 
 export function TriageView() {
@@ -103,9 +119,14 @@ export function TriageView() {
   const [vitalsNotes, setVitalsNotes] = useState("");
   const [clinicianId, setClinicianId] = useState("__any__");
 
+  // What was last written to the server — so saving twice (or retrying after a
+  // partial failure) never creates duplicate triage/vitals records.
+  const [savedTriageKey, setSavedTriageKey] = useState<string | null>(null);
+  const [savedVitalsKey, setSavedVitalsKey] = useState<string | null>(null);
+
   const age = patientQuery.data
     ? ageInYears(patientQuery.data.birthDate, patientQuery.data.statedAgeValue, patientQuery.data.statedAgeUnit)
-    : 30;
+    : null;
 
   const lastVitals: VitalsDto | undefined = useMemo(() => {
     const sorted = [...(lastVitalsQuery.data ?? [])].sort((a, b) => (b.recordedAt ?? "").localeCompare(a.recordedAt ?? ""));
@@ -121,14 +142,14 @@ export function TriageView() {
 
   function fieldMessage(key: VitalKey, raw: string): { warning?: string; danger?: string } {
     const n = numOrNull(raw);
-    if (n === null) return {};
+    if (n === null || age === null) return {};
     const flag = flagVital(key, n, age);
-    const range = vitalRangeFor(key, age);
+    const usual = describeRange(vitalRangeFor(key, age));
     if (isDangerFlag(flag)) {
-      return { danger: `Outside the safe range for this patient (${range.low ?? range.dangerLow}–${range.high ?? range.dangerHigh} ${range.unit}). Tell a doctor now.` };
+      return { danger: `Dangerous for this patient (usual ${usual}). Tell a doctor now.` };
     }
     if (flag === "low" || flag === "high") {
-      return { warning: `Outside the usual range for this patient (${range.low}–${range.high} ${range.unit}).` };
+      return { warning: `Outside the usual range for this patient (${usual}).` };
     }
     return {};
   }
@@ -140,19 +161,10 @@ export function TriageView() {
     return w / (h * h);
   }, [weight, height]);
 
-  const triageMut = useMutation({
-    mutationFn: () =>
-      clinicalService.recordTriage(encounterId!, {
-        priority: priority!,
-        chiefComplaint: chiefComplaint.trim(),
-        reasoning: triageNotes.trim(),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
-      toast.success("Triage saved");
-    },
-    onError: (e) => toast.error(getFriendlyError(e).message),
-  });
+  const triagePayload = priority
+    ? { priority, chiefComplaint: chiefComplaint.trim(), reasoning: triageNotes.trim() }
+    : null;
+  const triageKey = triagePayload ? JSON.stringify(triagePayload) : null;
 
   const vitalsPayload: RecordVitalsPayload = {
     systolicMmHg: numOrNull(systolic),
@@ -166,19 +178,52 @@ export function TriageView() {
     notes: vitalsNotes.trim(),
   };
   const hasAnyVital = Object.values(vitalsPayload).some((v) => v !== null && v !== "");
+  const vitalsKey = hasAnyVital ? JSON.stringify(vitalsPayload) : null;
 
-  const vitalsMut = useMutation({
-    mutationFn: () => clinicalService.recordVitals(encounterId!, vitalsPayload),
+  const hasUnsavedTriage = triageKey !== null && triageKey !== savedTriageKey;
+  const hasUnsavedVitals = vitalsKey !== null && vitalsKey !== savedVitalsKey;
+
+  async function saveTriageIfChanged() {
+    if (!triagePayload || !hasUnsavedTriage) return;
+    await clinicalService.recordTriage(encounterId!, triagePayload);
+    setSavedTriageKey(triageKey);
+  }
+
+  async function saveVitalsIfChanged() {
+    if (!hasUnsavedVitals) return;
+    await clinicalService.recordVitals(encounterId!, vitalsPayload);
+    setSavedVitalsKey(vitalsKey);
+  }
+
+  const saveTriageMut = useMutation({
+    mutationFn: saveTriageIfChanged,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+      toast.success("Triage saved.");
     },
     onError: (e) => toast.error(getFriendlyError(e).message),
   });
 
+  const saveAllMut = useMutation({
+    mutationFn: async () => {
+      setSaveStatus("saving");
+      await saveTriageIfChanged();
+      await saveVitalsIfChanged();
+    },
+    onSuccess: () => {
+      setSaveStatus("saved");
+      qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+    },
+    onError: (e) => {
+      setSaveStatus("error");
+      toast.error(getFriendlyError(e).message);
+    },
+  });
+
   const sendToDoctorMut = useMutation({
     mutationFn: async () => {
-      if (priority) await triageMut.mutateAsync();
-      if (hasAnyVital) await vitalsMut.mutateAsync();
+      await saveTriageIfChanged();
+      await saveVitalsIfChanged();
       const clinician = cliniciansQuery.data?.find((c) => c.userId === clinicianId);
       if (clinician) {
         await clinicalService.assignClinician(encounterId!, { clinicianUserId: clinician.userId, clinicianName: clinician.fullName });
@@ -188,13 +233,14 @@ export function TriageView() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
       qc.invalidateQueries({ queryKey: queryKeys.opd.queue });
-      toast.success("Vitals saved", {
-        description: `${encounterQuery.data?.patientName ?? "The patient"} is now waiting for the doctor.`,
-      });
+      const name = encounterQuery.data?.patientName ?? "The patient";
+      toast.success(hasAnyVital ? `Vitals saved. ${name} is now waiting for the doctor.` : `${name} has been sent to the doctor.`);
       router.push("/nurse?view=visits");
     },
     onError: (e) => toast.error(getFriendlyError(e).message),
   });
+
+  const busy = saveTriageMut.isPending || saveAllMut.isPending || sendToDoctorMut.isPending;
 
   const requiredVitalsPresent = numOrNull(systolic) !== null && numOrNull(diastolic) !== null && numOrNull(temperature) !== null && numOrNull(pulse) !== null;
   const missingItems: string[] = [];
@@ -203,17 +249,6 @@ export function TriageView() {
   if (numOrNull(temperature) === null) missingItems.push("Enter temperature");
   if (numOrNull(pulse) === null) missingItems.push("Enter pulse");
   const canSendToDoctor = priority !== null && requiredVitalsPresent;
-
-  async function handleSaveAndStay() {
-    setSaveStatus("saving");
-    try {
-      if (priority) await triageMut.mutateAsync();
-      if (hasAnyVital) await vitalsMut.mutateAsync();
-      setSaveStatus("saved");
-    } catch {
-      setSaveStatus("error");
-    }
-  }
 
   if (!encounterId || !patientId) {
     return (
@@ -226,12 +261,52 @@ export function TriageView() {
     );
   }
 
+  const backButton = (
+    <Button variant="ghost" size="sm" onClick={() => router.push("/nurse?view=visits")}>
+      <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to today&apos;s patients
+    </Button>
+  );
+
+  if (encounterQuery.isPending) {
+    return (
+      <div className="space-y-4">
+        {backButton}
+        <FormSkeleton fields={6} />
+      </div>
+    );
+  }
+  if (encounterQuery.isError) {
+    return (
+      <div className="space-y-4">
+        {backButton}
+        <ErrorState error={encounterQuery.error} onRetry={() => void encounterQuery.refetch()} />
+      </div>
+    );
+  }
+
+  const encounter = encounterQuery.data;
+  if (!TRIAGE_STAGES.includes(encounter.status)) {
+    return (
+      <div className="space-y-4">
+        {backButton}
+        <PatientBanner patientId={patientId} encounterId={encounterId} />
+        <InlineNotice tone="info" title="Triage is already done for this visit.">
+          {encounter.patientName} is now at this stage: {encounterStatusLabel(encounter.status).toLowerCase()}. Open their folder to see
+          what was recorded.
+          <div className="mt-2">
+            <Button size="sm" variant="outline" onClick={() => router.push(`/nurse?view=folder&patientId=${patientId}&visitId=${encounterId}`)}>
+              Open patient folder
+            </Button>
+          </div>
+        </InlineNotice>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={() => router.push("/nurse?view=visits")}>
-          <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to today&apos;s patients
-        </Button>
+        {backButton}
         <SaveIndicator />
       </div>
 
@@ -241,8 +316,9 @@ export function TriageView() {
         <p className="mb-3 text-sm font-semibold text-foreground">Triage</p>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Main complaint</label>
+            <label htmlFor="triage-complaint" className="text-sm font-medium text-foreground">Main complaint</label>
             <Textarea
+              id="triage-complaint"
               value={chiefComplaint}
               onChange={(e) => setChiefComplaint(e.target.value)}
               placeholder="e.g. Fever for 3 days"
@@ -251,25 +327,27 @@ export function TriageView() {
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium text-foreground">Urgency</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {PRIORITY_CARDS.map((p) => (
-                <button
-                  key={p.value}
-                  type="button"
-                  onClick={() => setPriority(p.value)}
-                  className={`rounded-lg border-2 px-4 py-3 text-left transition-colors ${
-                    priority === p.value
-                      ? `border-[hsl(var(--clinical-${p.tone}))] bg-[hsl(var(--clinical-${p.tone}-bg))]`
-                      : "border-border bg-card hover:bg-muted/40"
-                  }`}
-                >
-                  <p className={`font-semibold ${priority === p.value ? `text-[hsl(var(--clinical-${p.tone}))]` : "text-foreground"}`}>
-                    {p.label}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{p.guide}</p>
-                </button>
-              ))}
+            <p id="triage-urgency" className="text-sm font-medium text-foreground">Urgency</p>
+            <div role="radiogroup" aria-labelledby="triage-urgency" className="grid gap-2 sm:grid-cols-2">
+              {PRIORITY_CARDS.map((p) => {
+                const selected = priority === p.value;
+                return (
+                  <button
+                    key={p.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setPriority(p.value)}
+                    className={cn(
+                      "rounded-lg border-2 px-4 py-3 text-left transition-colors",
+                      selected ? PRIORITY_SELECTED[p.value].card : "border-border bg-card hover:bg-muted/40",
+                    )}
+                  >
+                    <p className={cn("font-semibold", selected ? PRIORITY_SELECTED[p.value].label : "text-foreground")}>{p.label}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{p.guide}</p>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -277,12 +355,7 @@ export function TriageView() {
             <InlineNotice tone="error" title="Tell a doctor now.">
               This patient needs immediate attention.
               <div className="mt-2">
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={sendToDoctorMut.isPending}
-                  onClick={() => sendToDoctorMut.mutate()}
-                >
+                <Button size="sm" variant="destructive" disabled={busy} onClick={() => sendToDoctorMut.mutate()}>
                   Send straight to doctor
                 </Button>
               </div>
@@ -290,13 +363,13 @@ export function TriageView() {
           )}
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Notes (optional)</label>
-            <Textarea value={triageNotes} onChange={(e) => setTriageNotes(e.target.value)} rows={2} />
+            <label htmlFor="triage-notes" className="text-sm font-medium text-foreground">Notes (optional)</label>
+            <Textarea id="triage-notes" value={triageNotes} onChange={(e) => setTriageNotes(e.target.value)} rows={2} />
           </div>
 
           <div className="flex justify-end">
-            <Button variant="outline" disabled={!priority || triageMut.isPending} onClick={() => triageMut.mutate()}>
-              {triageMut.isPending ? "Saving…" : "Save and record vitals"}
+            <Button variant="outline" disabled={!priority || !hasUnsavedTriage || busy} onClick={() => saveTriageMut.mutate()}>
+              {saveTriageMut.isPending ? "Saving…" : "Save and record vitals"}
             </Button>
           </div>
         </div>
@@ -304,19 +377,25 @@ export function TriageView() {
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
         <p className="mb-3 text-sm font-semibold text-foreground">Vitals</p>
+        {age === null && !patientQuery.isPending && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            This patient&apos;s age isn&apos;t recorded, so values can&apos;t be checked against a usual range.
+          </p>
+        )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-1">
-            <label className="text-sm font-medium text-foreground">Blood pressure</label>
+            <label htmlFor="vital-systolic" className="text-sm font-medium text-foreground">Blood pressure</label>
             <div className="flex items-center gap-2">
-              <UnitInput value={systolic} onChange={setSystolic} className="flex-1" />
+              <UnitInput id="vital-systolic" value={systolic} onChange={setSystolic} className="flex-1" />
               <span className="text-muted-foreground">/</span>
-              <UnitInput value={diastolic} onChange={setDiastolic} unit="mmHg" className="flex-1" />
+              <UnitInput id="vital-diastolic" value={diastolic} onChange={setDiastolic} unit="mmHg" className="flex-1" />
             </div>
             {(() => {
               const sMsg = fieldMessage("systolic", systolic);
               const dMsg = fieldMessage("diastolic", diastolic);
-              const msg = sMsg.danger || dMsg.danger || sMsg.warning || dMsg.warning;
-              return msg ? <p className={`text-xs ${sMsg.danger || dMsg.danger ? "text-destructive" : "text-warning"}`}>{msg}</p> : null;
+              const danger = sMsg.danger || dMsg.danger;
+              const msg = danger || sMsg.warning || dMsg.warning;
+              return msg ? <p className={cn("text-xs", danger ? "font-medium text-destructive" : "text-warning")}>{msg}</p> : null;
             })()}
             {lastVitals && (
               <p className="text-xs text-muted-foreground">
@@ -337,12 +416,14 @@ export function TriageView() {
               : null;
             return (
               <div key={f.key} className="space-y-1">
-                <label className="text-sm font-medium text-foreground">{f.label}</label>
+                <label htmlFor={`vital-${f.key}`} className="text-sm font-medium text-foreground">{f.label}</label>
                 <UnitInput
+                  id={`vital-${f.key}`}
                   value={value}
                   onChange={setValue}
                   unit={f.unit}
-                  warning={msg.danger ?? msg.warning}
+                  danger={msg.danger}
+                  warning={msg.warning}
                   hint={lastValueHint(lastValue, lastVitals?.recordedAt)}
                 />
               </div>
@@ -350,15 +431,15 @@ export function TriageView() {
           })}
 
           <div className="space-y-1">
-            <label className="text-sm font-medium text-foreground">Weight</label>
-            <UnitInput value={weight} onChange={setWeight} unit="kg" hint={lastValueHint(lastVitals?.weightKg, lastVitals?.recordedAt)} />
+            <label htmlFor="vital-weight" className="text-sm font-medium text-foreground">Weight</label>
+            <UnitInput id="vital-weight" value={weight} onChange={setWeight} unit="kg" hint={lastValueHint(lastVitals?.weightKg, lastVitals?.recordedAt)} />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-foreground">Height</label>
-            <UnitInput value={height} onChange={setHeight} unit="cm" hint={lastValueHint(lastVitals?.heightCm, lastVitals?.recordedAt)} />
+            <label htmlFor="vital-height" className="text-sm font-medium text-foreground">Height</label>
+            <UnitInput id="vital-height" value={height} onChange={setHeight} unit="cm" hint={lastValueHint(lastVitals?.heightCm, lastVitals?.recordedAt)} />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-foreground">BMI (auto)</label>
+            <p className="text-sm font-medium text-foreground">BMI (worked out for you)</p>
             <div className="rounded-md border border-input bg-muted/30 px-3 py-2 text-sm font-clinical">
               {bmi ? `${bmi.toFixed(1)} · ${bmiCategory(bmi)}` : "—"}
             </div>
@@ -366,17 +447,17 @@ export function TriageView() {
         </div>
 
         <div className="mt-4 space-y-1.5">
-          <label className="text-sm font-medium text-foreground">Nursing observations (optional)</label>
-          <Textarea value={vitalsNotes} onChange={(e) => setVitalsNotes(e.target.value)} rows={2} />
+          <label htmlFor="vital-notes" className="text-sm font-medium text-foreground">Nursing observations (optional)</label>
+          <Textarea id="vital-notes" value={vitalsNotes} onChange={(e) => setVitalsNotes(e.target.value)} rows={2} />
         </div>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="max-w-sm space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Doctor (optional)</label>
+            <label htmlFor="triage-doctor" className="text-sm font-medium text-foreground">Doctor (optional)</label>
             <Select value={clinicianId} onValueChange={setClinicianId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="triage-doctor"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__any__">Any available doctor</SelectItem>
                 {(cliniciansQuery.data ?? []).map((c) => (
@@ -391,10 +472,14 @@ export function TriageView() {
               <p className="text-xs text-muted-foreground">Things to finish first: {missingItems.join(", ")}</p>
             )}
             <div className="flex gap-2">
-              <Button variant="outline" disabled={sendToDoctorMut.isPending} onClick={() => void handleSaveAndStay()}>
+              <Button
+                variant="outline"
+                disabled={busy || (!hasUnsavedTriage && !hasUnsavedVitals)}
+                onClick={() => saveAllMut.mutate()}
+              >
                 <Save className="mr-1.5 h-4 w-4" /> Save and stay
               </Button>
-              <Button disabled={!canSendToDoctor || sendToDoctorMut.isPending} onClick={() => sendToDoctorMut.mutate()}>
+              <Button disabled={!canSendToDoctor || busy} onClick={() => sendToDoctorMut.mutate()}>
                 <Send className="mr-1.5 h-4 w-4" /> {sendToDoctorMut.isPending ? "Sending…" : "Send to doctor"}
               </Button>
             </div>

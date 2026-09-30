@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, MessageSquare } from "lucide-react";
 
 import { NAV_GROUP_LABELS, NAV_GROUP_ORDER, NAV_ITEMS, type NavGroup } from "@/config/navigation";
+import { isHiddenPlaceholder } from "@/config/placeholder-sections";
 import { canAccessWorkspaceModule } from "@/lib/access-control";
 import { useAuth } from "@/hooks/auth/use-auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
@@ -20,13 +21,19 @@ import { FeedbackDialog } from "@/components/layouts/feedback-dialog";
 
 interface AppSidebarProps {
   user: AuthUser;
+  /** "rail" = the fixed desktop sidebar (collapsible); "drawer" = the slide-out menu on small screens. */
+  variant?: "rail" | "drawer";
+  /** Drawer only: close the menu after the user picks a page. */
+  onNavigate?: () => void;
 }
 
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user, variant = "rail", onNavigate }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout } = useAuth();
-  const [collapsed, setCollapsed] = useSidebarCollapsed();
+  const isDrawer = variant === "drawer";
+  const [storedCollapsed, setCollapsed] = useSidebarCollapsed();
+  const collapsed = !isDrawer && storedCollapsed;
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   function toggleCollapsed() {
@@ -38,7 +45,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
     router.replace("/login");
   }
 
-  const accessibleItems = NAV_ITEMS.filter((item) => canAccessWorkspaceModule(user, item.module));
+  const accessibleItems = NAV_ITEMS.filter(
+    (item) => canAccessWorkspaceModule(user, item.module) && !isHiddenPlaceholder(item.module),
+  );
   const groups = NAV_GROUP_ORDER.map((group) => ({
     group,
     items: accessibleItems.filter((item) => item.group === group),
@@ -48,7 +57,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
     <aside
       className={cn(
         "sidebar-shell flex h-full shrink-0 flex-col border-r transition-[width] duration-150",
-        collapsed ? "w-16" : "w-60"
+        isDrawer ? "w-full" : collapsed ? "w-16" : "w-60"
       )}
       aria-label="Main menu"
     >
@@ -72,7 +81,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 <p className="sidebar-role-label text-[10px] font-semibold tracking-wider uppercase">
                   {NAV_GROUP_LABELS[group as NavGroup]}
                 </p>
-                {groupIndex === 0 && (
+                {groupIndex === 0 && !isDrawer && (
                   <button
                     type="button"
                     onClick={toggleCollapsed}
@@ -93,6 +102,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     href={item.href}
                     className={cn("sidebar-item", isActive && "active")}
                     aria-current={isActive ? "page" : undefined}
+                    onClick={onNavigate}
                   >
                     <Icon
                       className={cn("h-4 w-4 shrink-0", isActive ? "sidebar-icon-active" : "sidebar-icon-muted")}

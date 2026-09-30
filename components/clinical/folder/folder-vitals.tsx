@@ -16,7 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RecordsField } from "@/components/records/shared/records-field";
-import { calculateBmi, formatDateTime } from "@/components/nurse/lib/nurse-data";
+import { calculateBmi } from "@/components/nurse/lib/nurse-data";
 import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import type { Visit } from "@/lib/clinical-types";

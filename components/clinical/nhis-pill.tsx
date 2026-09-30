@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type NhisStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED" | "UNKNOWN" | "PENDING";
+export type NhisStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED" | "UNKNOWN" | "PENDING" | "NONE";
 
 const LABELS: Record<NhisStatus, string> = {
   ACTIVE: "NHIS active",
@@ -8,6 +8,7 @@ const LABELS: Record<NhisStatus, string> = {
   SUSPENDED: "NHIS suspended",
   UNKNOWN: "NHIS not confirmed yet",
   PENDING: "NHIS not confirmed yet",
+  NONE: "No NHIS",
 };
 
 const TONE_CLASS: Record<NhisStatus, string> = {
@@ -16,6 +17,7 @@ const TONE_CLASS: Record<NhisStatus, string> = {
   SUSPENDED: "status-pill-error",
   UNKNOWN: "status-pill-pending",
   PENDING: "status-pill-pending",
+  NONE: "status-pill-neutral",
 };
 
 /** NHIS membership pill — same three outcomes everywhere a patient's cover is shown. */

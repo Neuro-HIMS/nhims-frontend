@@ -61,7 +61,7 @@ export function PatientResultCard({
         </div>
       </div>
       <div className="flex flex-col items-end gap-2 self-start">
-        <NhisPill status={nhisActive ? "ACTIVE" : "INACTIVE"} />
+        <NhisPill status={nhisActive ? "ACTIVE" : patient.nhisCard?.trim() ? "INACTIVE" : "NONE"} />
         {rightSlot}
         {showBookButton && (
           <Button

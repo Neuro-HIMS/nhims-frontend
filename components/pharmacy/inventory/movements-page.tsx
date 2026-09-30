@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { movementLabel } from "@/lib/pharmacy";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
@@ -41,7 +42,7 @@ export function MovementsPage() {
       (m) =>
         m.itemDisplayName.toLowerCase().includes(q) ||
         (m.batchNo ?? "").toLowerCase().includes(q) ||
-        m.movementType.toLowerCase().includes(q) ||
+        movementLabel(m.movementType).toLowerCase().includes(q) ||
         (m.referenceNote ?? "").toLowerCase().includes(q),
     );
   }, [movementsQuery.data, needle]);
@@ -49,19 +50,19 @@ export function MovementsPage() {
   return (
     <div className="space-y-6">
       <InventoryPageHeader
-        title="Stock movements"
-        description="Audit trail of receipts and adjustments. Dispense movements will appear here when dispensing is wired to inventory."
+        title="Movements"
+        description="Every delivery, adjustment and medicine given, newest first."
       />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
         <div className="space-y-1.5 sm:w-64">
-          <Label>Filter by item</Label>
+          <Label>Medicine</Label>
           <Select value={itemFilter} onValueChange={setItemFilter}>
             <SelectTrigger>
-              <SelectValue placeholder="All items" />
+              <SelectValue placeholder="All medicines" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all__">All items</SelectItem>
+              <SelectItem value="__all__">All medicines</SelectItem>
               {(itemsQuery.data ?? []).map((it) => (
                 <SelectItem key={it.id} value={it.id}>
                   {it.displayName}
@@ -76,7 +77,7 @@ export function MovementsPage() {
             id="mov-q"
             value={needle}
             onChange={(e) => setNeedle(e.target.value)}
-            placeholder="Item, batch, type, note…"
+            placeholder="Medicine, batch or note"
             className="font-clinical"
           />
         </div>
@@ -130,7 +131,7 @@ export function MovementsPage() {
                     <td className="px-4 py-3 font-medium text-foreground">{m.itemDisplayName}</td>
                     <td className="px-4 py-3 patient-id">{m.batchNo || "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {m.movementType.replace(/_/g, " ").toLowerCase()}
+                      {movementLabel(m.movementType)}
                     </td>
                     <td className="px-4 py-3 text-right font-clinical font-medium">{Number(m.quantityDelta)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{m.createdByName || "—"}</td>

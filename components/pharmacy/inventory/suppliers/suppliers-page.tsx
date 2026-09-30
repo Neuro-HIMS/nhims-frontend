@@ -94,7 +94,7 @@ export function SuppliersPage() {
     mutationFn: pharmacyInventoryService.createSupplier,
     onSuccess: async () => {
       await invalidate();
-      toast.success("Supplier added");
+      toast.success("Supplier added.");
     },
     onError: (e: unknown) => {
       const ax = e as { response?: { data?: ApiError } };
@@ -112,7 +112,7 @@ export function SuppliersPage() {
     }) => pharmacyInventoryService.updateSupplier(id, payload),
     onSuccess: async () => {
       await invalidate();
-      toast.success("Supplier updated");
+      toast.success("Supplier updated.");
     },
     onError: (e: unknown) => {
       const ax = e as { response?: { data?: ApiError } };
@@ -124,7 +124,7 @@ export function SuppliersPage() {
     mutationFn: pharmacyInventoryService.deactivateSupplier,
     onSuccess: async () => {
       await invalidate();
-      toast.success("Supplier deactivated");
+      toast.success("Supplier switched off.");
     },
     onError: (e: unknown) => {
       const ax = e as { response?: { data?: ApiError } };
@@ -138,7 +138,7 @@ export function SuppliersPage() {
     <div className="space-y-4">
       <InventoryPageHeader
         title="Suppliers"
-        description="Manage distributors and manufacturers linked to pharmacy receipts. Filters mirror warehouse dashboards — refine large supplier lists without losing context."
+        description="Companies the pharmacy buys from. They are shown on stock deliveries."
         onAdd={openCreate}
         addLabel="Add Supplier"
       />

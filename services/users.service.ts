@@ -1,4 +1,5 @@
 import { apiClient } from "./api-client";
+import { resolveLegacyFacilityId } from "./facility.service";
 import { normalizeModuleKey, normalizeModuleKeys, toBackendModuleKey } from "@/lib/module-keys";
 import type { ApiResponse } from "@/types/api.types";
 import type { AppModule, UserRole } from "@/types/auth.types";
@@ -25,8 +26,20 @@ export const usersService = {
       ...payload,
       assignedModules: payload.assignedModules?.map(toBackendModuleKey),
     };
-    const response = await apiClient.post<ApiResponse<UserListItem>>("/users", body);
-    return normalizeUserListItem(response.data.data);
+    try {
+      const response = await apiClient.post<ApiResponse<UserListItem>>("/users", body);
+      return normalizeUserListItem(response.data.data);
+    } catch (err) {
+      // LEGACY(single-facility): a system administrator creating staff must still send the facility id
+      // (backend: "facilityId is required for Super Admin user creation"). Retry once with it —
+      // remove when the backend assigns the server's facility itself (backend-gaps.md#STAGE0-02).
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "";
+      if (!/facilityId is required/i.test(message)) throw err;
+      const facilityId = await resolveLegacyFacilityId();
+      if (!facilityId) throw err;
+      const response = await apiClient.post<ApiResponse<UserListItem>>("/users", { ...body, facilityId });
+      return normalizeUserListItem(response.data.data);
+    }
   },
 
   async updateStatus(userId: string, active: boolean): Promise<UserListItem> {

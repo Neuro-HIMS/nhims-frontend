@@ -23,14 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { billingService } from "@/services/billing.service";
 import { ChargeBuilder, type DraftCharge } from "@/components/billing/views/charge-builder";
@@ -428,160 +421,127 @@ export function BillDetailView({ billId }: { billId: string }) {
       </div>
 
       {/* Add charges dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Add charges to {bill.billNumber}</DialogTitle>
-            <DialogDescription>
-              Append additional services rendered to this bill — labs, medications, imaging, supplies, etc.
-            </DialogDescription>
-          </DialogHeader>
-          <ChargeBuilder charges={draftCharges} onChange={setDraftCharges} defaultPayer={bill.primaryPayer} />
-          <DialogFooter>
+      <FormDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        size="xl"
+        title={`Add charges to bill ${bill.billNumber}`}
+        description="Add services given on this visit, such as tests, medicines, scans or supplies."
+        footer={
+          <>
             <Button variant="outline" onClick={() => { setDraftCharges([]); setAddOpen(false); }}>Cancel</Button>
             <Button onClick={() => addCharges.mutate()} disabled={draftCharges.length === 0 || addCharges.isPending}>
               {addCharges.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />}
               Add {draftCharges.length || ""} charge{draftCharges.length === 1 ? "" : "s"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <ChargeBuilder charges={draftCharges} onChange={setDraftCharges} defaultPayer={bill.primaryPayer} />
+      </FormDialog>
 
       {/* Discount dialog */}
-      <Dialog open={discountOpen} onOpenChange={setDiscountOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Apply bill-level discount</DialogTitle>
-            <DialogDescription>Discount applies to the bill total before NHIS / payments.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Discount amount (GH₵)</Label>
-              <Input
-                value={discountAmount}
-                onChange={(e) => setDiscountAmount(e.target.value)}
-                placeholder="0.00"
-                className="font-clinical"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Reason</Label>
-              <Textarea
-                rows={2}
-                value={discountReason}
-                onChange={(e) => setDiscountReason(e.target.value)}
-                placeholder="e.g. compassionate waiver, staff family"
-              />
-            </div>
-          </div>
-          <DialogFooter>
+      <FormDialog
+        open={discountOpen}
+        onOpenChange={setDiscountOpen}
+        size="md"
+        title="Give a discount on this bill"
+        description="Taken off the bill total before NHIS and payments."
+        footer={
+          <>
             <Button variant="outline" onClick={() => setDiscountOpen(false)}>Cancel</Button>
             <Button onClick={() => applyDiscount.mutate()} disabled={applyDiscount.isPending}>
               {applyDiscount.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Percent className="mr-1.5 h-4 w-4" />}
               Apply discount
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <FormDialogSection>
+          <div className="space-y-1.5">
+            <Label htmlFor="discount-amount">Discount amount (GH₵)</Label>
+            <Input id="discount-amount" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} placeholder="0.00" className="font-clinical" />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="discount-reason">Reason</Label>
+            <Textarea id="discount-reason" rows={2} value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} placeholder="e.g. Hardship waiver, staff family" />
+          </div>
+        </FormDialogSection>
+      </FormDialog>
 
       {/* Payment dialog */}
-      <Dialog open={payOpen} onOpenChange={setPayOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Record payment</DialogTitle>
-            <DialogDescription>
-              Outstanding balance: <span className="font-clinical font-semibold">GH₵ {minorToGhs(bill.balanceMinor)}</span>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Method</Label>
-                <Select value={payMethod} onValueChange={(v) => setPayMethod(v as PaymentMethod)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(METHOD_LABEL).map(([v, label]) => (
-                      <SelectItem key={v} value={v}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Amount (GH₵)</Label>
-                <Input
-                  value={payAmount}
-                  onChange={(e) => setPayAmount(e.target.value)}
-                  placeholder={(bill.balanceMinor / 100).toFixed(2)}
-                  className="font-clinical"
-                />
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:underline"
-                  onClick={() => setPayAmount((bill.balanceMinor / 100).toFixed(2))}
-                >
-                  Pay full balance
-                </button>
-              </div>
-            </div>
-
-            {MOMO_METHODS.has(payMethod) && (
-              <div className="grid gap-3 sm:grid-cols-2 rounded-md border border-border bg-muted/30 p-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">MoMo MSISDN</Label>
-                  <Input
-                    value={momoMsisdn}
-                    onChange={(e) => setMomoMsisdn(e.target.value)}
-                    placeholder="0244..."
-                    className="font-clinical"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Transaction ID</Label>
-                  <Input
-                    value={momoTxn}
-                    onChange={(e) => setMomoTxn(e.target.value)}
-                    placeholder="MoMo Txn ref"
-                    className="font-clinical"
-                  />
-                </div>
-              </div>
-            )}
-
-            {BANK_METHODS.has(payMethod) && (
-              <div className="space-y-1 rounded-md border border-border bg-muted/30 p-3">
-                <Label className="text-xs">Bank reference / cheque number</Label>
-                <Input
-                  value={bankRef}
-                  onChange={(e) => setBankRef(e.target.value)}
-                  className="font-clinical"
-                />
-              </div>
-            )}
-
-            <div className="space-y-1">
-              <Label className="text-xs">Payer label (optional)</Label>
-              <Input
-                value={payerLabel}
-                onChange={(e) => setPayerLabel(e.target.value)}
-                placeholder="e.g. paid by relative, NHIS scheme name"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Notes (optional)</Label>
-              <Textarea rows={2} value={payNotes} onChange={(e) => setPayNotes(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
+      <FormDialog
+        open={payOpen}
+        onOpenChange={setPayOpen}
+        size="lg"
+        title="Take payment"
+        description={<>Still to pay: <span className="font-clinical font-semibold">GH₵ {minorToGhs(bill.balanceMinor)}</span></>}
+        footer={
+          <>
             <Button variant="outline" onClick={() => setPayOpen(false)}>Cancel</Button>
             <Button onClick={() => recordPayment.mutate()} disabled={recordPayment.isPending}>
               {recordPayment.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CreditCard className="mr-1.5 h-4 w-4" />}
-              Record payment
+              Take payment
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <FormDialogSection title="Payment">
+          <div className="space-y-1.5">
+            <Label htmlFor="pay-method">How they&apos;re paying</Label>
+            <Select value={payMethod} onValueChange={(v) => setPayMethod(v as PaymentMethod)}>
+              <SelectTrigger id="pay-method" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(METHOD_LABEL).map(([v, label]) => (
+                  <SelectItem key={v} value={v}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="pay-amount">Amount (GH₵)</Label>
+            <Input id="pay-amount" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder={(bill.balanceMinor / 100).toFixed(2)} className="font-clinical" />
+            <button type="button" className="text-xs text-accent hover:underline" onClick={() => setPayAmount((bill.balanceMinor / 100).toFixed(2))}>
+              Pay the full amount
+            </button>
+          </div>
+        </FormDialogSection>
+
+        {MOMO_METHODS.has(payMethod) && (
+          <FormDialogSection title="Mobile money">
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-momo">Mobile money number</Label>
+              <Input id="pay-momo" value={momoMsisdn} onChange={(e) => setMomoMsisdn(e.target.value)} placeholder="e.g. 024 123 4567" className="font-clinical" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-momo-ref">Transaction reference</Label>
+              <Input id="pay-momo-ref" value={momoTxn} onChange={(e) => setMomoTxn(e.target.value)} className="font-clinical" />
+            </div>
+          </FormDialogSection>
+        )}
+
+        {BANK_METHODS.has(payMethod) && (
+          <FormDialogSection title="Bank">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="pay-bank">Bank reference or cheque number</Label>
+              <Input id="pay-bank" value={bankRef} onChange={(e) => setBankRef(e.target.value)} className="font-clinical" />
+            </div>
+          </FormDialogSection>
+        )}
+
+        <FormDialogSection title="More details">
+          <div className="space-y-1.5">
+            <Label htmlFor="pay-payer">Paid by (optional)</Label>
+            <Input id="pay-payer" value={payerLabel} onChange={(e) => setPayerLabel(e.target.value)} placeholder="e.g. Paid by a relative" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="pay-notes">Notes (optional)</Label>
+            <Textarea id="pay-notes" rows={2} value={payNotes} onChange={(e) => setPayNotes(e.target.value)} />
+          </div>
+        </FormDialogSection>
+      </FormDialog>
 
       <ConfirmDialog
         open={cancelBillOpen}

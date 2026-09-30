@@ -28,6 +28,7 @@ import { calculateAgeFromDob } from "@/components/records/lib/records-utils";
 import { NhisCheck } from "@/components/records/nhis-check";
 import { StartVisitDialog } from "@/components/records/start-visit-dialog";
 import { HospitalPatientCard } from "@/components/records/views/hospital-patient-card";
+import { printArea } from "@/lib/print";
 import { PatientResultCard } from "@/components/records/views/patient-result-card";
 import { getFriendlyError } from "@/lib/api-errors";
 import { patientDtoToLegacyPatient, patientSummaryToLegacyPatient } from "@/lib/patient-mapper";
@@ -270,7 +271,7 @@ export function RegistrationView() {
               variant: "default",
               onClick: () => setVisitPatient(patientDtoToLegacyPatient(registeredDto)),
             },
-            { label: "Print patient card", variant: "outline", onClick: () => window.print() },
+            { label: "Print patient card", variant: "outline", onClick: () => printArea("hospital-card") },
             {
               label: "Book an appointment",
               variant: "outline",

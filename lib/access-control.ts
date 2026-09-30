@@ -1,4 +1,5 @@
 import { NAV_ITEMS } from "@/config/navigation";
+import { isHiddenPlaceholder } from "@/config/placeholder-sections";
 import { FACILITY_SERVICE_TO_APP_MODULE } from "@/config/facility-service-modules";
 import type { AppModule, AuthUser, UserRole } from "@/types/auth.types";
 
@@ -57,7 +58,7 @@ const ROLE_ACCESS_BY_MODULE: Record<AppModule, UserRole[]> = NAV_ITEMS.reduce(
 );
 
 export function getLandingPathForUser(user: AuthUser): string {
-  const firstAssigned = user.assignedModules.find((m) => MODULE_PATHS[m] !== undefined);
+  const firstAssigned = user.assignedModules.find((m) => MODULE_PATHS[m] !== undefined && !isHiddenPlaceholder(m));
   if (firstAssigned) {
     return MODULE_PATHS[firstAssigned];
   }

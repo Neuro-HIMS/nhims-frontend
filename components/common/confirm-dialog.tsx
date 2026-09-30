@@ -23,6 +23,8 @@ export interface ConfirmDialogProps {
   confirmLabel: string;
   destructive?: boolean;
   pending?: boolean;
+  /** Keep the confirm button disabled (e.g. until a required reason is chosen). */
+  confirmDisabled?: boolean;
   /** Fields between description and actions (e.g. cancellation reason). */
   footerExtra?: React.ReactNode;
   onConfirm: () => void | Promise<void>;
@@ -37,6 +39,7 @@ export function ConfirmDialog({
   confirmLabel,
   destructive,
   pending,
+  confirmDisabled = false,
   footerExtra,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -62,7 +65,7 @@ export function ConfirmDialog({
           <Button
             type="button"
             variant={destructive ? "destructive" : "default"}
-            disabled={pending}
+            disabled={pending || confirmDisabled}
             onClick={() => void handleConfirm()}
           >
             {pending ? "Please wait…" : confirmLabel}

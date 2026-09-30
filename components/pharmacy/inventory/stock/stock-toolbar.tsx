@@ -1,12 +1,15 @@
 "use client";
 
+import { Search } from "lucide-react";
+
 import { FilterChipBar, type FilterChip } from "@/components/pharmacy/inventory/shared/filter-chip-bar";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import type { StockOverviewStatus } from "@/types/pharmacy-inventory.types";
 
-export type StockStatusFilter = StockOverviewStatus | "ALL";
+export type StockStatusFilter = StockOverviewStatus | "EXPIRED" | "ALL";
 
 interface StockToolbarProps {
   search: string;
@@ -18,7 +21,6 @@ interface StockToolbarProps {
   chips: FilterChip[];
   onRemoveChip: (id: string) => void;
   onResetFilters: () => void;
-  onReceiveClick: () => void;
 }
 
 export function StockToolbar({
@@ -31,48 +33,33 @@ export function StockToolbar({
   chips,
   onRemoveChip,
   onResetFilters,
-  onReceiveClick,
 }: StockToolbarProps) {
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-        <div className="max-w-sm flex-1 space-y-1.5">
-          <Label htmlFor="stock-q">Search</Label>
-          <Input
-            id="stock-q"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Medicine or SKU…"
-            className="font-clinical"
-          />
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input aria-label="Search stock" value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder="Medicine or stock code" className="pl-9" />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="stock-status">Status filter</Label>
-          <select
-            id="stock-status"
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-44"
-            value={statusFilter}
-            onChange={(e) => onStatusFilterChange(e.target.value as StockStatusFilter)}
-          >
-            <option value="ALL">All statuses</option>
-            <option value="ADEQUATE">Adequate</option>
-            <option value="LOW">Low stock</option>
-            <option value="OUT">Out of stock</option>
-            <option value="EXPIRING_SOON">Expiring soon</option>
-          </select>
+        <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange(v as StockStatusFilter)}>
+          <SelectTrigger aria-label="Show" className="w-full sm:w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Everything</SelectItem>
+            <SelectItem value="ADEQUATE">In stock</SelectItem>
+            <SelectItem value="LOW">Low stock</SelectItem>
+            <SelectItem value="OUT">Out of stock</SelectItem>
+            <SelectItem value="EXPIRING_SOON">Expiring soon</SelectItem>
+            <SelectItem value="EXPIRED">Has expired stock</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2">
+          <Switch id="stock-show-off" checked={!activeItemsOnly} onCheckedChange={(c) => onActiveItemsOnlyChange(!c)} />
+          <Label htmlFor="stock-show-off" className="text-sm font-normal">
+            Show switched-off medicines
+          </Label>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={!activeItemsOnly}
-            onChange={(e) => onActiveItemsOnlyChange(!e.target.checked)}
-            className="rounded border-border"
-          />
-          Include inactive items
-        </label>
-        <Button type="button" className="sm:ml-auto" onClick={onReceiveClick}>
-          Receive stock
-        </Button>
       </div>
       <FilterChipBar chips={chips} onRemove={onRemoveChip} onReset={onResetFilters} />
     </div>

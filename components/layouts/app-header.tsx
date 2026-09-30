@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Search, ShieldCheck, User } from "lucide-react";
+import { Bell, Menu, Search, ShieldCheck, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 import { canAccessWorkspaceModule } from "@/lib/access-control";
 import { formatRelative } from "@/lib/dates";
@@ -25,9 +26,11 @@ import {
 
 interface AppHeaderProps {
   user: AuthUser;
+  /** Small screens only: opens the slide-out main menu. */
+  onOpenMenu?: () => void;
 }
 
-export function AppHeader({ user }: AppHeaderProps) {
+export function AppHeader({ user, onOpenMenu }: AppHeaderProps) {
   const router = useRouter();
   const notifications = useNotificationStore((s) => s.notifications);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
@@ -50,7 +53,12 @@ export function AppHeader({ user }: AppHeaderProps) {
   }
 
   return (
-    <header className="flex h-[64px] shrink-0 items-center gap-4 border-b border-border bg-card px-4" role="banner">
+    <header className="flex h-[64px] shrink-0 items-center gap-2 border-b border-border bg-card px-3 sm:gap-4 sm:px-4" role="banner">
+      {onOpenMenu && (
+        <Button type="button" variant="ghost" size="icon" className="shrink-0 md:hidden" onClick={onOpenMenu} aria-label="Open menu">
+          <Menu className="h-5 w-5" />
+        </Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-md py-1 pr-2 pl-0.5 transition-colors hover:bg-muted" aria-label="Your account">
@@ -69,7 +77,7 @@ export function AppHeader({ user }: AppHeaderProps) {
                 "Hello!"
               )}
             </span>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground">
+            <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground sm:inline-flex">
               <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
               {roleLabel(user.role)}
             </span>
@@ -117,7 +125,7 @@ export function AppHeader({ user }: AppHeaderProps) {
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {isAnyMockEnabled() && (
-          <span className="status-pill status-pill-neutral" title="This screen is showing sample data, not live data.">
+          <span className="status-pill status-pill-neutral hidden sm:inline-flex" title="This screen is showing sample data, not live data.">
             Sample data
           </span>
         )}
@@ -186,7 +194,7 @@ export function AppHeader({ user }: AppHeaderProps) {
               {initialsForFacility(facilityCode, facilityName)}
             </span>
           )}
-          <span className="hidden max-w-36 truncate text-[13px] font-medium sm:block">{facilityName}</span>
+          <span className="hidden max-w-36 truncate text-[13px] font-medium xl:block">{facilityName}</span>
         </div>
       </div>
     </header>

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { encounterStatusLabel, encounterStatusTone } from "@/lib/status-labels";
 import { getFriendlyError } from "@/lib/api-errors";
 import { queryKeys } from "@/lib/query-keys";
+import { isOnTodaysList } from "@/lib/todays-visits";
 import { clinicalService } from "@/services/clinical.service";
 import type { EncounterDto, TriagePriorityCode } from "@/types/clinical.types";
 
@@ -35,7 +36,7 @@ export function VisitsQueueView() {
   const [clinicFilter, setClinicFilter] = useState("ALL");
   const [query, setQuery] = useState("");
 
-  const list = useMemo(() => todayQuery.data ?? [], [todayQuery.data]);
+  const list = useMemo(() => (todayQuery.data ?? []).filter(isOnTodaysList), [todayQuery.data]);
 
   const clinics = useMemo(
     () => Array.from(new Set(list.map((e) => e.department).filter(Boolean))).sort(),
@@ -67,8 +68,17 @@ export function VisitsQueueView() {
     [list],
   );
 
+  const filtersActive = stageFilter !== "ALL" || triageFilter !== "ALL" || clinicFilter !== "ALL" || query.trim() !== "";
+
+  function clearFilters() {
+    setStageFilter("ALL");
+    setTriageFilter("ALL");
+    setClinicFilter("ALL");
+    setQuery("");
+  }
+
   function openEncounter(e: EncounterDto) {
-    if (e.status === "SCHEDULED") {
+    if (e.status === "SCHEDULED" || e.status === "CHECKED_IN") {
       checkInMut.mutate(e.id, {
         onSuccess: () => router.push(`/nurse?view=triage&encounterId=${e.id}&patientId=${e.patientId}`),
       });
@@ -89,7 +99,7 @@ export function VisitsQueueView() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatChip label="Waiting for vitals" value={stats.waitingForVitals} />
         <StatChip label="Waiting for doctor" value={stats.waitingForDoctor} />
         <StatChip label="With doctor" value={stats.withDoctor} />
@@ -121,6 +131,7 @@ export function VisitsQueueView() {
             <SelectItem value="ALL">Every urgency</SelectItem>
             <SelectItem value="EMERGENCY">Emergency</SelectItem>
             <SelectItem value="URGENT">Urgent</SelectItem>
+            <SelectItem value="SEMI_URGENT">Semi-urgent</SelectItem>
             <SelectItem value="ROUTINE">Routine</SelectItem>
           </SelectContent>
         </Select>
@@ -151,12 +162,21 @@ export function VisitsQueueView() {
         primaryActionLabel={actionLabel}
         onOpen={openEncounter}
         refetchIntervalMs={30_000}
-        empty={{
-          illustration: "all-done",
-          tone: "good-news",
-          title: "No patients waiting",
-          description: "Everyone has been seen.",
-        }}
+        empty={
+          filtersActive && list.length > 0
+            ? {
+                illustration: "no-results",
+                title: "No patients match these filters",
+                description: "Try another stage or urgency, or clear the search.",
+                action: { label: "Clear filters", onClick: clearFilters },
+              }
+            : {
+                illustration: "all-done",
+                tone: "good-news",
+                title: "No patients waiting",
+                description: "Everyone has been seen.",
+              }
+        }
       />
     </div>
   );

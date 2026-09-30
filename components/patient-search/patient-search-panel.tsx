@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, ChevronRight, Loader2, Search } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { NhisPill } from "@/components/clinical/nhis-pill";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -247,16 +247,7 @@ export function PatientSearchPanel({
                       {patient.patientId} · {patient.phone}
                     </p>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      patient.nhisStatus === "active"
-                        ? "border-green-200 bg-green-50 text-green-700"
-                        : "border-red-200 bg-red-50 text-red-700"
-                    }
-                  >
-                    NHIS {patient.nhisStatus === "active" ? "Active" : "Inactive"}
-                  </Badge>
+                  <NhisPill status={patient.nhisStatus === "active" ? "ACTIVE" : patient.nhisCard?.trim() ? "INACTIVE" : "NONE"} />
                   <Button size="sm" variant="outline" className="gap-1 shrink-0">
                     {actionLabel}
                   </Button>

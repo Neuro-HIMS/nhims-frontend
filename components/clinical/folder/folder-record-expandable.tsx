@@ -13,9 +13,9 @@ import { cn } from "@/lib/utils";
 /** Soft banner matching laboratory / folder cue styling */
 export function FolderRecordFeedBanner({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs text-foreground">
+    <div className="rounded-lg border border-info-border bg-info-bg px-3 py-2 text-xs text-foreground">
       <span className="flex gap-2">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" aria-hidden />
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" aria-hidden />
         <span>{children}</span>
       </span>
     </div>

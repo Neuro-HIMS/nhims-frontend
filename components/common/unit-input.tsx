@@ -10,6 +10,8 @@ interface UnitInputProps {
   hint?: string;
   /** Shown under the field in warning tone when the value is out of the expected range. */
   warning?: string;
+  /** Shown under the field in red when the value is dangerous (takes priority over `warning`). */
+  danger?: string;
   type?: "text" | "number";
   min?: number;
   max?: number;
@@ -25,6 +27,7 @@ export function UnitInput({
   unit,
   hint,
   warning,
+  danger,
   type = "number",
   min,
   max,
@@ -43,11 +46,14 @@ export function UnitInput({
           max={max}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
-          className={cn(unit && "flex-1", warning && "border-warning")}
+          aria-invalid={danger ? true : undefined}
+          className={cn(unit && "flex-1", danger ? "border-destructive" : warning && "border-warning")}
         />
         {unit && <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">{unit}</span>}
       </div>
-      {warning ? (
+      {danger ? (
+        <p className="text-xs font-medium text-destructive">{danger}</p>
+      ) : warning ? (
         <p className="text-xs text-warning">{warning}</p>
       ) : hint ? (
         <p className="text-xs text-muted-foreground">{hint}</p>

@@ -12,13 +12,14 @@ import { PatientFolderView } from "@/components/nurse/views/patient-folder-view"
 
 export function NurseWorkspace() {
   const searchParams = useSearchParams();
-  const view = searchParams.get("view") ?? "visits";
+  const requested = searchParams.get("view");
+  const view = requested && ["visits", "search", "triage", "folder"].includes(requested) ? requested : "visits";
 
   return (
     <div className="space-y-4">
       {view !== "triage" && (
         <>
-          <PageCard title="Nurse station" description="Today's patients, triage, vitals, and patient folders." />
+          <PageCard title="Nurse station" description="See today's patients, triage them and record vitals." />
           <ModuleSubNav items={NURSE_NAV} basePath="/nurse" />
         </>
       )}

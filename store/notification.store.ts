@@ -30,7 +30,8 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   addNotification: (n) => {
     const notification: Notification = {
       ...n,
-      id: crypto.randomUUID(),
+      // "local-" = raised in this browser (not from the feed); kept when the feed refreshes.
+      id: `local-${crypto.randomUUID()}`,
       read: false,
       createdAt: new Date().toISOString(),
     };
@@ -41,20 +42,21 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   },
 
   setNotifications: (list) => {
-    const notifications = list.map((n) => ({ ...n, read: n.read ?? false }));
-    set({
-      notifications,
-      unreadCount: notifications.filter((n) => !n.read).length,
+    set((s) => {
+      // Keep what the user already read, and anything raised locally in this browser.
+      const readIds = new Set(s.notifications.filter((n) => n.read).map((n) => n.id));
+      const local = s.notifications.filter((n) => n.id.startsWith("local-"));
+      const fromFeed = list.map((n) => ({ ...n, read: n.read ?? readIds.has(n.id) }));
+      const notifications = [...local, ...fromFeed].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return { notifications, unreadCount: notifications.filter((n) => !n.read).length };
     });
   },
 
   markRead: (id) => {
-    set((s) => ({
-      notifications: s.notifications.map((n) =>
-        n.id === id ? { ...n, read: true } : n
-      ),
-      unreadCount: Math.max(0, s.unreadCount - 1),
-    }));
+    set((s) => {
+      const notifications = s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
+      return { notifications, unreadCount: notifications.filter((n) => !n.read).length };
+    });
   },
 
   markAllRead: () => {

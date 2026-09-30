@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PREFIXES = ["/surgery", "/dental", "/mental-health", "/physiotherapy", "/blood-bank", "/emergency"];
+import { PLACEHOLDER_MODULES, SHOW_PLACEHOLDER_SECTIONS } from "@/config/placeholder-sections";
+
+const PREFIXES = PLACEHOLDER_MODULES.map((m) => `/${m}`);
 
 export function proxy(request: NextRequest) {
-  if (process.env.NEXT_PUBLIC_ENABLE_PLACEHOLDER_SPECIALTY_ROUTES === "true") {
+  if (SHOW_PLACEHOLDER_SECTIONS) {
     return NextResponse.next();
   }
   const path = request.nextUrl.pathname;
@@ -14,6 +16,7 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
+// Must stay a static literal (Next reads it at build time) — keep in sync with PLACEHOLDER_MODULES.
 export const config = {
   matcher: [
     "/surgery",

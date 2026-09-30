@@ -5,19 +5,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChoiceOption } from "@/components/ui/choice-option";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
 import { InlineNotice } from "@/components/common/inline-notice";
 import { NhisCheck } from "@/components/records/nhis-check";
 import type { Patient } from "@/components/records/lib/records-types";
@@ -120,114 +113,115 @@ export function StartVisitDialog({
     },
   });
 
+  const tileRow = "grid grid-cols-2 gap-2 sm:grid-cols-3";
+
   return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            Start today&apos;s visit for {patient.firstName} {patient.lastName}
-          </DialogTitle>
-          <DialogDescription>Send this patient to the nurse to begin their visit today.</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Where to</Label>
-            <RadioGroup
-              value={visitType}
-              onValueChange={(v) => setVisitType(v as VisitType)}
-              className="grid grid-cols-2 gap-2 sm:grid-cols-3"
-            >
-              {WHERE_TO_OPTIONS.map((opt) => (
-                <ChoiceOption key={opt.value}>
-                  <RadioGroupItem value={opt.value} />
-                  {opt.label}
-                </ChoiceOption>
-              ))}
-            </RadioGroup>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="start-visit-reason">Reason</Label>
-            <Input
-              id="start-visit-reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Fever and headache for 2 days"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Doctor</Label>
-            <Select value={clinicianUserId} onValueChange={setClinicianUserId}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__any__">Any available doctor</SelectItem>
-                {(cliniciansQuery.data ?? []).map((c) => (
-                  <SelectItem key={c.userId} value={c.userId}>
-                    {c.fullName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>How they&apos;ll pay</Label>
-            <RadioGroup value={payWay} onValueChange={(v) => setPayWay(v as PayWay)} className="grid grid-cols-3 gap-2">
-              {PAY_OPTIONS.map((opt) => (
-                <ChoiceOption key={opt.value}>
-                  <RadioGroupItem value={opt.value} />
-                  {opt.label}
-                </ChoiceOption>
-              ))}
-            </RadioGroup>
-            {payWay === "NHIS" && (
-              <NhisCheck
-                memberNumber={nhisMemberNumber}
-                onMemberNumberChange={setNhisMemberNumber}
-                onVerified={setNhisVerification}
-              />
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Priority</Label>
-            <RadioGroup
-              value={priority}
-              onValueChange={(v) => setPriority(v as AppointmentPriority)}
-              className="grid grid-cols-3 gap-2"
-            >
-              {PRIORITY_OPTIONS.map((opt) => (
-                <ChoiceOption key={opt.value}>
-                  <RadioGroupItem value={opt.value} />
-                  {opt.label}
-                </ChoiceOption>
-              ))}
-            </RadioGroup>
-            {priority === "EMERGENCY" && (
-              <InlineNotice tone="warning">
-                Take the patient to Emergency now; you can finish details later.
-              </InlineNotice>
-            )}
-          </div>
-        </div>
-
-        <DialogFooter>
+    <FormDialog
+      open
+      onOpenChange={onOpenChange}
+      size="lg"
+      title={`Start today's visit for ${patient.firstName} ${patient.lastName}`}
+      description="Send this patient to the nurse to begin their visit today."
+      onSubmit={() => {
+        if (patient?.id && !startMutation.isPending) startMutation.mutate();
+      }}
+      footer={
+        <>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            type="button"
-            disabled={!patient?.id || startMutation.isPending}
-            onClick={() => startMutation.mutate()}
-          >
+          <Button type="submit" disabled={!patient?.id || startMutation.isPending}>
             {startMutation.isPending ? "Sending…" : "Send to nurse"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <FormDialogSection title="Where to" columns={1}>
+        <RadioGroup
+          aria-label="Where to"
+          value={visitType}
+          onValueChange={(v) => setVisitType(v as VisitType)}
+          className="grid grid-cols-2 gap-2 sm:grid-cols-5"
+        >
+          {WHERE_TO_OPTIONS.map((opt) => (
+            <ChoiceOption key={opt.value}>
+              <RadioGroupItem value={opt.value} />
+              {opt.label}
+            </ChoiceOption>
+          ))}
+        </RadioGroup>
+      </FormDialogSection>
+
+      <FormDialogSection title="About the visit">
+        <div className="space-y-1.5">
+          <Label htmlFor="start-visit-reason">Reason</Label>
+          <Input
+            id="start-visit-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Fever and headache for 2 days"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="start-visit-doctor">Doctor (optional)</Label>
+          <Select value={clinicianUserId} onValueChange={setClinicianUserId}>
+            <SelectTrigger id="start-visit-doctor" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__any__">Any available doctor</SelectItem>
+              {(cliniciansQuery.data ?? []).map((c) => (
+                <SelectItem key={c.userId} value={c.userId}>
+                  {c.fullName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </FormDialogSection>
+
+      <FormDialogSection title="Payment and priority" columns={1}>
+        <div className="space-y-2">
+          <Label>How they&apos;ll pay</Label>
+          <RadioGroup aria-label="How they'll pay" value={payWay} onValueChange={(v) => setPayWay(v as PayWay)} className={tileRow}>
+            {PAY_OPTIONS.map((opt) => (
+              <ChoiceOption key={opt.value}>
+                <RadioGroupItem value={opt.value} />
+                {opt.label}
+              </ChoiceOption>
+            ))}
+          </RadioGroup>
+          {payWay === "NHIS" && (
+            <NhisCheck
+              memberNumber={nhisMemberNumber}
+              onMemberNumberChange={setNhisMemberNumber}
+              onVerified={setNhisVerification}
+            />
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Priority</Label>
+          <RadioGroup
+            aria-label="Priority"
+            value={priority}
+            onValueChange={(v) => setPriority(v as AppointmentPriority)}
+            className={tileRow}
+          >
+            {PRIORITY_OPTIONS.map((opt) => (
+              <ChoiceOption key={opt.value}>
+                <RadioGroupItem value={opt.value} />
+                {opt.label}
+              </ChoiceOption>
+            ))}
+          </RadioGroup>
+          {priority === "EMERGENCY" && (
+            <InlineNotice tone="warning">
+              Take the patient to Emergency now; you can finish details later.
+            </InlineNotice>
+          )}
+        </div>
+      </FormDialogSection>
+    </FormDialog>
   );
 }

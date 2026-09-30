@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { StatusPill } from "@/components/common/status-pill";
 import { TableSkeleton } from "@/components/common/skeletons";
+import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
 import { UploadDropzone } from "@/components/common/upload-dropzone";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +17,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -346,110 +346,102 @@ export function FacilityDiagnosisClassificationsSettings() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <FormDialog
         open={editorOpen}
         onOpenChange={(o) => {
           setEditorOpen(o);
           if (!o) resetForm();
         }}
+        size="md"
+        title={editing ? "Edit diagnosis" : "Add diagnosis"}
+        description="Only the name is required."
+        footer={
+          <>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            setEditorOpen(false);
+            resetForm();
+          }}
+        >
+          Go back
+        </Button>
+        {editing ? (
+          <Button
+            type="button"
+            disabled={updateMut.isPending || !nameTrimmed}
+            onClick={() =>
+              updateMut.mutate({
+                id: editing.id,
+                payload: {
+                  name: nameTrimmed,
+                  description: descriptionTrimmed || null,
+                  icd11Code: icd11Trimmed || "",
+                  icdHint: hintTrimmed || "",
+                  active: formActive,
+                },
+              })
+            }
+          >
+            {updateMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Save changes
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            disabled={createMut.isPending || !nameTrimmed}
+            onClick={() =>
+              createMut.mutate({
+                name: nameTrimmed,
+                description: descriptionTrimmed || undefined,
+                icd11Code: icd11Trimmed || undefined,
+                icdHint: hintTrimmed || undefined,
+                active: formActive,
+              })
+            }
+          >
+            {createMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Add diagnosis
+          </Button>
+        )}
+          </>
+        }
       >
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editing ? "Edit diagnosis" : "Add diagnosis"}</DialogTitle>
-            <DialogDescription>Only the name is required.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Name</Label>
-              <Input
-                value={formName ?? ""}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="e.g. Type 2 diabetes mellitus"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Description (optional)</Label>
-              <Textarea
-                value={formDescription ?? ""}
-                onChange={(e) => setFormDescription(e.target.value)}
-                rows={3}
-                placeholder="Optional short clarification"
-                className="resize-y min-h-[72px]"
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">ICD-11 code (optional)</Label>
-                <Input value={formIcd11 ?? ""} onChange={(e) => setFormIcd11(e.target.value)} className="font-clinical text-xs" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Old code, if there is one (optional)</Label>
-                <Input value={formHint ?? ""} onChange={(e) => setFormHint(e.target.value)} className="font-clinical text-xs" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2">
-              <Checkbox
-                id="catalogue-active"
-                checked={formActive}
-                onCheckedChange={(v) => setFormActive(v === true)}
-              />
-              <Label htmlFor="catalogue-active" className="cursor-pointer text-sm font-normal leading-snug">
-                Show this diagnosis in the list
-              </Label>
-            </div>
+        <FormDialogSection title="Diagnosis">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="dx-name">Name</Label>
+            <Input id="dx-name" value={formName ?? ""} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Type 2 diabetes mellitus" />
           </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setEditorOpen(false);
-                resetForm();
-              }}
-            >
-              Go back
-            </Button>
-            {editing ? (
-              <Button
-                type="button"
-                disabled={updateMut.isPending || !nameTrimmed}
-                onClick={() =>
-                  updateMut.mutate({
-                    id: editing.id,
-                    payload: {
-                      name: nameTrimmed,
-                      description: descriptionTrimmed || null,
-                      icd11Code: icd11Trimmed || "",
-                      icdHint: hintTrimmed || "",
-                      active: formActive,
-                    },
-                  })
-                }
-              >
-                {updateMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Save changes
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                disabled={createMut.isPending || !nameTrimmed}
-                onClick={() =>
-                  createMut.mutate({
-                    name: nameTrimmed,
-                    description: descriptionTrimmed || undefined,
-                    icd11Code: icd11Trimmed || undefined,
-                    icdHint: hintTrimmed || undefined,
-                    active: formActive,
-                  })
-                }
-              >
-                {createMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Add diagnosis
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="dx-description">Description (optional)</Label>
+            <Textarea
+              id="dx-description"
+              value={formDescription ?? ""}
+              onChange={(e) => setFormDescription(e.target.value)}
+              rows={3}
+              placeholder="A short note to tell it apart from similar diagnoses"
+              className="min-h-[72px] resize-y"
+            />
+          </div>
+        </FormDialogSection>
+        <FormDialogSection title="Codes">
+          <div className="space-y-1.5">
+            <Label htmlFor="dx-icd11">ICD-11 code (optional)</Label>
+            <Input id="dx-icd11" value={formIcd11 ?? ""} onChange={(e) => setFormIcd11(e.target.value)} className="font-clinical" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dx-hint">Old code, if there is one (optional)</Label>
+            <Input id="dx-hint" value={formHint ?? ""} onChange={(e) => setFormHint(e.target.value)} className="font-clinical" />
+          </div>
+          <div className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2 sm:col-span-2">
+            <Checkbox id="catalogue-active" checked={formActive} onCheckedChange={(v) => setFormActive(v === true)} />
+            <Label htmlFor="catalogue-active" className="cursor-pointer text-sm font-normal leading-snug">
+              Show this diagnosis in the list
+            </Label>
+          </div>
+        </FormDialogSection>
+      </FormDialog>
     </div>
   );
 }

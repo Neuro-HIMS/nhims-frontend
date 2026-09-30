@@ -59,9 +59,29 @@ One entry per missing or changed endpoint the frontend needs, written for the ba
 - Need: the actor doc asks for a name + DOB + phone duplicate search; the search endpoint only supports `id` / `nhis` / `name` modes, no combined filter
 - Frontend status: `registration-view.tsx`'s duplicate check searches by name only after step 1 and shows all name matches for the officer to eyeball — a reasonable approximation, not a true DOB/phone-narrowed match
 
-### DOC-04 · Save diagnoses on a visit  (needed by: DOC-04)
-- Method & path: confirm endpoint
-- Frontend status: not built yet
+### DOC-04 · Save diagnoses on a visit — resolved, no new endpoint needed  (needed by: DOC-04)
+- Diagnoses are saved on the consultation note (`POST/PUT /clinical/encounters/{id}/consultation-notes`: `provisionalClassificationId`, `principalClassificationId`, new/old case, `additionalDiagnoses`). The note **requires** a principal + provisional diagnosis, so the frontend sets provisional = the doctor's "main" diagnosis and keeps the notes as a local draft until one is chosen.
+- Frontend status: built on the existing endpoint (`components/clinical/consultation/`).
+- Nice to have: let a note be saved **without** a diagnosis (history/exam first, diagnosis later) so notes reach the record — and other staff — sooner.
+
+### DOC-04-notifiable · "Must be reported" flag on diagnoses  (needed by: DOC-04, HIO-07)
+- Method & path: add `notifiable: boolean` (and optionally `reportWithinHours`) to `ClinicalConditionDto` from `GET /clinical/conditions`
+- Behaviour: set per diagnosis in the facility's diagnosis list (IDSR notifiable diseases)
+- Frontend status: stopgap name match in `lib/notifiable-diseases.ts`
+
+### DOC-04-surveillance · Flag a case for disease surveillance  (needed by: DOC-04, HIO-07)
+- Method & path: `POST /clinical/surveillance-flags`
+- Request: `{ encounterId: string; patientId: string; conditionId: string; conditionName: string }`
+- Response: `ApiResponse<{ id; encounterId; patientId; conditionId; conditionName; flaggedAt }>` — idempotent per encounter + condition
+- Frontend status: mocked in `services/mocks/handlers/surveillance.ts` (area `surveillance`)
+
+### DOC-13-force-reason · Reason when finishing a visit with results outstanding  (needed by: DOC-13)
+- Method & path: `POST /clinical/encounters/{id}/complete?force=true` — add a `reason` (body or param) and keep it on the visit
+- Frontend status: the doctor must type a reason before "Finish anyway", but it can't be sent yet (`// TODO(backend)` in `next-step-card.tsx`)
+
+### ADM-11-empty-description · Creating a diagnosis with `description: ""` returns 500  (bug)
+- Method & path: `POST /clinical/conditions` with `"description": ""` → `500 Unexpected server error`; omitting it or sending text works
+- Frontend status: not affected (the form omits an empty description)
 
 ### DOC-07 · Allergy / interaction check on prescribe  (needed by: DOC-07)
 - Frontend status: not built yet
@@ -98,3 +118,46 @@ One entry per missing or changed endpoint the frontend needs, written for the ba
 
 ### J11 · Merge duplicate patients
 - Frontend status: not built yet
+
+### DOC-13-today-list · "Today's visits" includes future bookings made today  (bug; needed by: NUR-01, DOC-01, ADM-01)
+- Method & path: `GET /clinical/encounters/today`
+- Seen: a follow-up booked today for 14 days later (status `SCHEDULED`, `scheduledFor` in the future) is returned as one of today's visits
+- Expected: visits checked in today, or scheduled for today
+- Frontend status: filtered out client-side by `lib/todays-visits.ts` (`isOnTodaysList`) in the nurse and doctor lists; dashboard still to do (Stage 15)
+
+### LAB-08 · What each test measures, normal ranges and critical limits  (needed by: LAB-03, LAB-04, LAB-08, DOC-08)
+- Method & path: `GET /clinical/catalog/services/{id}/lab-setup`, `PUT /clinical/catalog/services/{id}/lab-setup`
+- Shape: `{ serviceId; sampleType: string; parameters: Array<{ name; unit; kind: "number"|"choice"|"text"; choices?: string[]; abnormalChoices?: string[]; ranges?: Array<{ sex?: "M"|"F"; fromAge?: number; toAge?: number; low?: number; high?: number }>; criticalLow?: number; criticalHigh?: number }> }` (see `lib/lab-results.ts`)
+- Behaviour: per test in the lab list; the results screen shows the patient's range and flags Low/High/Critical as the lab types. Ideally the backend also re-checks flags on submit (today it trusts the `flag` sent)
+- Frontend status: mocked in `services/mocks/handlers/lab.ts` with suggested values for the 10 tests the facility lists (`fixtures/lab-parameters.ts`, area `lab-setup`); without the mock, tests have no preset measurements and staff type result lines
+
+### LAB-02-reject · Reject a sample with a reason  (needed by: LAB-02, J04)
+- Method & path: `POST /clinical/lab-orders/{id}/reject` `{ reason: string }`
+- Behaviour: order → rejected (or cancelled) with the reason stored and shown to the doctor; bell notification to the requesting doctor ("Sample for Full blood count was rejected: haemolysed. Please request a new sample.")
+- Frontend status: status set to `CANCELLED` via the real endpoint; reason + bell mocked in memory (area `lab-reject`) — so the reason only shows in the same browser session
+
+### LAB-04-history · Acknowledged critical alerts for "Critical today"  (needed by: LAB-04)
+- Method & path: `GET /clinical/lab/critical-alerts?from=<today>&status=ALL` — today's alerts including acknowledged ones, with who acknowledged and when
+- Frontend status: Critical today lists open alerts only ("Waiting for doctor")
+
+### LAB-05-return · Authorising (not "authorise now") doesn't send the patient back to the doctor
+- Seen: `PATCH /clinical/lab-orders/{id}/status {AUTHORISED}` leaves the visit at the lab; only `submitResults(authoriseImmediately: true)` calls `returnFromLab()`
+- Frontend status: after authorising or rejecting the last open test, the frontend moves the visit back to "Waiting for doctor" itself (`returnPatientIfAllDone` in `lab-order-view.tsx`)
+
+### LAB-04-inbox-roles · Lab staff can't read the critical-alert inbox  (needed by: LAB-04)
+- Seen: `GET /clinical/lab/critical-alerts` allows MEDICAL_OFFICER, MIDWIFE, NURSE, FACILITY_ADMIN, SUPER_ADMIN, HIO only — LAB_SCIENTIST / LAB_TECH get 403
+- Need: lab roles read access (they raise these alerts and follow them up)
+- Frontend status: lab staff see today's critical results from the worklist instead, without the "doctor has seen it" state
+
+### STAGE0-02b · System administrator must still send `facilityId` when creating staff  (bug vs. single-facility)
+- Seen: `POST /users` as SUPER_ADMIN without `facilityId` → 404 "facilityId is required for Super Admin user creation"
+- Frontend status: `usersService.create` retries once with the session's facility id (`LEGACY(single-facility)`)
+
+### RAD-02-cancel · Cancel a scan with a reason  (needed by: RAD-02, J05)
+- Method & path: `POST /clinical/radiology-orders/{id}/cancel` `{ reason }` (today `PATCH …/status CANCELLED` stores an empty reason)
+- Behaviour: keep the reason on the order (`cancellationReason`) and notify the requesting doctor
+- Frontend status: status change real; reason + bell mocked (`imaging-cancel`)
+
+### RAD-03 · Attach images / PDFs to an imaging report  (needed by: RAD-03)
+- Method & path: `GET/POST /clinical/radiology-orders/{id}/attachments` (multipart; JPEG, PNG, PDF; max 20 MB) → `{ id, fileName, contentType, url, sizeBytes }`
+- Frontend status: mocked in memory (`imaging-attachments`); without the mock the drop zone is hidden with "Attaching images isn't available yet"

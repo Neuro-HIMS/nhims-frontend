@@ -2,7 +2,8 @@ import { ArrowDown, ArrowUp, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type LabFlag = "NORMAL" | "LOW" | "HIGH" | "CRITICAL";
+/** ABNORMAL = a non-numeric answer outside normal (e.g. "Positive", "Reactive"). */
+export type LabFlag = "NORMAL" | "LOW" | "HIGH" | "ABNORMAL" | "CRITICAL";
 
 interface LabResultValueProps {
   value: string | number;
@@ -35,15 +36,17 @@ export function LabResultValue({ value, unit, flag, refRange, className }: LabRe
         className={cn(
           "font-clinical inline-flex w-fit items-center gap-1 text-sm",
           flag === "LOW" && "result-low",
-          flag === "HIGH" && "result-high",
+          (flag === "HIGH" || flag === "ABNORMAL") && "result-high",
           flag === "NORMAL" && "text-[hsl(var(--result-normal))]"
         )}
       >
         {flag === "LOW" && <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />}
         {flag === "HIGH" && <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+        {flag === "ABNORMAL" && <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />}
         {text}
         {flag === "LOW" && " — Low"}
         {flag === "HIGH" && " — High"}
+        {flag === "ABNORMAL" && " — Abnormal"}
       </span>
       {refRange && <span className="font-clinical text-xs text-muted-foreground">Normal range: {refRange}</span>}
     </span>

@@ -23,12 +23,18 @@ interface WaitingListProps<T> {
   getPatient: (t: T) => { name: string; hospitalNumber: string; age?: string; sex?: string };
   getPriority?: (t: T) => TriagePriorityCode | "PENDING";
   getArrivedAt: (t: T) => string;
-  getWhat: (t: T) => string;
+  getWhat: (t: T) => React.ReactNode;
   getStatus: (t: T) => { label: string; tone: PillTone; icon?: LucideIcon };
   primaryActionLabel: string | ((t: T) => string);
   onOpen: (t: T) => void;
   empty: EmptyStateProps;
   getRowId: (t: T) => string;
+  /** Disables the row action and row click, e.g. while a "Call in" is being saved. */
+  actionsDisabled?: boolean;
+  /** Per row: why the action can't be used yet (e.g. "Waiting for payment at the cashier"), or null. */
+  getActionDisabledReason?: (t: T) => string | null;
+  /** Keep the order of `items` as given (caller already sorted, e.g. by lab urgency). */
+  presorted?: boolean;
   /** Shown as a small hint under the toolbar area, e.g. "Refreshes automatically every 30s." */
   refetchIntervalMs?: number;
 }
@@ -49,19 +55,24 @@ export function WaitingList<T>({
   empty,
   getRowId,
   refetchIntervalMs,
+  actionsDisabled = false,
+  getActionDisabledReason,
+  presorted = false,
 }: WaitingListProps<T>) {
   if (isLoading) return <TableSkeleton rows={5} columns={5} />;
   if (error) return <ErrorState error={error} onRetry={onRetry} />;
   if (!items || items.length === 0) return <EmptyState {...empty} />;
 
-  const sorted = getPriority
+  const sorted = presorted
+    ? items
+    : getPriority
     ? sortByUrgencyThenArrival(items, getPriority, getArrivedAt)
     : [...items].sort((a, b) => getArrivedAt(a).localeCompare(getArrivedAt(b)));
 
   return (
     <div className="space-y-2">
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-subtle">
               <Th>Waiting</Th>
@@ -80,6 +91,8 @@ export function WaitingList<T>({
               const wait = formatWait(getArrivedAt(item));
               const id = getRowId(item);
               const label = typeof primaryActionLabel === "function" ? primaryActionLabel(item) : primaryActionLabel;
+              const blockedReason = getActionDisabledReason?.(item) ?? null;
+              const disabled = actionsDisabled || Boolean(blockedReason);
 
               return (
                 <tr
@@ -88,7 +101,9 @@ export function WaitingList<T>({
                     "table-row-interactive",
                     priority === "EMERGENCY" && "triage-row-emergency",
                   )}
-                  onClick={() => onOpen(item)}
+                  onClick={() => {
+                    if (!disabled) onOpen(item);
+                  }}
                 >
                   <td className="px-4 py-3">
                     <span
@@ -120,9 +135,10 @@ export function WaitingList<T>({
                     </StatusPill>
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <Button size="sm" onClick={() => onOpen(item)}>
+                    <Button size="sm" disabled={disabled} title={blockedReason ?? undefined} onClick={() => onOpen(item)}>
                       {label}
                     </Button>
+                    {blockedReason && <p className="mt-1 max-w-40 text-xs text-muted-foreground">{blockedReason}</p>}
                   </td>
                 </tr>
               );
@@ -132,7 +148,7 @@ export function WaitingList<T>({
       </div>
       {refetchIntervalMs && (
         <p className="text-xs text-muted-foreground">
-          Refreshes automatically every {Math.round(refetchIntervalMs / 1000)}s.
+          Refreshes automatically every {Math.round(refetchIntervalMs / 1000)} seconds.
         </p>
       )}
     </div>

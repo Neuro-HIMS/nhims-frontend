@@ -20,14 +20,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
 import { formatDateTime } from "@/components/nurse/lib/nurse-data";
+import { getFriendlyError } from "@/lib/api-errors";
 import { clinicalService } from "@/services/clinical.service";
 import { ipdService } from "@/services/ipd.service";
 import { queryKeys } from "@/lib/query-keys";
@@ -45,7 +40,7 @@ const DISCHARGE_OUTCOME_OPTIONS: { value: string; label: string }[] = [
   { value: "STABLE", label: "Stable" },
   { value: "AMA", label: "Left against medical advice" },
   { value: "TRANSFERRED", label: "Transferred" },
-  { value: "DECEASED", label: "Deceased" },
+  { value: "DECEASED", label: "Died" },
   { value: "OTHER", label: "Other" },
 ];
 
@@ -555,7 +550,7 @@ function DischargeView() {
       setDischargeMedicationSummary("");
       setFollowUpPlan("");
     },
-    onError: () => toast.error("Could not discharge"),
+    onError: (e: unknown) => toast.error(getFriendlyError(e).message),
   });
 
   const rows = admissions.data ?? [];
@@ -596,45 +591,14 @@ function DischargeView() {
         </div>
       )}
 
-      <Dialog open={openId !== null} onOpenChange={(o) => { if (!o) setOpenId(null); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Discharge</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Clinical discharge summary</Label>
-              <Textarea rows={4} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Course in hospital, key investigations, condition at discharge…" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Outcome</Label>
-              <Select value={outcome || "__none__"} onValueChange={(v) => setOutcome(v === "__none__" ? "" : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Outcome" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DISCHARGE_OUTCOME_OPTIONS.map((o) => (
-                    <SelectItem key={o.value || "none"} value={o.value || "__none__"}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">ICD-11 discharge diagnoses (comma-separated)</Label>
-              <Input value={icd11Codes} onChange={(e) => setIcd11Codes(e.target.value)} placeholder="e.g. 1A00, 5A11" className="font-clinical" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Medications on discharge</Label>
-              <Textarea rows={2} value={dischargeMedicationSummary} onChange={(e) => setDischargeMedicationSummary(e.target.value)} placeholder="Drug, dose, duration…" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Follow-up plan</Label>
-              <Textarea rows={2} value={followUpPlan} onChange={(e) => setFollowUpPlan(e.target.value)} placeholder="OPD review date, referrals, warnings…" />
-            </div>
-          </div>
-          <DialogFooter>
+      <FormDialog
+        open={openId !== null}
+        onOpenChange={(o) => { if (!o) setOpenId(null); }}
+        size="lg"
+        title="Discharge patient"
+        description="Write the discharge summary. The patient's bed is freed once the nurse confirms they have left."
+        footer={
+          <>
             <Button variant="outline" onClick={() => setOpenId(null)}>
               Cancel
             </Button>
@@ -654,11 +618,49 @@ function DischargeView() {
                 })
               }
             >
-              {dischargeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm discharge"}
+              {dischargeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Discharge patient"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <FormDialogSection title="Hospital stay" columns={1}>
+          <div className="space-y-1.5">
+            <Label htmlFor="discharge-summary">Discharge summary</Label>
+            <Textarea id="discharge-summary" rows={5} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Course in hospital, key tests, condition when leaving…" />
+          </div>
+        </FormDialogSection>
+        <FormDialogSection title="Outcome and diagnoses">
+          <div className="space-y-1.5">
+            <Label htmlFor="discharge-outcome">Outcome (optional)</Label>
+            <Select value={outcome || "__none__"} onValueChange={(v) => setOutcome(v === "__none__" ? "" : v)}>
+              <SelectTrigger id="discharge-outcome" className="w-full">
+                <SelectValue placeholder="Outcome" />
+              </SelectTrigger>
+              <SelectContent>
+                {DISCHARGE_OUTCOME_OPTIONS.map((o) => (
+                  <SelectItem key={o.value || "none"} value={o.value || "__none__"}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="discharge-codes">Diagnosis codes (optional)</Label>
+            <Input id="discharge-codes" value={icd11Codes} onChange={(e) => setIcd11Codes(e.target.value)} placeholder="e.g. 1A00, 5A11" className="font-clinical" />
+          </div>
+        </FormDialogSection>
+        <FormDialogSection title="Going home">
+          <div className="space-y-1.5">
+            <Label htmlFor="discharge-meds">Medicines to take home (optional)</Label>
+            <Textarea id="discharge-meds" rows={3} value={dischargeMedicationSummary} onChange={(e) => setDischargeMedicationSummary(e.target.value)} placeholder="Medicine, dose, how long…" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="discharge-followup">Follow-up plan (optional)</Label>
+            <Textarea id="discharge-followup" rows={3} value={followUpPlan} onChange={(e) => setFollowUpPlan(e.target.value)} placeholder="Clinic review date, referrals, warning signs…" />
+          </div>
+        </FormDialogSection>
+      </FormDialog>
     </div>
   );
 }

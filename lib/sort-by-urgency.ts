@@ -18,7 +18,7 @@ export function sortByUrgencyThenArrival<T>(
   getArrivedAt: (item: T) => string,
 ): T[] {
   return [...items].sort((a, b) => {
-    const byUrgency = URGENCY_ORDER[getPriority(a)] - URGENCY_ORDER[getPriority(b)];
+    const byUrgency = (URGENCY_ORDER[getPriority(a)] ?? 4) - (URGENCY_ORDER[getPriority(b)] ?? 4);
     if (byUrgency !== 0) return byUrgency;
     return getArrivedAt(a).localeCompare(getArrivedAt(b));
   });

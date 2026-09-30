@@ -32,7 +32,7 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 | Records | ✅ REC-01 → ✅ REC-02 → ✅ REC-03 → ✅ REC-04 → ✅ REC-05 → ✅ REC-06 → ✅ REC-07 — **done, Stage 3 (2026-09-19)**, see `progress.md` |
 | Appointments | ✅ REC-08 → ✅ REC-09 → ✅ REC-10 → ✅ REC-11 — **done, Stage 4 (2026-09-19)**, see `progress.md` |
 | Nurse | ✅ NUR-01 → ✅ NUR-02 → ✅ NUR-03 → ✅ NUR-04 → ✅ NUR-05 → ✅ NUR-06 — **done, Stage 5 (2026-09-19)**, see `progress.md` |
-| Doctor | DOC-01 → DOC-02 → DOC-03 → DOC-04 → DOC-13 |
+| Doctor | ✅ DOC-01 → ✅ DOC-02 → ✅ DOC-03 → ✅ DOC-04 → ✅ DOC-13 — **done, Stage 6 (2026-09-30)**, see `progress.md` |
 
 ✅ Milestone: a patient can be registered, triaged, seen and finished; J01 steps 1–6 and J03 pass.
 
@@ -40,9 +40,9 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 
 | Line | Slices |
 |---|---|
-| Lab | LAB-08 → LAB-01 → LAB-02 → LAB-03 → LAB-05 → LAB-04 → LAB-06 → LAB-07 |
-| Doctor orders | DOC-05 → DOC-06 → DOC-07 → DOC-08 → DOC-14 |
-| Imaging | RAD-01 → RAD-02 → RAD-03 → RAD-04 |
+| Lab | ✅ LAB-08 → ✅ LAB-01 → ✅ LAB-02 → ✅ LAB-03 → ✅ LAB-05 → ✅ LAB-04 → ✅ LAB-06 → ✅ LAB-07 — **done, Stage 7 (2026-09-30)** |
+| Doctor orders | ✅ DOC-05 → ✅ DOC-06 → DOC-07 → ✅ DOC-08 → DOC-14 |
+| Imaging | ✅ RAD-01 → ✅ RAD-02 → ✅ RAD-03 → ✅ RAD-04 — **done, Stage 8 (2026-09-30)** |
 | Pharmacy | PHA-09 → PHA-07 → PHA-06 → PHA-01 → PHA-02 → PHA-03 → PHA-04 → PHA-05 → PHA-08 → PHA-10 → PHA-11 |
 
 ✅ Milestone: J01 complete end to end; J04, J05, J06 pass.
@@ -89,7 +89,8 @@ Build UI against typed stubs (`// TODO(backend)`) and raise these with the backe
 | ALL-06 | Notifications feed for the header bell |
 | ALL-04, ALL-08 | Profile edit; feedback submission |
 | REC-05 | Single "start walk-in visit" call (today: book + check in) |
-| DOC-04 | Save diagnoses on a visit (confirm endpoint) |
+| DOC-04 | ~~Save diagnoses on a visit~~ — saved on the consultation note (resolved); "must be reported" flag + surveillance flag endpoint |
+| DOC-13 | Reason field when force-finishing a visit |
 | DOC-07 | Allergy / interaction check response on prescribe |
 | NUR-10 | Bed cleaning state; discharge confirmation by nurse |
 | NUR-11 | Quick emergency registration; payment exemption for emergency orders |

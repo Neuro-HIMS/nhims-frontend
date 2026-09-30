@@ -12,6 +12,7 @@ import { getFriendlyError } from "@/lib/api-errors";
 import { notify } from "@/lib/notify";
 import { roleLabel } from "@/lib/status-labels";
 import { NAV_ITEMS } from "@/config/navigation";
+import { isHiddenPlaceholder } from "@/config/placeholder-sections";
 
 export default function ProfileSettingsPage() {
   const storeUser = useAuthStore((s) => s.user);
@@ -66,6 +67,7 @@ export default function ProfileSettingsPage() {
   ).toUpperCase();
 
   const sectionLabels = (user.assignedModules ?? [])
+    .filter((m) => !isHiddenPlaceholder(m))
     .map((m) => NAV_ITEMS.find((item) => item.module === m)?.label)
     .filter((label): label is string => Boolean(label));
 

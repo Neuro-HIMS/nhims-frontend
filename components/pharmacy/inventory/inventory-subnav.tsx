@@ -6,14 +6,15 @@ import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { tab: "suppliers", label: "Suppliers" },
   { tab: "stock", label: "Stock" },
   { tab: "movements", label: "Movements" },
+  { tab: "medicines", label: "Medicines list" },
+  { tab: "suppliers", label: "Suppliers" },
 ] as const;
 
 export function InventorySubNav() {
   const searchParams = useSearchParams();
-  const currentTab = searchParams.get("tab") ?? "suppliers";
+  const currentTab = searchParams.get("tab") ?? "stock";
 
   return (
     <nav className="flex flex-wrap gap-2 border-b border-border pb-2" aria-label="Inventory sections">
