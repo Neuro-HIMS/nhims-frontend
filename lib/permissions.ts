@@ -74,7 +74,21 @@ export function canReportImaging(role: UserRole | undefined): boolean {
   return role === "RADIOGRAPHER" || role === "FACILITY_ADMIN" || role === "SUPER_ADMIN";
 }
 
-/** Backend INV_ROLES — who may read pharmacy stock (doctors can't yet — backend-gaps.md#DOC-07-stock). */
+/** BIL-07: reverse a payment — finance officers and admins, not cashiers. */
+export function canReversePayments(role: UserRole | undefined): boolean {
+  return role === "FINANCE_OFFICER" || role === "FACILITY_ADMIN" || role === "SUPER_ADMIN";
+}
+
+/** DOC-10 / DOC-12: admit and discharge — doctors and midwives (and admins). The backend also lets nurses. */
+export function canAdmitAndDischarge(role: UserRole | undefined): boolean {
+  return role === "MEDICAL_OFFICER" || role === "MIDWIFE" || role === "FACILITY_ADMIN" || role === "SUPER_ADMIN";
+}
+
+/** NUR-08 / NUR-09: record doses and observations (backend IpdNursingController WRITE_ROLES). */
+export function canRecordWardCare(role: UserRole | undefined): boolean {
+  return role === "NURSE" || role === "MIDWIFE" || role === "MEDICAL_OFFICER" || role === "FACILITY_ADMIN" || role === "SUPER_ADMIN" || role === "HIO";
+}
+
 /** Medical alerts (allergies etc.) — backend MedicalAlertController READ_ROLES. */
 export function canReadAlerts(role: UserRole | undefined): boolean {
   return (
@@ -96,6 +110,7 @@ export function canWriteTreatments(role: UserRole | undefined): boolean {
   return role === "NURSE" || role === "MIDWIFE" || role === "MEDICAL_OFFICER" || role === "FACILITY_ADMIN" || role === "SUPER_ADMIN";
 }
 
+/** Backend INV_ROLES — who may read pharmacy stock (doctors can't yet — backend-gaps.md#DOC-07-stock). */
 export function canReadStock(role: UserRole | undefined): boolean {
   return role === "PHARMACIST" || role === "PHARMACY_TECH" || role === "FACILITY_ADMIN" || role === "SUPER_ADMIN";
 }

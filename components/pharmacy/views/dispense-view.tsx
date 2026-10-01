@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Printer } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Info, Loader2, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/components/common/empty-state";
@@ -20,20 +20,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { getFriendlyError } from "@/lib/api-errors";
 import { cleanPersonName, naturalName } from "@/lib/display-name";
 import { formatClinicalDate, formatClinicalDateTime } from "@/lib/dates";
-import { allergyClash, frequencyLabel, isRxWaitingToPay, rxStatus } from "@/lib/pharmacy";
+import { EXPIRING_SOON_DAYS, frequencyLabel, rxStatus } from "@/lib/pharmacy";
 import { canDispense } from "@/lib/permissions";
 import { printArea } from "@/lib/print";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
-import { patientsService } from "@/services/patients.service";
 import { pharmacyInventoryService } from "@/services/pharmacy-inventory.service";
 import { useAuthStore } from "@/store/auth.store";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { useAllergyCheck } from "@/hooks/use-allergy-check";
 import type { PrescriptionDto, PrescriptionLineDto } from "@/types/clinical.types";
 import type { PharmacyStockLotDto } from "@/types/pharmacy-inventory.types";
 
 const NOT_GIVEN_REASONS = ["Out of stock", "Patient declined", "Already has it at home", "Other"] as const;
-const SOON_DAYS = 60;
 
 function daysUntil(iso: string | null): number | null {
   if (!iso) return null;
@@ -106,27 +104,22 @@ export function DispenseView() {
   );
 }
 
-type DoneState = { given: number; notGiven: Array<{ name: string; reason: string }> };
+type DoneState = { given: number; notGiven: Array<{ name: string; reason: string }>; labels: Array<{ dispenseId: string; name: string }> };
 
 function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneState | null; setDone: (d: DoneState) => void }) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
   const mayDispense = canDispense(role);
+  const router = useRouter();
   const openLines = rx.lines.filter((l) => l.status !== "CANCELLED" && remainingOf(l) > 0);
+  // The prescription header stays "Waiting to pay" while any line is unpaid, so gate per line:
+  // PENDING lines wait for the cashier, everything else can be given now.
+  const readyLines = openLines.filter((l) => l.status !== "PENDING");
+  const unpaidLines = openLines.filter((l) => l.status === "PENDING");
   const status = rxStatus(rx.status);
+  const allergy = useAllergyCheck(rx.patientId);
 
-  const patientQuery = useQuery({
-    queryKey: queryKeys.patients.detail(rx.patientId ?? ""),
-    queryFn: () => patientsService.getById(rx.patientId!),
-    enabled: Boolean(rx.patientId),
-  });
-  const alertsQuery = useQuery({
-    queryKey: queryKeys.clinical.alerts(rx.patientId ?? ""),
-    queryFn: () => clinicalService.listAlerts(rx.patientId!),
-    enabled: Boolean(rx.patientId),
-  });
-
-  const itemIds = [...new Set(openLines.map((l) => l.pharmacyInventoryItemId).filter((x): x is string => Boolean(x)))];
+  const itemIds = [...new Set(readyLines.map((l) => l.pharmacyInventoryItemId).filter((x): x is string => Boolean(x)))];
   const lotQueries = useQueries({
     queries: itemIds.map((itemId) => ({
       queryKey: queryKeys.pharmacyInventory.lots(itemId),
@@ -141,6 +134,7 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
       .sort((a, b) => (a.expiryDate ?? "9999").localeCompare(b.expiryDate ?? "9999"));
   });
   const lotsLoading = lotQueries.some((q) => q.isPending);
+  const lotsFailed = lotQueries.some((q) => q.isError);
 
   const [plans, setPlans] = useState<Record<string, LinePlan>>({});
   const [counselling, setCounselling] = useState("");
@@ -151,12 +145,14 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
     const lots = l.pharmacyInventoryItemId ? lotsByItem[l.pharmacyInventoryItemId] ?? [] : [];
     const first = lots[0];
     const qty = first ? Math.min(remainingOf(l), Number(first.quantityOnHand)) : 0;
-    return { lotId: first?.id ?? "", quantity: first ? String(qty) : "0", notGiving: !first && !lotsLoading, reason: first ? "" : "Out of stock", otherReason: "" };
+    // Only assume "out of stock" when the batches really loaded and none are usable.
+    const outOfStock = !first && Boolean(l.pharmacyInventoryItemId) && !lotsLoading && !lotsFailed;
+    return { lotId: first?.id ?? "", quantity: first ? String(qty) : "0", notGiving: outOfStock, reason: outOfStock ? "Out of stock" : "", otherReason: "" };
   };
   const setPlan = (l: PrescriptionLineDto, p: Partial<LinePlan>) => setPlans((all) => ({ ...all, [l.id]: { ...planFor(l), ...p } }));
 
   const problems: string[] = [];
-  for (const l of openLines) {
+  for (const l of readyLines) {
     const p = planFor(l);
     const lot = (l.pharmacyInventoryItemId ? lotsByItem[l.pharmacyInventoryItemId] ?? [] : []).find((x) => x.id === p.lotId);
     const q = Number(p.quantity);
@@ -173,11 +169,11 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
       problems.push(`Say why only part of ${l.drugName} is being given.`);
     }
   }
-  const giving = openLines.filter((l) => !planFor(l).notGiving && Number(planFor(l).quantity) > 0);
+  const giving = readyLines.filter((l) => !planFor(l).notGiving && Number(planFor(l).quantity) > 0);
 
   const dispenseMut = useMutation({
     mutationFn: async () => {
-      const notGiven = openLines
+      const notGiven = readyLines
         .map((l) => {
           const p = planFor(l);
           const why = p.reason === "Other" ? p.otherReason.trim() : p.reason;
@@ -200,25 +196,24 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
     onSuccess: ({ saved, notGiven }) => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
       qc.invalidateQueries({ queryKey: queryKeys.pharmacyInventory.all });
-      if (saved) {
-        const before = new Set(rx.dispenses.map((d) => d.id));
-        saved.dispenses.filter((d) => !before.has(d.id)).forEach((d) => clinicalService.openPharmacyDispenseLabelPdf(saved.id, d.id));
-      }
-      setDone({ given: giving.length, notGiven });
-      if (giving.length) toast.success(`${giving.length} medicine${giving.length === 1 ? "" : "s"} given to ${naturalName(rx.patientName)}. Labels are printing.`);
+      const before = new Set(rx.dispenses.map((d) => d.id));
+      const names = new Map(rx.lines.map((l) => [l.id, l.drugName]));
+      const labels = (saved?.dispenses ?? [])
+        .filter((d) => !before.has(d.id))
+        .map((d) => ({ dispenseId: d.id, name: (d.lineId && names.get(d.lineId)) || "Medicine" }));
+      setDone({ given: giving.length, notGiven, labels });
+      if (giving.length) toast.success(`${giving.length} medicine${giving.length === 1 ? "" : "s"} given to ${naturalName(rx.patientName)}. Print the labels next.`);
     },
     onError: (e) => {
-      const status = (e as { response?: { status?: number } }).response?.status;
-      toast.error(status === 409 ? "Stock changed while you were working. Check the batches and try again." : getFriendlyError(e).message);
+      toast.error(getFriendlyError(e).message);
       qc.invalidateQueries({ queryKey: queryKeys.pharmacyInventory.all });
     },
   });
 
-  const [confirmFinish, setConfirmFinish] = useState(false);
-  // With medicines still not given the backend counts the prescription as open, so finishing needs force.
-  // The prescription itself stays "Partly given" / "Ready" in the list so the rest can be given later.
+  // Only offered when everything was given: with medicines still open the backend needs a forced
+  // finish, which pharmacy staff aren't allowed (backend-gaps.md#PHA-04-finish).
   const finishMut = useMutation({
-    mutationFn: (force: boolean) => clinicalService.complete(rx.encounterId!, force),
+    mutationFn: () => clinicalService.complete(rx.encounterId!, false),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
       toast.success(`${naturalName(rx.patientName)}'s visit is finished.`);
@@ -226,12 +221,33 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
     onError: (e) => toast.error(getFriendlyError(e).message),
   });
 
+  // Opened inside the click so pop-up blockers allow it; the PDF loads into it afterwards.
+  async function printLabel(dispenseId: string) {
+    const win = window.open("", "_blank");
+    if (!win) {
+      toast.error("The browser blocked the label window. Allow pop-ups for this site, then try again.");
+      return;
+    }
+    try {
+      const url = await clinicalService.dispenseLabelUrl(rx.id, dispenseId);
+      win.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    } catch (e) {
+      win.close();
+      toast.error(`The label couldn't be printed. ${getFriendlyError(e).message}`);
+    }
+  }
+
   // After dispensing: what happened, labels, not-given list, finish the visit.
   if (done) {
     return (
       <section className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5">
         <div className="flex items-start gap-3">
-          <CheckCircle2 className="mt-0.5 h-6 w-6 text-success" aria-hidden="true" />
+          {done.given > 0 ? (
+            <CheckCircle2 className="mt-0.5 h-6 w-6 text-success" aria-hidden="true" />
+          ) : (
+            <Info className="mt-0.5 h-6 w-6 text-muted-foreground" aria-hidden="true" />
+          )}
           <div>
             <h2 className="text-base font-semibold text-foreground">
               {done.given > 0
@@ -240,13 +256,25 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
             </h2>
             <p className="text-sm text-muted-foreground">
               {done.given === 0
-                ? "The prescription stays in Prescriptions waiting, so it can be given when stock arrives. Give the patient the list below if they'll buy the medicines elsewhere."
+                ? "The prescription stays in Prescriptions waiting, so it can still be given later. Give the patient the list below if they'll get the medicines elsewhere."
                 : done.notGiven.length
                   ? "Some medicines weren't given. The doctor can see why on the patient's record."
                   : "Everything on the prescription was given."}
             </p>
           </div>
         </div>
+        {done.labels.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Labels</p>
+            <div className="flex flex-wrap gap-2">
+              {done.labels.map((lb) => (
+                <Button key={lb.dispenseId} variant="outline" size="sm" onClick={() => void printLabel(lb.dispenseId)}>
+                  <Printer className="mr-1.5 h-4 w-4" /> Print label: {lb.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
         {done.notGiven.length > 0 && (
           <div data-print-area="not-given" className="space-y-2 rounded-lg border border-border bg-card p-3">
             <p className="text-sm font-semibold text-foreground">Medicines not given — {naturalName(rx.patientName)}</p>
@@ -261,11 +289,8 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          {rx.encounterId && (
-            <Button
-              disabled={finishMut.isPending || finishMut.isSuccess}
-              onClick={() => (done.notGiven.length > 0 ? setConfirmFinish(true) : finishMut.mutate(false))}
-            >
+          {rx.encounterId && done.notGiven.length === 0 && (
+            <Button disabled={finishMut.isPending || finishMut.isSuccess} onClick={() => finishMut.mutate()}>
               {finishMut.isSuccess ? "Visit finished" : finishMut.isPending ? "Finishing…" : "Finish the visit"}
             </Button>
           )}
@@ -274,30 +299,20 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
               <Printer className="mr-1.5 h-4 w-4" /> Print list of medicines not given
             </Button>
           )}
-          <Button variant="secondary" onClick={() => window.location.assign("/pharmacy?view=queue")}>
+          <Button variant="secondary" onClick={() => router.push("/pharmacy?view=queue")}>
             Back to prescriptions waiting
           </Button>
         </div>
-        <ConfirmDialog
-          open={confirmFinish}
-          onOpenChange={setConfirmFinish}
-          title={`Finish ${naturalName(rx.patientName)}'s visit?`}
-          description="Some medicines weren't given. The visit will be closed, and the prescription stays in Prescriptions waiting so the rest can be given when it's in stock."
-          confirmLabel="Finish the visit"
-          cancelLabel="Not yet"
-          pending={finishMut.isPending}
-          onConfirm={async () => {
-            await finishMut.mutateAsync(true);
-          }}
-        />
+        {rx.encounterId && done.notGiven.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            The visit stays open while medicines are still owed. The doctor or nurse can finish it, or you can finish it here once the rest is given.
+          </p>
+        )}
       </section>
     );
   }
 
-  const patient = patientQuery.data;
-  const clashes = openLines
-    .map((l) => ({ line: l, clash: allergyClash(l.drugName, alertsQuery.data ?? [], patient?.knownAllergies) }))
-    .filter((c) => c.clash);
+  const clashes = readyLines.map((l) => ({ line: l, clash: allergy.clashFor(l.drugName) })).filter((c) => c.clash);
 
   return (
     <section className="space-y-5 rounded-xl border border-border bg-card p-4 sm:p-5">
@@ -323,17 +338,41 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
         </div>
       ))}
 
-      {isRxWaitingToPay(rx) && (
+      {allergy.failed ? (
+        <InlineNotice tone="error" title="Allergies couldn't be loaded">
+          The medicines can&apos;t be checked against the patient&apos;s allergies, so they can&apos;t be given yet.{" "}
+          <button type="button" className="font-medium underline" onClick={allergy.retry}>
+            Try again
+          </button>
+        </InlineNotice>
+      ) : (
+        !allergy.ready && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the patient&apos;s allergies…
+          </p>
+        )
+      )}
+
+      {lotsFailed && (
+        <InlineNotice tone="error" title="Batches couldn't be loaded">
+          Stock for these medicines couldn&apos;t be checked.{" "}
+          <button type="button" className="font-medium underline" onClick={() => lotQueries.forEach((q) => q.isError && void q.refetch())}>
+            Try again
+          </button>
+        </InlineNotice>
+      )}
+
+      {unpaidLines.length > 0 && (
         <InlineNotice tone="pending" title="Waiting for payment at the cashier.">
-          Give the medicines once the cashier has taken payment.
+          {unpaidLines.map((l) => l.drugName).join(", ")} can be given once the cashier has taken payment.
         </InlineNotice>
       )}
 
       {openLines.length === 0 ? (
         <InlineNotice tone="success">Everything on this prescription has been given.</InlineNotice>
-      ) : (
+      ) : readyLines.length === 0 ? null : (
         <ul className="space-y-3">
-          {openLines.map((l) => {
+          {readyLines.map((l) => {
             const p = planFor(l);
             const lots = l.pharmacyInventoryItemId ? lotsByItem[l.pharmacyInventoryItemId] ?? [] : [];
             const lot = lots.find((x) => x.id === p.lotId);
@@ -388,7 +427,7 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
                           </SelectContent>
                         </Select>
                       )}
-                      {expiresIn != null && expiresIn <= SOON_DAYS && (
+                      {expiresIn != null && expiresIn <= EXPIRING_SOON_DAYS && (
                         <StatusPill tone="warning">{`Expires in ${expiresIn} day${expiresIn === 1 ? "" : "s"}`}</StatusPill>
                       )}
                     </div>
@@ -469,7 +508,7 @@ function DispenseForm({ rx, done, setDone }: { rx: PrescriptionDto; done: DoneSt
             )}
             <Button
               variant={giving.length === 0 ? "outline" : "default"}
-              disabled={problems.length > 0 || isRxWaitingToPay(rx) || lotsLoading || dispenseMut.isPending}
+              disabled={problems.length > 0 || readyLines.length === 0 || !allergy.ready || lotsLoading || lotsFailed || dispenseMut.isPending}
               onClick={() => dispenseMut.mutate()}
             >
               {dispenseMut.isPending ? "Giving…" : giving.length === 0 ? "Continue without giving" : "Dispense and print labels"}

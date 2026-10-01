@@ -1,149 +1,128 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CreditCard, FilePlus2, Receipt, Wallet, AlertCircle, Loader2, TrendingUp } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BillsTable } from "@/components/billing/bills-table";
+import { TakePaymentDialog } from "@/components/billing/take-payment-dialog";
+import { ErrorState } from "@/components/common/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatMoney, isTakenAtDesk, isWaitingForPayment, localDay, METHOD_KINDS, todayLocal, totalsByMethod } from "@/lib/billing";
+import { queryKeys } from "@/lib/query-keys";
 import { billingService } from "@/services/billing.service";
-import { minorToGhs } from "@/components/finance/finance-utils";
+import type { BillDto } from "@/types/finance.types";
 
+/** BIL-01 — what's waiting, what came in today, and how. */
 export function BillingDashboardView() {
-  const dash = useQuery({
-    queryKey: ["billing", "dashboard"],
-    queryFn: () => billingService.dashboard(),
-    refetchInterval: 60_000,
+  const [paying, setPaying] = useState<BillDto | null>(null);
+
+  const billsQuery = useQuery({
+    queryKey: queryKeys.billing.bills("ALL", ""),
+    queryFn: () => billingService.listBills({}),
+    refetchInterval: 30_000,
+  });
+  const paymentsQuery = useQuery({
+    queryKey: queryKeys.billing.payments,
+    queryFn: () => billingService.listPayments(),
+    refetchInterval: 30_000,
+  });
+  const reversalsQuery = useQuery({
+    queryKey: queryKeys.billing.reversals,
+    queryFn: () => billingService.reversals(),
+    enabled: billingService.reversalAvailable(),
   });
 
-  if (dash.isLoading) {
-    return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard…
-      </p>
-    );
-  }
-  if (dash.isError || !dash.data) {
-    return <p className="text-sm text-destructive">Unable to load billing dashboard.</p>;
-  }
+  const today = todayLocal();
+  const stats = useMemo(() => {
+    const bills = billsQuery.data ?? [];
+    const waiting = bills.filter(isWaitingForPayment);
+    const reversed = new Set((reversalsQuery.data ?? []).map((r) => r.paymentId));
+    // Money taken at the desk today: no NHIS/insurance payouts or waivers, no reversed payments.
+    const taken = (paymentsQuery.data ?? []).filter((p) => localDay(p.receivedAt) === today && isTakenAtDesk(p.method) && !reversed.has(p.id));
+    return {
+      waiting: [...waiting].sort((a, b) => (a.issuedAt ?? "").localeCompare(b.issuedAt ?? "")),
+      waitingSum: waiting.reduce((s, b) => s + b.balanceMinor, 0),
+      partPaid: bills.filter((b) => b.status === "PARTIAL").length,
+      cancelledToday: bills.filter((b) => b.status === "CANCELLED" && localDay(b.closedAt ?? b.updatedAt) === today).length,
+      collected: taken.reduce((s, p) => s + p.amountMinor, 0),
+      receipts: taken.length,
+      byMethod: totalsByMethod(taken),
+    };
+  }, [billsQuery.data, paymentsQuery.data, reversalsQuery.data, today]);
 
-  const d = dash.data;
+  const billsLoading = billsQuery.isPending;
+  const maxMethod = Math.max(1, ...METHOD_KINDS.map((m) => stats.byMethod[m.kind]));
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <BigStat
-          label="Today collected"
-          value={`GH₵ ${minorToGhs(d.todayCollectedMinor)}`}
-          sub={`${d.paidTodayCount} receipts`}
-          accent="ok"
-          icon={<TrendingUp className="h-4 w-4" />}
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat loading={billsLoading} failed={billsQuery.isError} label="Waiting for payment" value={String(stats.waiting.length)} sub={formatMoney(stats.waitingSum)} />
+        <Stat
+          loading={paymentsQuery.isPending}
+          failed={paymentsQuery.isError}
+          label="Collected today"
+          value={formatMoney(stats.collected)}
+          sub={`${stats.receipts} receipt${stats.receipts === 1 ? "" : "s"}`}
         />
-        <BigStat
-          label="Outstanding"
-          value={`GH₵ ${minorToGhs(d.outstandingMinor)}`}
-          sub={`${d.openBills + d.invoicedBills + d.partialBills} unsettled bills`}
-          accent="warn"
-          icon={<AlertCircle className="h-4 w-4" />}
-        />
-        <BigStat
-          label="This month"
-          value={`GH₵ ${minorToGhs(d.monthCollectedMinor)}`}
-          sub="all payment methods"
-          accent="info"
-          icon={<Wallet className="h-4 w-4" />}
-        />
-        <BigStat
-          label="Bills issued"
-          value={String(d.openBills + d.invoicedBills + d.partialBills)}
-          sub={`${d.openBills} open · ${d.invoicedBills} invoiced · ${d.partialBills} partial`}
-          icon={<Receipt className="h-4 w-4" />}
-        />
+        <Stat loading={billsLoading} failed={billsQuery.isError} label="Part paid" value={String(stats.partPaid)} sub="Bills with money still owed" />
+        <Stat loading={billsLoading} failed={billsQuery.isError} label="Cancelled today" value={String(stats.cancelledToday)} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Today&apos;s collections by method</CardTitle>
-            <CardDescription>Breakdown of receipts taken today.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MethodCell label="Cash" value={d.todayCashMinor} />
-              <MethodCell label="Mobile Money" value={d.todayMomoMinor} />
-              <MethodCell label="Card / Transfer" value={d.todayCardMinor} />
-              <MethodCell label="Insurance / NHIS" value={d.todayInsuranceMinor} />
-            </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Collections from <span className="font-medium text-foreground">cash</span>,{" "}
-              <span className="font-medium text-foreground">mobile money</span> (MTN, Telecel, AirtelTigo),{" "}
-              <span className="font-medium text-foreground">card / bank transfer</span>, and NHIS / insurance reimbursements.
-              The figures refresh every minute.
-            </p>
-          </CardContent>
-        </Card>
+      <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+        <h2 className="text-base font-semibold text-foreground">Collected today by method</h2>
+        {paymentsQuery.isError ? (
+          <ErrorState error={paymentsQuery.error} onRetry={() => void paymentsQuery.refetch()} />
+        ) : paymentsQuery.isPending ? (
+          <Skeleton className="mt-3 h-24 w-full" />
+        ) : stats.receipts === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">No payments taken yet today.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {METHOD_KINDS.map((m) => (
+              <li key={m.kind} className="grid grid-cols-[9rem_1fr_7rem] items-center gap-3 text-sm">
+                <span className="text-muted-foreground">{m.label}</span>
+                <span className="h-2.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                  <span className="block h-full rounded-full bg-primary" style={{ width: `${(stats.byMethod[m.kind] / maxMethod) * 100}%` }} />
+                </span>
+                <span className="text-right font-clinical">{formatMoney(stats.byMethod[m.kind])}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Quick actions</CardTitle>
-            <CardDescription>Most common cashier shortcuts.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button asChild className="w-full justify-start">
-              <Link href="/billing?view=new"><FilePlus2 className="mr-2 h-4 w-4" /> Open a new bill</Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/billing?view=bills"><Receipt className="mr-2 h-4 w-4" /> View invoices</Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/billing?view=payments"><CreditCard className="mr-2 h-4 w-4" /> Payment history</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-foreground">Waiting for payment</h2>
+          {stats.waiting.length > 10 && (
+            <Link href="/billing?view=bills" className="text-sm font-medium text-primary hover:underline">
+              See all {stats.waiting.length}
+            </Link>
+          )}
+        </div>
+        <BillsTable
+          rows={billsQuery.data ? stats.waiting.slice(0, 10) : undefined}
+          isLoading={billsQuery.isPending}
+          error={billsQuery.error}
+          onRetry={() => void billsQuery.refetch()}
+          empty={{ illustration: "all-done", tone: "good-news", title: "No one is waiting to pay", description: "Bills appear here when doctors order services for self-pay patients." }}
+          onTakePayment={setPaying}
+        />
+        <p className="text-xs text-muted-foreground">Counts come from the latest 100 bills. Search Bills for a patient to see older ones.</p>
+      </section>
+
+      <TakePaymentDialog bill={paying} onOpenChange={(o) => !o && setPaying(null)} />
     </div>
   );
 }
 
-function BigStat({
-  label,
-  value,
-  sub,
-  accent,
-  icon,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  accent?: "ok" | "warn" | "info";
-  icon?: ReactNode;
-}) {
-  const cls =
-    accent === "ok"
-      ? "border-[hsl(var(--clinical-routine))] bg-[hsl(var(--clinical-routine-bg))] text-[hsl(var(--clinical-routine))]"
-      : accent === "warn"
-      ? "border-[hsl(var(--clinical-urgent))] bg-[hsl(var(--clinical-urgent-bg))] text-[hsl(var(--clinical-urgent))]"
-      : accent === "info"
-      ? "border-[hsl(var(--notice-info-border))] bg-[hsl(var(--notice-info-bg))] text-[hsl(var(--notice-info-foreground))]"
-      : "border-border bg-card text-foreground";
+function Stat({ label, value, sub, loading, failed }: { label: string; value: string; sub?: string; loading: boolean; failed: boolean }) {
   return (
-    <div className={`rounded-lg border px-4 py-3 ${cls}`}>
-      <div className="flex items-center justify-between gap-2 opacity-80">
-        <p className="text-xs font-medium uppercase tracking-wider">{label}</p>
-        {icon}
-      </div>
-      <p className="mt-1 font-clinical text-2xl font-semibold">{value}</p>
-      {sub && <p className="mt-0.5 text-xs opacity-75">{sub}</p>}
-    </div>
-  );
-}
-
-function MethodCell({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-0.5 font-clinical text-lg font-semibold text-foreground">GH₵ {minorToGhs(value)}</p>
+    <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <p className="stat-card-label">{label}</p>
+      {loading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="stat-card-value">{failed ? "—" : value}</p>}
+      {!loading && (failed ? <p className="text-xs text-muted-foreground">Couldn&apos;t load</p> : sub && <p className="text-xs text-muted-foreground">{sub}</p>)}
     </div>
   );
 }

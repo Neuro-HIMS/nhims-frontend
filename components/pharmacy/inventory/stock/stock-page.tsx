@@ -18,7 +18,7 @@ import { StockTable } from "@/components/pharmacy/inventory/stock/stock-table";
 import { StockToolbar, type StockStatusFilter } from "@/components/pharmacy/inventory/stock/stock-toolbar";
 import { Button } from "@/components/ui/button";
 import { getFriendlyError } from "@/lib/api-errors";
-import { hasExpiredStock, stockStatus } from "@/lib/pharmacy";
+import { hasExpiredStock, stockLevel, stockStatus } from "@/lib/pharmacy";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { pharmacyInventoryService } from "@/services/pharmacy-inventory.service";
@@ -69,8 +69,8 @@ export function StockPage() {
   const rows = useMemo(() => overviewQuery.data ?? [], [overviewQuery.data]);
   const counts = useMemo(
     () => ({
-      LOW: rows.filter((r) => r.stockStatus === "LOW").length,
-      OUT: rows.filter((r) => r.stockStatus === "OUT").length,
+      LOW: rows.filter((r) => stockLevel(r) === "LOW").length,
+      OUT: rows.filter((r) => stockLevel(r) === "OUT").length,
       EXPIRING_SOON: rows.filter((r) => r.stockStatus === "EXPIRING_SOON").length,
       EXPIRED: rows.filter((r) => hasExpiredStock(r.nearestExpiry)).length,
     }),
@@ -82,6 +82,7 @@ export function StockPage() {
     return rows.filter((r) => {
       if (needle && !r.displayName.toLowerCase().includes(needle) && !(r.skuCode ?? "").toLowerCase().includes(needle)) return false;
       if (statusFilter === "EXPIRED") return hasExpiredStock(r.nearestExpiry);
+      if (statusFilter === "LOW" || statusFilter === "OUT") return stockLevel(r) === statusFilter;
       return statusFilter === "ALL" || r.stockStatus === statusFilter;
     });
   }, [rows, search, statusFilter]);
@@ -177,7 +178,7 @@ export function StockPage() {
                   statusFilter === k ? "border-primary ring-1 ring-primary" : "border-border",
                 )}
               >
-                <p className="stat-card-label">{k === "EXPIRING_SOON" ? "Expiring in 30 days" : stockStatus(k).label}</p>
+                <p className="stat-card-label">{k === "EXPIRING_SOON" ? "Expiring within 3 months" : stockStatus(k).label}</p>
                 <p className={cn("stat-card-value", counts[k] > 0 && (k === "OUT" || k === "EXPIRED") && "text-destructive")}>{counts[k]}</p>
               </button>
             ))}
@@ -234,7 +235,9 @@ export function StockPage() {
         open={lotsItemId !== null && adjustLot === null}
         onOpenChange={(o) => !o && setLotsItemId(null)}
         itemLabel={lotsLabel}
-        loading={lotsQuery.isFetching}
+        loading={lotsQuery.isPending}
+        error={lotsQuery.isError ? lotsQuery.error : null}
+        onRetry={() => void lotsQuery.refetch()}
         lots={(lotsQuery.data ?? []).filter((l) => !lotsItemId || l.itemId === lotsItemId)}
         onAdjust={setAdjustLot}
       />

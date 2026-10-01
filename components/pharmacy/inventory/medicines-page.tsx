@@ -35,7 +35,7 @@ export function MedicinesPage() {
   });
   // Same query key as the medicine form's price-list picker, so it's fetched once.
   const catalogQuery = useQuery({
-    queryKey: ["clinical", "catalog", "PHARMACY"],
+    queryKey: queryKeys.clinical.catalog("PHARMACY"),
     queryFn: () => clinicalService.catalog("PHARMACY"),
   });
   const nhisById = useMemo(
@@ -138,7 +138,7 @@ export function MedicinesPage() {
                     {i.catalogServiceId ? (
                       <StatusPill tone="success">Linked</StatusPill>
                     ) : (
-                      <StatusPill tone="warning">Not linked — can&apos;t be prescribed</StatusPill>
+                      <StatusPill tone="warning">Not linked — can&apos;t be given from a prescription</StatusPill>
                     )}
                   </td>
                   <td className="px-4 py-2.5">

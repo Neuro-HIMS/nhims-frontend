@@ -16,13 +16,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { getFriendlyError } from "@/lib/api-errors";
 import { isSelfPay } from "@/lib/lab-results";
-import { allergyClash, FREQUENCIES, frequencyLabel, ROUTES, stockStatus, suggestedQuantity } from "@/lib/pharmacy";
+import { FREQUENCIES, frequencyLabel, ROUTES, stockStatus, suggestedQuantity } from "@/lib/pharmacy";
 import { canReadStock } from "@/lib/permissions";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
-import { patientsService } from "@/services/patients.service";
 import { pharmacyInventoryService } from "@/services/pharmacy-inventory.service";
 import { useAuthStore } from "@/store/auth.store";
+import { useAllergyCheck } from "@/hooks/use-allergy-check";
 import type { ClinicalServiceDto, CreatePrescriptionLineInput } from "@/types/clinical.types";
 
 interface DraftLine {
@@ -65,7 +65,7 @@ function Body({ open, onOpenChange, encounterId, patientId, patientName, payerTy
   const [note, setNote] = useState("");
 
   const drugsQuery = useQuery({
-    queryKey: ["clinical", "catalog", "PHARMACY"],
+    queryKey: queryKeys.clinical.catalog("PHARMACY"),
     queryFn: () => clinicalService.catalog("PHARMACY"),
     staleTime: 5 * 60_000,
   });
@@ -81,14 +81,7 @@ function Body({ open, onOpenChange, encounterId, patientId, patientName, payerTy
     enabled: canReadStock(role),
     staleTime: 60_000,
   });
-  const patientQuery = useQuery({
-    queryKey: queryKeys.patients.detail(patientId),
-    queryFn: () => patientsService.getById(patientId),
-  });
-  const alertsQuery = useQuery({
-    queryKey: queryKeys.clinical.alerts(patientId),
-    queryFn: () => clinicalService.listAlerts(patientId),
-  });
+  const allergy = useAllergyCheck(patientId);
 
   /** Stock status for a catalogue drug, when this role may see stock. */
   const stockFor = (serviceId: string) => {
@@ -105,7 +98,7 @@ function Body({ open, onOpenChange, encounterId, patientId, patientName, payerTy
       .slice(0, 12);
   }, [drugsQuery.data, search]);
 
-  const clashFor = (name: string) => allergyClash(name, alertsQuery.data ?? [], patientQuery.data?.knownAllergies);
+  const clashFor = allergy.clashFor;
 
   function addDrug(d: ClinicalServiceDto) {
     setLines((ls) => [
@@ -142,14 +135,16 @@ function Body({ open, onOpenChange, encounterId, patientId, patientName, payerTy
     );
   }
 
-  const problems = lines.flatMap((l) => {
+  const problems = [
+    ...(lines.length > 0 && allergy.failed ? ["The patient's allergies couldn't be loaded, so the medicines can't be checked."] : []),
+  ].concat(lines.flatMap((l) => {
     const out: string[] = [];
     const clash = clashFor(l.service.serviceName);
     if (clash?.blocking) out.push(`${l.service.serviceName} clashes with the recorded allergy "${clash.allergy}".`);
     if (clash && !clash.blocking && !l.overrideReason.trim()) out.push(`Say why ${l.service.serviceName} is safe despite the allergy, or remove it.`);
     if (!(Number(l.quantity) > 0)) out.push(`Enter the quantity for ${l.service.serviceName}.`);
     return out;
-  });
+  }));
 
   const sendMut = useMutation({
     mutationFn: () => {
@@ -192,7 +187,7 @@ function Body({ open, onOpenChange, encounterId, patientId, patientName, payerTy
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" disabled={lines.length === 0 || problems.length > 0 || sendMut.isPending} onClick={() => sendMut.mutate()}>
+          <Button type="button" disabled={lines.length === 0 || problems.length > 0 || !allergy.ready || sendMut.isPending} onClick={() => sendMut.mutate()}>
             {sendMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
             Send to pharmacy
           </Button>
@@ -373,6 +368,20 @@ function Body({ open, onOpenChange, encounterId, patientId, patientName, payerTy
         </FormDialogSection>
       )}
 
+      {allergy.failed ? (
+        <InlineNotice tone="error" title="Allergies couldn't be loaded">
+          Medicines can&apos;t be checked against the patient&apos;s allergies, so they can&apos;t be sent yet.{" "}
+          <button type="button" className="font-medium underline" onClick={allergy.retry}>
+            Try again
+          </button>
+        </InlineNotice>
+      ) : (
+        !allergy.ready && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the patient&apos;s allergies…
+          </p>
+        )
+      )}
       {problems.length > 0 && (
         <InlineNotice tone="error" title="Before sending">
           <ul className="list-disc pl-4">

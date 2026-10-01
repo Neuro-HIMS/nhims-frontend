@@ -43,17 +43,22 @@ function Body({ open, onOpenChange, pending, initial, onSubmit }: InventoryItemF
 
   const catalogQuery = useQuery({
     // The clinical catalog, not the finance one: pharmacy staff can't read finance settings.
-    queryKey: ["clinical", "catalog", "PHARMACY"],
+    queryKey: queryKeys.clinical.catalog("PHARMACY"),
     queryFn: () => clinicalService.catalog("PHARMACY"),
   });
   const suppliersQuery = useQuery({
     queryKey: queryKeys.pharmacyInventory.suppliers("", "", "true"),
     queryFn: () => pharmacyInventoryService.listSuppliers({ active: true }),
   });
-  const pharmacyCatalog = useMemo(
-    () => (catalogQuery.data ?? []).filter((r) => String(r.serviceGroup).toUpperCase() === "PHARMACY"),
-    [catalogQuery.data],
-  );
+  // Hide entries another medicine already uses: the backend gives a prescription from the first match only.
+  const itemsQuery = useQuery({
+    queryKey: queryKeys.pharmacyInventory.items("all"),
+    queryFn: () => pharmacyInventoryService.listInventoryItems(undefined),
+  });
+  const pharmacyCatalog = useMemo(() => {
+    const taken = new Set((itemsQuery.data ?? []).filter((i) => i.id !== initial?.id && i.catalogServiceId).map((i) => i.catalogServiceId));
+    return (catalogQuery.data ?? []).filter((r) => String(r.serviceGroup).toUpperCase() === "PHARMACY" && !taken.has(r.id));
+  }, [catalogQuery.data, itemsQuery.data, initial?.id]);
 
   async function save() {
     const rl = Number.parseFloat(reorderLevel);
@@ -76,7 +81,7 @@ function Body({ open, onOpenChange, pending, initial, onSubmit }: InventoryItemF
       onOpenChange={onOpenChange}
       size="lg"
       title={initial ? `Edit ${initial.displayName}` : "Add a medicine"}
-      description="A medicine or supply the pharmacy keeps in stock. Link it to its price-list entry so doctors can prescribe it and it can be billed."
+      description="A medicine or supply the pharmacy keeps in stock. Link it to its price-list entry so prescriptions for it can be given from this stock."
       footer={
         <>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

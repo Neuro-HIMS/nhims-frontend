@@ -40,7 +40,7 @@ function Body({ open, onOpenChange, lot, pending, onSubmit }: AdjustStockDialogP
   const [checking, setChecking] = useState(false);
 
   const onHand = Number(lot?.quantityOnHand ?? 0);
-  const unit = lot?.unit || "units";
+  const unit = lot?.unit && lot.unit.toUpperCase() !== "UNIT" ? lot.unit : "units";
   const q = Number.parseFloat(qty);
   const qtyError =
     qty.trim() === ""

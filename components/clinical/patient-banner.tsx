@@ -7,21 +7,14 @@ import { NhisPill, type NhisStatus } from "@/components/clinical/nhis-pill";
 import { TriagePill } from "@/components/clinical/triage-pill";
 import { BannerSkeleton } from "@/components/common/skeletons";
 import { ErrorState } from "@/components/common/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { canReadAlerts, canReadPatients } from "@/lib/permissions";
+import { allergiesFromText } from "@/lib/pharmacy";
 import { queryKeys } from "@/lib/query-keys";
 import { useAuthStore } from "@/store/auth.store";
 import { clinicalService } from "@/services/clinical.service";
 import { patientsService } from "@/services/patients.service";
 import type { TriagePriorityCode } from "@/types/clinical.types";
-
-function knownAllergiesList(raw: string | undefined): string[] {
-  const text = raw?.trim();
-  if (!text || text.toLowerCase() === "none known" || text.toLowerCase() === "no known allergies") return [];
-  return text
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
 
 function mergeAllergies(fromText: string[], fromAlerts: string[]): string[] {
   const seen = new Set<string>();
@@ -97,8 +90,9 @@ export function PatientBanner({
 
   const patient = patientQuery.data;
   const encounter = encounterQuery.data;
+  const alertsReadable = canReadAlerts(role);
   const allergies = mergeAllergies(
-    knownAllergiesList(patient.knownAllergies),
+    allergiesFromText(patient.knownAllergies),
     (alertsQuery.data ?? []).filter((a) => a.active && a.category === "ALLERGY").map((a) => a.label),
   );
 
@@ -117,7 +111,15 @@ export function PatientBanner({
         <div className="flex flex-wrap items-center gap-2">
           <NhisPill status={nhisStatusOf(patient)} />
           {encounter && <TriagePill priority={(encounter.priority as TriagePriorityCode) || "PENDING"} />}
-          <AllergyPill allergies={allergies} />
+          {alertsReadable && alertsQuery.isPending ? (
+            <Skeleton className="h-6 w-32 rounded-full" />
+          ) : alertsReadable && alertsQuery.isError ? (
+            <button type="button" className="status-pill status-pill-warning" onClick={() => void alertsQuery.refetch()}>
+              Allergies couldn&apos;t be loaded. Try again
+            </button>
+          ) : (
+            <AllergyPill allergies={allergies} />
+          )}
         </div>
       </div>
     </div>

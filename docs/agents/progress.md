@@ -321,3 +321,247 @@ Not a build-plan stage — a cross-cutting fix requested directly by the user, p
 **Mocks:** `imaging-cancel` (reason + bell; status change real), `imaging-attachments` (in-memory files). **Gaps logged:** RAD-02-cancel, RAD-03 attachments.
 
 **Verified live as roles:** Test Doctor orders "X-Ray — Chest PA" with reason on an NHIS visit → Test Radiographer sees it in To do → Start scan → writes findings/impression/recommendations → saved → Reports list → opens and prints; Test Doctor sees "Report ready" and the sections under Tests. No failed requests for the radiographer after the banner fix.
+
+---
+
+## Stage 9 — Prescribe and dispense, pharmacy stock (2026-10-01)
+
+**Gap list:**
+- The doctor prescribed from an inline folder form: free-text frequency codes, no quantity maths, no allergy check before sending.
+- The pharmacy queue was a raw table, and dispensing was one panel with no batch choice (FEFO) and no not-given path.
+- Stock used jargon ("Lots", "SKU", "Δ Qty", "Inventory item created"), with no stat row, no expiry warnings, one batch per delivery, adjustments without reason or confirm, and toasts for import results.
+
+**Backend facts (found while building):**
+- Pharmacy staff can't read the finance price list. The clinical catalogue works.
+- A prescription line is PENDING until paid; the header stays "Waiting to pay" while any line is unpaid.
+- Dispensing writes `pharmacyNotes`; there's nowhere to record not-given reasons without a dispense.
+- Pharmacy staff can't force-finish a visit.
+- A settled (PAID) bill rejects every later order. **Blocker for NHIS visits.**
+
+**Built:**
+- `lib/pharmacy.ts`: labels, FREQUENCIES and quantity maths, ROUTES, `allergyClash` (direct match blocks; drug-group match needs a reason), `stockLevel`, `hasExpiredStock`, `EXPIRING_SOON_DAYS` (90, the backend's window), `movementLabel`/`movementNote`, `saysNoAllergies`/`allergiesFromText`, and a per-line `isRxWaitingToPay`.
+- `hooks/use-allergy-check.ts`: the one allergy check. It never says "no clash" while loading or after a failure; sending, giving and adding are blocked until it's ready.
+- DOC-07 `prescribe-dialog.tsx` and `medicines-card.tsx`.
+- DOC-14 `TreatmentsCard`, on the consultation page and the folder tab:
+  - allergy check;
+  - confirm before Given / Held back / Cancelled;
+  - read-only on finished visits;
+  - gated by `canWriteTreatments`.
+- PHA-01 queue: stats, plus per-line payment gating.
+- PHA-02/03/04 dispense:
+  - FEFO batches;
+  - per-line "Waiting to pay";
+  - not given, with a reason;
+  - partial reason;
+  - one-click label buttons that survive pop-up blockers;
+  - print list of medicines not given;
+  - finish the visit only when everything was given.
+- PHA-05 find a patient.
+- PHA-06 stock:
+  - stat row that filters (Low · Out · Expiring within 3 months · Expired);
+  - "Receive stock" as the primary action;
+  - "See batches", with the expired ones marked.
+- PHA-07: one delivery with several lines and an invoice number. Each line is its own call; failed lines stay in the form with the reason. Expiry is required.
+- PHA-08: adjust with reasons, an over-removal check and an in-dialog confirm (now / change / after); Movements on `DataTable` with ± changes and plain notes.
+- PHA-09: medicines list (link to price list, NHIS covered, switch off); the price-list picker hides entries already linked to another medicine.
+- PHA-10: supplier copy and lint fixes.
+- PHA-11: upload dialog (dropzone and template), warns that uploading the downloaded list would double stock; results table in plain words.
+- `PatientBanner`: shows allergy *alerts*, not just the registration text, with loading and failed states.
+- `lib/api-errors.ts` `KNOWN_MESSAGES` (bill closed, not enough in batch).
+
+**Review (general-purpose stand-in for the three reviewers):** 3 blocking, all fixed:
+- the allergy check passed when alerts were loading or had failed;
+- treatments had no allergy check;
+- the import copy invited re-uploading the stock list, which doubles stock.
+
+Should-fix done:
+- per-line payment gating;
+- batch-load errors were treated as "out of stock";
+- labels failed silently;
+- the 409 branch could never happen;
+- Prescribe and Add treatment showed on finished visits;
+- expiry windows disagreed;
+- expiry was optional;
+- errors were shown as empty states (lots, movements);
+- raw import row text;
+- the "can't be prescribed" copy;
+- treatment status changes had no confirm.
+
+Also done: one catalogue query key, the unlinked-entry filter, the low-stock count from quantities, `router.push` in place of a full reload, and a stricter number check.
+
+**Verified live as roles:**
+1. `test.pharm`: added Paracetamol and Amoxicillin (linked) and received TEST batches, including a two-line delivery (a missing quantity is caught per line).
+2. Adjusted −2 "Damaged or spoilt" through the confirm step; movements show it.
+3. `test.doctor`: prescribed both on a cash visit. Amoxicillin flagged against the Penicillin alert and needed a reason; the banner shows "Allergies: Penicillin".
+4. The cashier took payment (API stand-in); the prescription became Ready.
+5. `test.pharm`: gave Paracetamol from TEST-PARA-01, leaving Amoxicillin not given (out of stock), and the visit stayed open.
+6. Later gave Amoxicillin from the new batch; label printed; "Finish the visit" offered.
+7. Treatments: Benzylpenicillin blocked, Amoxicillin needed a reason, the status change asked first.
+
+No failed requests for either role. `tsc` clean; lint is clean for the pharmacy and clinical folders.
+
+**Backend gaps logged:** BIL-APPEND-CLOSED (blocker), PHA-04-not-given, PHA-04-finish, DOC-07-stock, PHA-09-catalog-roles, DOC-14-allergy, DOC-14-status-reason.
+
+---
+
+## Checkpoint — J01 walk-in NHIS visit (2026-10-01)
+
+Ran through the real screens, one role at a time (`test.records` → `test.nurse` → `test.doctor` → `test.labsci` → `test.doctor`):
+
+1. Records found the patient by hospital number and started an NHIS visit (Urgent, "Fever").
+2. The nurse triaged Urgent and entered vitals. 38.9 °C and pulse 102 were flagged "Outside the usual range"; the banner shows Urgent and "Allergies: Penicillin". Sent to the doctor.
+3. The doctor's list had the patient at the top with vitals and "With doctor". Called in and ordered a Malaria RDT (Urgent): "1 test sent to the lab."
+4. The lab scientist saw it under "Ready for sample", collected, entered Positive and authorised.
+5. The doctor sees "Results back". The Tests card now shows **"Malaria RDT: Positive"** on the row itself (added; before, you had to open it).
+6. **Prescribing stopped at the known blocker, BIL-APPEND-CLOSED.** On NHIS visits the first order creates the bill, which is fully covered and closes as PAID straight away, so any second order (the prescription) is refused. The doctor sees the plain-words message.
+
+Steps 7 (dispense) and 8 (NHIS claim) can't be done on NHIS visits until the backend is fixed. On cash visits the same steps pass (J06, J02).
+
+Also seen: after the lab authorises, the stage still says "at the lab". That's known (LAB-05-return: lab roles can't move visits); the doctor's "Waiting for results / Results back" list picks the patient up.
+
+---
+
+## Stage 10 — Cashier (2026-10-01)
+
+**Gap list:**
+- A 625-line bill page with emoji icons, raw codes ("IGF (Cash)", "Rx awaits payment", "Services rendered") and `window.print()` of the whole page.
+- Payment form with every method in one select, no change to give, no part-payment wording, auto-hiding error toasts.
+- Bills, payments and dashboard were hand-rolled tables with no data states.
+- New bill used a home-made search and two payer selects.
+
+**Backend facts:**
+- `?status=` on the bills list returns 500 for every value.
+- The list is capped at the latest 100 and search runs after the cap.
+- A patient is required on a bill (no walk-in).
+- There is no reversal, receipt PDF or SMS endpoint.
+- Payments carry no patient or cashier name and only the latest 200 come back.
+- A discount replaces the old one.
+- INVOICED bills are locked.
+- A fully NHIS-covered bill is PAID with nothing paid.
+
+**Built:**
+- `lib/billing.ts`: `formatMoney`/`parseMoney` in pesewas; bill status labels ("Waiting for payment", "Part paid"…); charge group, payer and method labels; method kinds; `patientShare`/`billPatientPays`; `totalsByMethod`; `isTakenAtDesk`; local-day helpers; `toChargeInput`.
+- `MoneyInput` (shared, GH₵ prefix).
+- BIL-01 overview: four stats; collected-by-method bars (desk money only, reversals left out); top 10 waiting.
+- BIL-02 bills on `DataTable`: client-side status, payer and date filters; a search that also loads every bill of matching patients.
+- BIL-03 bill details:
+  - banner;
+  - "earlier unpaid" notice with a link;
+  - items table (from where, NHIS covered/part, patient pays);
+  - totals with a big "Patient pays";
+  - payments list;
+  - Take payment;
+  - printable bill (`printArea`);
+  - discount that says it replaces the old one;
+  - cancel with a reason (hidden on paid or NHIS-covered bills);
+  - remove item with a confirm.
+- BIL-04 new bill: `PatientSearchPanel`, how they pay, items, Create bill.
+- BIL-05 take payment:
+  - amount due, large;
+  - method tiles (Cash / Mobile Money with network and transaction number / Card / Bank);
+  - part-payment hint and "Change to give";
+  - receipt (`ReceiptCard`) with cash received and change;
+  - success panel.
+  - A dropped connection blocks retrying until "Check the bill". This prevents a double charge.
+  - Invalidates `clinical.all`, so lab, pharmacy and imaging unlock.
+- BIL-06 payments: date range and method filters, per-method totals, reprint receipt, download as spreadsheet.
+- BIL-07 reverse payment (mock `payment-reverse`, finance/admin only, hidden without the mock).
+- Billing uses `notify.error` (sticky).
+
+**Review (general-purpose stand-in):** 2 blocking, both fixed:
+- the 100-bill cap hid older debts from search and the overview;
+- a timeout said "Nothing was charged", inviting a double charge.
+
+Should-fix done:
+- edit actions on INVOICED bills;
+- cancel on NHIS-covered bills;
+- the discount replaces rather than adds;
+- non-cash payment types counted in "Collected";
+- payments failure shown as GH₵ 0.00;
+- sticky error toasts;
+- price-list error state;
+- hidden bills error on payments.
+
+Nice-to-haves done: invalidate `clinical.all`, query keys, `MoneyInput` no longer rewrites invalid text, the receipt shows the change, the latest tariff, custom items must be above 0, "Done" in place of "Back to bills".
+
+**Verified live as `test.cashier`:**
+1. The overview listed three waiting bills. Took GH₵ 5.00 by Mobile Money (the transaction number is required) on a GH₵ 15.00 bill; the receipt says "GH₵ 10.00 is still owed".
+2. The bill page shows "Part paid", the MoMo payment, and "has GH₵ 70.40 unpaid from 30 Sep on 2 earlier bills".
+3. Paid the rest with GH₵ 20.00 cash: "Give GH₵ 10.00 change".
+4. **J02:** the pharmacy row was "Waiting to pay" (Dispense disabled). The cashier paid the GH₵ 5.40 prescription bill, and the row became "Ready to collect" (enabled).
+5. Payments tab totals are right per method.
+6. Deep search "Ama Mensah" finds all of her bills.
+7. The NHIS-covered bill shows "Nothing to pay — NHIS covers this bill", with no cancel.
+
+No failed requests. `tsc` clean; billing lint clean.
+
+**Follow-up for Stage 16:** 42 files still use auto-hiding `toast.error`; move them to `notify.error` (04 §62).
+
+**Backend gaps logged:** BIL-02-status-filter, BIL-02-cap, BIL-04-walk-in, BIL-05-receipt, BIL-06-cashier, BIL-07-reverse.
+
+---
+
+## Stage 11 — Finance and NHIS claims (2026-10-01)
+
+**Gap list:**
+- Eight tabs, two of them copies of the cashier's screens (bills, payments).
+- Jargon ("Service Catalog", "Pricing Matrix", "IGF", "NHIA tariff", "MoMo").
+- Separate catalogue and pricing forms with no history.
+- The claims list was a raw table of codes. No claim page, no way to record NHIS's answer, no "needs action".
+- Reports were a raw JSON list. Free-text dates. Auto-hiding error toasts.
+
+**Backend facts:**
+- No NHIA connection.
+- Claims have no reason field.
+- Updating a claim that already has lines returns 500 (unique line number during delete + insert).
+- The newest price start date wins even if it's in the future.
+- The NHIS summary covers all claims.
+- The audit history is admin-only.
+- The automatic draft claim (made when an NHIS visit finishes) has a total but no lines; its reference is "DRAFT-<bill number>".
+- Finance officers can't read patient records.
+
+**Built:**
+- `lib/finance.ts`: claim labels (Draft · Ready to send · Sent · Accepted · Questioned · Rejected), tabs, editable states, "NHIS said:" reason helpers, plain NHIS reasons, `priceOn`/`nextPrice`, payer and stream labels.
+- Workspace: "Prices and revenue" with Overview · Services and prices · Revenue · NHIS claims · NHIS reports · Old prices. The bills and payments copies are removed; they live in Bills and payments.
+- FIN-01 overview: collected this month, owed by patients, NHIS claims waiting, claims needing action (links); 30-day bars; payment-method bars; needing-action list.
+- FIN-02 services and prices: one table with today's price per patient type and upcoming changes; dialog to edit the service and add new prices (start today, old kept, same-day changes update today's row); price history. A failed price after creating retries only the prices.
+- FIN-03 old prices (read-only).
+- FIN-04 revenue: period picker, totals, where from and how paid, money owed (largest 10), download.
+- FIN-05 claims: stage tabs with counts, patient names from bills, tick ready claims → "Mark selected as sent" (confirm with the total).
+- FIN-06/07/08 claim page:
+  - patient, status;
+  - NHIS's reason ("NHIS questioned this claim…");
+  - lines with an NHIS price code, and a warning when it's missing;
+  - "Add the NHIS items from bill …", which fills from the visit bill and keeps the amount exact;
+  - Mark ready → Mark as sent → Record NHIS's answer (Accepted / Questioned / Rejected + plain reason) → Resend;
+  - Back to draft;
+  - history (admins).
+  - Lines are read-only once a claim has them, because of the backend bug.
+- FIN-09 NHIS reports: month figures from the claims (sent, accepted %, rejected %, waiting, top reasons); save summary; saved list with download.
+- Mock area `nhis-response`: NHIS's reason kept in memory, since there's no reason field.
+
+**Review (general-purpose stand-in):** no blocking. Should-fix done:
+- the reason was never saved for real but the toast said it was;
+- locked-claim copy;
+- an old reason showing on accepted claims;
+- same-day duplicate prices;
+- create retry;
+- exact amounts when filling from the bill;
+- waiting for NHIS codes before filling;
+- "last 100 bills" captions;
+- tab chip style (no second navy fill);
+- audit key and refresh.
+
+Nice-to-haves done: summary labels, "Uses self-pay price" for NHIS, "moved back to draft" toast, dead branch removed.
+
+**Verified live as `test.finance`:**
+1. The J01 NHIS visit finished, which made draft DRAFT-BIL-2026-000008 (GH₵ 5.00, no lines).
+2. Filled from bill (Malaria RDT, NHIA-LAB-MAL) → ready → ticked and marked as sent → recorded Rejected ("Missing or wrong NHIS price code").
+3. Editing the line on that claim gave the clear message. Resent unchanged → Accepted.
+4. Second claim (000007): fill → ready → sent → Questioned with a reason → the claim page shows "NHIS questioned this claim: …" and Needs action lists the reason.
+5. Paracetamol company price set (GH₵ 0.50, then 0.55 the same day: one row).
+6. All six finance pages load with no failed requests.
+
+`tsc` and lint clean for finance.
+
+**Backend gaps logged:** FIN-08-edit-lines (bug), FIN-07-response, FIN-07-send, FIN-02-future-price (bug), FIN-09-period, FIN-01-departments, FIN-08-history.

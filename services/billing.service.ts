@@ -1,4 +1,7 @@
 import { apiClient } from "@/services/api-client";
+import { isMockEnabled } from "@/services/mocks/mock-config";
+import { withMock } from "@/services/mocks/with-mock";
+import { mockListReversals, mockReversePayment, type PaymentReversal } from "@/services/mocks/handlers/billing";
 import type { ApiResponse, PagedResponse } from "@/types/api.types";
 import type {
   AddChargesPayload,
@@ -17,7 +20,31 @@ import type {
 // Billing API client. Cashier-side wrapper around the finance ledger.
 // Distinct from financeService — different audience, different calls.
 // ─────────────────────────────────────────────────────────────────────────────
+export type { PaymentReversal };
+
 export const billingService = {
+  /** Reversing a payment only works with sample data until the endpoint exists — the action is hidden otherwise. */
+  reversalAvailable(): boolean {
+    return isMockEnabled("payment-reverse");
+  },
+
+  /** TODO(backend): POST /billing/payments/{id}/reverse { reason } — see backend-gaps.md#BIL-07-reverse. */
+  async reversePayment(paymentId: string, reason: string): Promise<PaymentReversal> {
+    return withMock(
+      "payment-reverse",
+      async () => {
+        throw new Error("Reversing payments isn't available yet."); // no endpoint: never called while hidden
+      },
+      () => mockReversePayment(paymentId, reason),
+    );
+  },
+
+  /** TODO(backend): reversal state on PaymentDto — see backend-gaps.md#BIL-07-reverse. */
+  async reversals(): Promise<PaymentReversal[]> {
+    if (!isMockEnabled("payment-reverse")) return [];
+    return withMock("payment-reverse", async () => [], () => mockListReversals());
+  },
+
   async dashboard(): Promise<BillingDashboardDto> {
     const res = await apiClient.get<ApiResponse<BillingDashboardDto>>("/billing/dashboard");
     return res.data.data;

@@ -1,4 +1,8 @@
 import { apiClient } from "@/services/api-client";
+import { claimReason, notesWithReason } from "@/lib/finance";
+import { mockClaimReason, mockSaveClaimReason } from "@/services/mocks/handlers/finance";
+import { isMockEnabled } from "@/services/mocks/mock-config";
+import { withMock } from "@/services/mocks/with-mock";
 import type { ApiResponse } from "@/types/api.types";
 import type {
   BillDto,
@@ -19,6 +23,42 @@ import type {
 // (price items, NHIS claims, NHIS reports) so existing screens stay green.
 // ─────────────────────────────────────────────────────────────────────────────
 export const financeService = {
+  /**
+   * Whether NHIS's reason can be kept for this claim. TODO(backend): a reason field on claims —
+   * backend-gaps.md#FIN-07-response. Meanwhile it goes in the notes, which the server can't save once the
+   * claim has lines (backend-gaps.md#FIN-08-edit-lines); with sample data it's kept in memory.
+   */
+  canKeepClaimReason(claim: FinanceNhisClaimDto): boolean {
+    return isMockEnabled("nhis-response") || claim.lines.length === 0;
+  },
+
+  /** Saves NHIS's reason; returns false when it couldn't be kept (see canKeepClaimReason). */
+  async saveClaimReason(claim: FinanceNhisClaimDto, reason: string, baseNotes: string): Promise<boolean> {
+    if (!financeService.canKeepClaimReason(claim)) return false;
+    await withMock(
+      "nhis-response",
+      async () => {
+        await financeService.updateClaim(claim.id, {
+          patientPublicId: claim.patientPublicId,
+          claimReference: claim.claimReference,
+          amountMinor: claim.amountMinor,
+          servicePeriodStart: claim.servicePeriodStart ?? undefined,
+          servicePeriodEnd: claim.servicePeriodEnd ?? undefined,
+          notes: notesWithReason(baseNotes, reason),
+          lines: claim.lines.map((l) => ({ serviceCode: l.serviceCode, description: l.description, tariffCode: l.tariffCode, quantity: l.quantity, unitAmountMinor: l.unitAmountMinor })),
+        });
+      },
+      () => mockSaveClaimReason(claim.id, reason),
+    );
+    return true;
+  },
+
+  /** NHIS's reason, shown only while the claim is questioned or rejected. */
+  reasonFor(claim: FinanceNhisClaimDto): string | null {
+    if (claim.status !== "REJECTED" && claim.status !== "ACTION_REQUIRED") return null;
+    return (isMockEnabled("nhis-response") ? mockClaimReason(claim.id) : null) ?? claimReason(claim);
+  },
+
   // ── Dashboard ──────────────────────────────────────────────────────────────
   async dashboard(): Promise<FinanceDashboardDto> {
     const res = await apiClient.get<ApiResponse<FinanceDashboardDto>>("/finance/dashboard");

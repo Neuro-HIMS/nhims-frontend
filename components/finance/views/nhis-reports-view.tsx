@@ -2,105 +2,163 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ErrorState } from "@/components/common/error-state";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { financeService } from "@/services/finance.service";
-import { showApiError } from "@/components/finance/finance-utils";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getFriendlyError } from "@/lib/api-errors";
+import { formatMoney } from "@/lib/billing";
+import { formatClinicalDateTime } from "@/lib/dates";
 
+import { notify } from "@/lib/notify";
+import { queryKeys } from "@/lib/query-keys";
+import { financeService } from "@/services/finance.service";
+
+const SENT = ["SUBMITTED", "PAID", "REJECTED", "ACTION_REQUIRED"];
+
+function thisMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthName(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+/** FIN-09 — a month of NHIS claims: how many were sent, accepted and rejected, and why. */
 export function NhisReportsView() {
   const qc = useQueryClient();
-  const q = useQuery({
-    queryKey: ["finance", "nhis", "reports"],
-    queryFn: () => financeService.listReports(),
-  });
+  const [month, setMonth] = useState(thisMonth());
+  const claimsQuery = useQuery({ queryKey: queryKeys.finance.claims, queryFn: () => financeService.listClaims() });
+  const reportsQuery = useQuery({ queryKey: queryKeys.finance.reports, queryFn: () => financeService.listReports() });
 
-  const [periodLabel, setPeriodLabel] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  const genMut = useMutation({
-    mutationFn: () =>
-      financeService.generateReport({
-        periodLabel: periodLabel.trim() || undefined,
-        reportType: "NHIS_SUMMARY",
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["finance", "nhis", "reports"] });
-      toast.success("Snapshot generated");
-    },
-    onError: (e) => toast.error(showApiError(e)),
-  });
-
-  const rows = q.data ?? [];
-  const parsed = useMemo(() => {
-    const map = new Map<string, unknown>();
-    for (const r of rows) {
-      try {
-        map.set(r.id, JSON.parse(r.payloadJson));
-      } catch {
-        map.set(r.id, r.payloadJson);
-      }
+  const stats = useMemo(() => {
+    // A claim belongs to the month of its visit.
+    const inMonth = (claimsQuery.data ?? []).filter((c) => (c.servicePeriodStart ?? c.createdAt ?? "").startsWith(month));
+    const sent = inMonth.filter((c) => SENT.includes(c.status));
+    const decided = sent.filter((c) => c.status !== "SUBMITTED");
+    const accepted = decided.filter((c) => c.status === "PAID");
+    const rejected = decided.filter((c) => c.status === "REJECTED" || c.status === "ACTION_REQUIRED");
+    const reasons = new Map<string, number>();
+    for (const c of rejected) {
+      const r = financeService.reasonFor(c) ?? "No reason recorded";
+      reasons.set(r, (reasons.get(r) ?? 0) + 1);
     }
-    return map;
-  }, [rows]);
+    return {
+      total: inMonth.length,
+      sent: sent.length,
+      sentValue: sent.reduce((s, c) => s + c.amountMinor, 0),
+      waiting: sent.length - decided.length,
+      acceptedPct: decided.length ? Math.round((accepted.length / decided.length) * 100) : null,
+      rejectedPct: decided.length ? Math.round((rejected.length / decided.length) * 100) : null,
+      acceptedValue: accepted.reduce((s, c) => s + c.amountMinor, 0),
+      reasons: [...reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5),
+    };
+  }, [claimsQuery.data, month]);
+
+  const saveMut = useMutation({
+    mutationFn: () => financeService.generateReport({ periodLabel: month, reportType: "NHIS_MONTHLY" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.finance.reports });
+      toast.success(`Summary for ${monthName(month)} saved.`);
+    },
+    onError: (e) => notify.error(getFriendlyError(e).message),
+  });
+
+  function download(label: string, json: string) {
+    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nhis-summary-${label}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">NHIS analytics snapshots</CardTitle>
-          <CardDescription>
-            Immutable JSON snapshots aggregating claim volumes by status and active pricing items — used for NHIA
-            reconciliation and audit.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="flex min-w-[200px] flex-1 flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Period label (optional)</span>
-            <Input placeholder="e.g. 2026-Q2" value={periodLabel} onChange={(e) => setPeriodLabel(e.target.value)} />
-          </div>
-          <Button onClick={() => genMut.mutate()} disabled={genMut.isPending}>
-            {genMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Generate snapshot
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="nhis-month">Month</Label>
+          <Input id="nhis-month" type="month" value={month} max={thisMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} className="w-48" />
+        </div>
+        <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || claimsQuery.isPending}>
+          {saveMut.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+          Save summary
+        </Button>
+      </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Saved snapshots</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {rows.map((row) => (
-            <div key={row.id} className="rounded-lg border border-border bg-card p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-medium">{row.reportType}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {row.periodLabel} · {new Date(row.createdAt).toLocaleString()}
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setExpanded(expanded === row.id ? null : row.id)}
-                >
-                  {expanded === row.id ? "Hide JSON" : "View payload"}
+      {claimsQuery.isError ? (
+        <ErrorState error={claimsQuery.error} onRetry={() => void claimsQuery.refetch()} />
+      ) : claimsQuery.isPending ? (
+        <Skeleton className="h-28 w-full" />
+      ) : stats.total === 0 ? (
+        <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">No NHIS claims for visits in {monthName(month)}.</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Stat label="Claims sent" value={String(stats.sent)} sub={`${formatMoney(stats.sentValue)} · ${stats.total - stats.sent} not sent yet`} />
+            <Stat label="Accepted" value={stats.acceptedPct === null ? "—" : `${stats.acceptedPct}%`} sub={formatMoney(stats.acceptedValue)} />
+            <Stat label="Questioned or rejected" value={stats.rejectedPct === null ? "—" : `${stats.rejectedPct}%`} sub="Of those NHIS has answered" />
+            <Stat label="Waiting for NHIS" value={String(stats.waiting)} sub="Sent, no answer yet" />
+          </div>
+          <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+            <h2 className="text-base font-semibold text-foreground">Most common reasons</h2>
+            {stats.reasons.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">No claims were questioned or rejected.</p>
+            ) : (
+              <ul className="mt-2 divide-y divide-border text-sm">
+                {stats.reasons.map(([r, n]) => (
+                  <li key={r} className="flex justify-between gap-3 py-1.5">
+                    <span className="text-foreground">{r}</span>
+                    <span className="font-clinical text-muted-foreground">{n}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
+
+      <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+        <h2 className="text-base font-semibold text-foreground">Saved summaries</h2>
+        <p className="text-xs text-muted-foreground">A saved summary records the totals of all claims at the time it was saved.</p>
+        {reportsQuery.isError ? (
+          <ErrorState error={reportsQuery.error} onRetry={() => void reportsQuery.refetch()} />
+        ) : reportsQuery.isPending ? (
+          <Skeleton className="mt-3 h-16 w-full" />
+        ) : (reportsQuery.data ?? []).length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">None saved yet.</p>
+        ) : (
+          <ul className="mt-2 divide-y divide-border text-sm">
+            {(reportsQuery.data ?? []).map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className="text-foreground">
+                  All claims{/^\d{4}-\d{2}$/.test(r.periodLabel) ? ` (saved for ${monthName(r.periodLabel)})` : ""}
+                  <span className="block text-xs text-muted-foreground">Saved {formatClinicalDateTime(r.createdAt)}</span>
+                </span>
+                <Button size="sm" variant="outline" onClick={() => download(r.periodLabel, r.payloadJson)}>
+                  <Download className="mr-1.5 h-4 w-4" /> Download
                 </Button>
-              </div>
-              {expanded === row.id && (
-                <pre className="mt-3 max-h-72 overflow-auto rounded-md bg-muted/50 p-3 text-xs">
-                  {JSON.stringify(parsed.get(row.id), null, 2)}
-                </pre>
-              )}
-            </div>
-          ))}
-          {rows.length === 0 && <p className="text-sm text-muted-foreground">No snapshots yet.</p>}
-        </CardContent>
-      </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <p className="stat-card-label">{label}</p>
+      <p className="stat-card-value">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
     </div>
   );
 }

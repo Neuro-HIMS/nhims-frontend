@@ -25,6 +25,19 @@ const STOCK: Record<StockOverviewStatus | "EXPIRED", { label: string; tone: Pill
   EXPIRED: { label: "Expired", tone: "error" },
 };
 
+/** Days ahead that count as "expiring soon" — the backend's EXPIRING_SOON window (PharmacyStockService). */
+export const EXPIRING_SOON_DAYS = 90;
+
+/**
+ * Low / out worked out from the quantities. The backend gives one status per medicine and puts
+ * "expiring soon" first, so a medicine that is both low and expiring would not count as low.
+ */
+export function stockLevel(row: { totalQuantityOnHand: string | number; reorderLevel: string | number }): "OUT" | "LOW" | "OK" {
+  const qty = Number(row.totalQuantityOnHand) || 0;
+  if (qty <= 0) return "OUT";
+  return qty <= (Number(row.reorderLevel) || 0) ? "LOW" : "OK";
+}
+
 export function stockStatus(status: string | null | undefined): { label: string; tone: PillTone } {
   return STOCK[(status ?? "OUT") as StockOverviewStatus] ?? STOCK.OUT;
 }
@@ -47,9 +60,23 @@ export function movementLabel(type: string): string {
   return MOVEMENT[type] ?? "Other change";
 }
 
-/** Prescriptions the pharmacy can't give yet: self-pay lines waiting for the cashier. */
-export function isRxWaitingToPay(rx: Pick<PrescriptionDto, "status">): boolean {
-  return rx.status === "AWAITING_PAYMENT" || rx.status === "ORDERED";
+/** The backend writes "Dispense Rx <id>" on dispensing; show it as plain words. */
+export function movementNote(note: string | null | undefined): string {
+  const n = (note ?? "").trim();
+  if (!n) return "—";
+  if (/^dispense rx/i.test(n)) return "From a prescription";
+  return n;
+}
+
+/**
+ * Prescriptions the pharmacy can't give anything from yet: every open line is still waiting for the
+ * cashier. Judged per line — the header stays "Waiting to pay" while any one line is unpaid,
+ * even when NHIS or paid lines are ready.
+ */
+export function isRxWaitingToPay(rx: Pick<PrescriptionDto, "status" | "lines">): boolean {
+  const open = (rx.lines ?? []).filter((l) => l.status !== "CANCELLED" && l.status !== "DISPENSED");
+  if (open.length === 0) return rx.status === "AWAITING_PAYMENT" || rx.status === "ORDERED";
+  return open.every((l) => l.status === "PENDING");
 }
 
 // ── How often, and quantity maths ─────────────────────────────────────────
@@ -131,6 +158,21 @@ export function allergyClash(
     if (viaGroup(text)) return { allergy: a.label, blocking: false };
   }
   const known = (knownAllergies ?? "").trim();
-  if (known && !/^no known|^none/i.test(known) && (direct(known) || viaGroup(known))) return { allergy: known, blocking: false };
+  if (!saysNoAllergies(known) && (direct(known) || viaGroup(known))) return { allergy: known, blocking: false };
   return null;
+}
+
+/** Registration text that means "no allergies" ("No known allergies", "None", "NKA", "NKDA", "Nil"). */
+export function saysNoAllergies(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  return !t || /^(no known|none|nil|nka|nkda|n\/a)\b/i.test(t);
+}
+
+/** The patient's allergies as a list from the registration text. */
+export function allergiesFromText(text: string | null | undefined): string[] {
+  if (saysNoAllergies(text)) return [];
+  return (text ?? "")
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }

@@ -2,6 +2,8 @@
 
 import { Loader2 } from "lucide-react";
 
+import { ErrorState } from "@/components/common/error-state";
+
 import { formatClinicalDate } from "@/lib/dates";
 import { hasExpiredStock } from "@/lib/pharmacy";
 import {
@@ -19,11 +21,13 @@ interface LotsDialogProps {
   onOpenChange: (open: boolean) => void;
   itemLabel: string | null;
   loading: boolean;
+  error?: unknown;
+  onRetry?: () => void;
   lots: PharmacyStockLotDto[];
   onAdjust: (lot: PharmacyStockLotDto) => void;
 }
 
-export function LotsDialog({ open, onOpenChange, itemLabel, loading, lots, onAdjust }: LotsDialogProps) {
+export function LotsDialog({ open, onOpenChange, itemLabel, loading, error, onRetry, lots, onAdjust }: LotsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
@@ -37,6 +41,8 @@ export function LotsDialog({ open, onOpenChange, itemLabel, loading, lots, onAdj
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading batches…
           </div>
+        ) : error ? (
+          <ErrorState error={error} onRetry={onRetry} />
         ) : (
           <div className="max-h-[min(60vh,420px)] overflow-auto rounded-lg border border-border">
             <table className="w-full text-sm">

@@ -1,457 +1,573 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import {
   ArrowLeft,
-  CheckCircle2,
   CreditCard,
   Loader2,
   Percent,
   Plus,
   Printer,
-  Receipt,
   Trash2,
-  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
-import { billingService } from "@/services/billing.service";
-import { ChargeBuilder, type DraftCharge } from "@/components/billing/views/charge-builder";
-import { ghsInputToMinor, METHOD_LABEL, minorToGhs, PAYER_LABEL, showApiError } from "@/components/finance/finance-utils";
+import { notify } from "@/lib/notify";
+
 import {
-  BILL_STATUS_LABEL,
-  billStatusPill,
-  CHARGE_KIND_ICON,
-  formatDateTime,
-} from "@/components/billing/lib/billing-utils";
-import type { BillItemDto, PaymentMethod } from "@/types/finance.types";
-import type { PharmacyCashLineDto } from "@/types/billing.types";
+  ChargeBuilder,
+  type DraftCharge,
+} from "@/components/billing/views/charge-builder";
+import { TakePaymentDialog } from "@/components/billing/take-payment-dialog";
+import { PatientBanner } from "@/components/clinical/patient-banner";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { ErrorState } from "@/components/common/error-state";
+import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
+import { InlineNotice } from "@/components/common/inline-notice";
+import { MoneyInput } from "@/components/common/money-input";
+import { BannerSkeleton, CardSkeleton } from "@/components/common/skeletons";
+import { StatusPill } from "@/components/common/status-pill";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { getFriendlyError } from "@/lib/api-errors";
+import {
+  billPatientPays,
+  billStatus,
+  chargeGroupLabel,
+  formatMoney,
+  isWaitingForPayment,
+  methodLabel,
+  parseMoney,
+  patientShare,
+  payerLabel,
+  toChargeInput,
+} from "@/lib/billing";
+import { formatClinicalDate, formatClinicalDateTime } from "@/lib/dates";
+import { naturalName } from "@/lib/display-name";
+import { printArea } from "@/lib/print";
 import { queryKeys } from "@/lib/query-keys";
-import { Badge } from "@/components/ui/badge";
+import { billingService } from "@/services/billing.service";
+import { useAuthStore } from "@/store/auth.store";
+import type { BillDto } from "@/types/finance.types";
 
-const MOMO_METHODS = new Set(["MOMO_MTN", "MOMO_VODAFONE", "MOMO_AIRTELTIGO"]);
-const BANK_METHODS = new Set(["BANK_CARD", "BANK_TRANSFER", "CHEQUE"]);
-
+/** BIL-03 — one bill: what it's for, who pays what, payments, and the actions on it. */
 export function BillDetailView({ billId }: { billId: string }) {
+  const router = useRouter();
   const qc = useQueryClient();
+  const facilityName = useAuthStore((s) => s.user?.facilityName ?? "");
 
-  const invoice = useQuery({
-    queryKey: ["billing", "invoice", billId],
+  const invoiceQuery = useQuery({
+    queryKey: queryKeys.billing.invoice(billId),
     queryFn: () => billingService.getInvoice(billId),
     refetchInterval: 30_000,
   });
+  const bill = invoiceQuery.data?.bill;
+  const patientBillsQuery = useQuery({
+    queryKey: queryKeys.billing.patientBills(bill?.patientId ?? ""),
+    queryFn: () =>
+      billingService.billsForPatient(bill!.patientId!, { size: 50 }),
+    enabled: Boolean(bill?.patientId),
+  });
 
-  // Local UI state
+  const [paying, setPaying] = useState<BillDto | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draftCharges, setDraftCharges] = useState<DraftCharge[]>([]);
   const [discountOpen, setDiscountOpen] = useState(false);
-  const [discountAmount, setDiscountAmount] = useState<string>("");
-  const [discountReason, setDiscountReason] = useState<string>("");
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [removing, setRemoving] = useState<{ id: string; name: string } | null>(
+    null,
+  );
 
-  const [payOpen, setPayOpen] = useState(false);
-  const [payMethod, setPayMethod] = useState<PaymentMethod | string>("CASH");
-  const [payAmount, setPayAmount] = useState<string>("");
-  const [payerLabel, setPayerLabel] = useState<string>("");
-  const [momoMsisdn, setMomoMsisdn] = useState<string>("");
-  const [momoTxn, setMomoTxn] = useState<string>("");
-  const [bankRef, setBankRef] = useState<string>("");
-  const [payNotes, setPayNotes] = useState<string>("");
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.billing.all });
+    void qc.invalidateQueries({ queryKey: queryKeys.clinical.all });
+  };
 
   const addCharges = useMutation({
     mutationFn: () =>
       billingService.addCharges(billId, {
-        charges: draftCharges.map(({ rowId: _r, displayName: _d, ...rest }) => rest),
+        charges: draftCharges.map(toChargeInput),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing"] });
-      toast.success(`${draftCharges.length} charge(s) added`);
+      refresh();
+      toast.success(
+        `${draftCharges.length} item${draftCharges.length === 1 ? "" : "s"} added to the bill.`,
+      );
       setDraftCharges([]);
       setAddOpen(false);
     },
-    onError: (e) => toast.error(showApiError(e, "Could not add charges")),
+    onError: (e) => notify.error(getFriendlyError(e).message),
   });
-
   const removeCharge = useMutation({
     mutationFn: (itemId: string) => billingService.removeCharge(billId, itemId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing"] });
-      toast.success("Charge removed");
-      setRemoveChargeId(null);
+      refresh();
+      toast.success("Item removed from the bill.");
     },
-    onError: (e) => toast.error(showApiError(e, "Could not remove charge")),
+    onError: (e) => notify.error(getFriendlyError(e).message),
   });
-
+  const discountMinor = parseMoney(discountAmount);
+  const discountError = !discountAmount.trim()
+    ? null
+    : !Number.isFinite(discountMinor)
+      ? "Enter an amount like 10.00."
+      : bill && discountMinor > bill.subtotalMinor
+        ? `That's more than the bill (${formatMoney(bill.subtotalMinor)}).`
+        : null;
   const applyDiscount = useMutation({
-    mutationFn: () => {
-      const minor = ghsInputToMinor(discountAmount);
-      if (Number.isNaN(minor) || minor < 0) throw new Error("Enter a valid discount amount");
-      return billingService.applyDiscount(billId, { discountMinor: minor, reason: discountReason });
-    },
+    mutationFn: () =>
+      billingService.applyDiscount(billId, {
+        discountMinor,
+        reason: discountReason.trim(),
+      }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing"] });
-      toast.success("Discount applied");
+      refresh();
+      toast.success("Discount applied.");
       setDiscountOpen(false);
     },
-    onError: (e) => toast.error(showApiError(e, "Could not apply discount")),
+    onError: (e) => notify.error(getFriendlyError(e).message),
   });
-
-  const recordPayment = useMutation({
-    mutationFn: () => {
-      const minor = ghsInputToMinor(payAmount);
-      if (Number.isNaN(minor) || minor <= 0) throw new Error("Enter a valid payment amount");
-      const provider = payMethod.startsWith("MOMO_") ? payMethod.replace("MOMO_", "") : "";
-      return billingService.recordPayment(billId, {
-        method: payMethod,
-        amountMinor: minor,
-        payerLabel: payerLabel.trim(),
-        momoProvider: provider,
-        momoMsisdn: momoMsisdn.trim(),
-        momoTransactionId: momoTxn.trim(),
-        bankReference: bankRef.trim(),
-        notes: payNotes.trim(),
-      });
-    },
-    onSuccess: (p) => {
-      qc.invalidateQueries({ queryKey: ["billing"] });
-      qc.invalidateQueries({ queryKey: queryKeys.clinical.pharmacyQueue });
-      qc.invalidateQueries({ queryKey: queryKeys.clinical.radiologyWorklist });
-      toast.success(`Receipt ${p.receiptNumber}`, {
-        description: `${METHOD_LABEL[p.method] ?? p.method} · GH₵ ${minorToGhs(p.amountMinor)}`,
-      });
-      setPayOpen(false);
-      // Reset form
-      setPayAmount("");
-      setMomoMsisdn("");
-      setMomoTxn("");
-      setBankRef("");
-      setPayNotes("");
-    },
-    onError: (e) => toast.error(showApiError(e, "Could not record payment")),
-  });
-
   const cancelBill = useMutation({
-    mutationFn: (reason: string) => billingService.cancelBill(billId, reason),
+    mutationFn: () => billingService.cancelBill(billId, cancelReason.trim()),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing"] });
-      toast.success("Bill cancelled");
-      setCancelBillOpen(false);
-      setCancelBillReason("");
+      refresh();
+      toast.success("Bill cancelled.");
+      setCancelReason("");
     },
-    onError: (e) => toast.error(showApiError(e, "Could not cancel bill")),
+    onError: (e) => notify.error(getFriendlyError(e).message),
   });
 
-  const [cancelBillOpen, setCancelBillOpen] = useState(false);
-  const [cancelBillReason, setCancelBillReason] = useState("");
-  const [removeChargeId, setRemoveChargeId] = useState<string | null>(null);
+  const earlierOwed = useMemo(() => {
+    const others = (patientBillsQuery.data?.content ?? []).filter(
+      (b) => b.id !== billId && isWaitingForPayment(b),
+    );
+    if (others.length === 0) return null;
+    const oldest = [...others].sort((a, b) =>
+      (a.issuedAt ?? "").localeCompare(b.issuedAt ?? ""),
+    )[0];
+    return {
+      total: others.reduce((s, b) => s + b.balanceMinor, 0),
+      since: oldest.issuedAt,
+      count: others.length,
+      firstId: oldest.id,
+    };
+  }, [patientBillsQuery.data, billId]);
 
-  const groupedItems = useMemo(() => {
-    if (!invoice.data) return new Map<string, BillItemDto[]>();
-    const m = new Map<string, BillItemDto[]>();
-    for (const item of invoice.data.bill.items) {
-      const arr = m.get(item.serviceGroup) ?? [];
-      arr.push(item);
-      m.set(item.serviceGroup, arr);
-    }
-    return m;
-  }, [invoice.data]);
+  const back = (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => router.push("/billing?view=bills")}
+    >
+      <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to bills
+    </Button>
+  );
 
-  const pharmacyByBillItem = useMemo(() => {
-    const rows = invoice.data?.pharmacyCashLines;
-    if (!rows?.length) return new Map<string, PharmacyCashLineDto>();
-    const map = new Map<string, PharmacyCashLineDto>();
-    for (const r of rows) {
-      map.set(r.billItemId, r);
-    }
-    return map;
-  }, [invoice.data?.pharmacyCashLines]);
-
-  if (invoice.isLoading) {
+  if (invoiceQuery.isPending) {
     return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading invoice…
-      </p>
+      <div className="space-y-4">
+        {back}
+        <BannerSkeleton />
+        <CardSkeleton />
+      </div>
     );
   }
-  if (invoice.isError || !invoice.data) {
+  if (invoiceQuery.isError || !invoiceQuery.data) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="py-8 text-center">
-          <p className="text-sm text-destructive">Invoice not found.</p>
-          <Button asChild variant="outline" className="mt-3">
-            <Link href="/billing?view=bills"><ArrowLeft className="mr-1.5 h-4 w-4" /> Back to bills</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {back}
+        <ErrorState
+          error={invoiceQuery.error}
+          onRetry={() => void invoiceQuery.refetch()}
+        />
+      </div>
     );
   }
 
-  const { bill, payments, totalsByGroup, pharmacyCashLines = [] } = invoice.data;
-  const pendingRxLines = pharmacyCashLines.filter((r) => r.awaitingCashPayment);
-  const isClosed = ["CANCELLED", "WRITTEN_OFF"].includes(bill.status);
-  const isPaid = bill.status === "PAID";
-  const canEdit = !isClosed && !isPaid && bill.paidMinor === 0;
-  const canPay = !isClosed && bill.balanceMinor > 0;
+  const { payments, pharmacyCashLines = [] } = invoiceQuery.data;
+  const b = invoiceQuery.data.bill;
+  const s = billStatus(b);
+  const closed = b.status === "CANCELLED" || b.status === "WRITTEN_OFF";
+  // The backend locks lines once a bill is invoiced (INVOICE_ISSUED_LINES_LOCKED). It allows edits on
+  // part-paid bills, but changing a bill after money was taken is left to finance, not the cashier.
+  const canEdit = !closed && b.status !== "PAID" && b.status !== "INVOICED" && b.paidMinor === 0;
+  const canPay = isWaitingForPayment(b);
+  const patientPays = billPatientPays(b);
+  const name = b.patientId ? naturalName(b.patientName) : "Walk-in customer";
+  const waitingRx = new Set(
+    pharmacyCashLines
+      .filter((r) => r.awaitingCashPayment)
+      .map((r) => r.billItemId),
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/billing?view=bills">
-              <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
-            </Link>
-          </Button>
-          <div>
-            <h2 className="font-clinical text-xl font-semibold">{bill.billNumber}</h2>
-            <p className="text-sm text-muted-foreground">
-              {bill.patientName} · {bill.patientPublicId || "walk-in"} · issued {formatDateTime(bill.issuedAt)}
-            </p>
-          </div>
+      {back}
+      {b.patientId ? (
+        <PatientBanner
+          patientId={b.patientId}
+          fallback={{ name: b.patientName, hospitalNumber: b.patientPublicId }}
+        />
+      ) : (
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-base font-semibold text-foreground">
+            Walk-in customer
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={billStatusPill(bill.status)}>{BILL_STATUS_LABEL[bill.status] ?? bill.status}</span>
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Printer className="mr-1.5 h-4 w-4" /> Print
-          </Button>
-        </div>
-      </div>
+      )}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        {/* Items + actions */}
+      {earlierOwed && (
+        <InlineNotice tone="warning">
+          {name} has {formatMoney(earlierOwed.total)} unpaid
+          {earlierOwed.since
+            ? ` from ${formatClinicalDate(earlierOwed.since)}`
+            : ""}
+          {earlierOwed.count > 1
+            ? ` on ${earlierOwed.count} earlier bills`
+            : ""}
+          .{" "}
+          <button
+            type="button"
+            className="font-medium underline"
+            onClick={() =>
+              router.push(`/billing?view=bills&billId=${earlierOwed.firstId}`)
+            }
+          >
+            Open {earlierOwed.count > 1 ? "the oldest" : "it"}
+          </button>
+        </InlineNotice>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-wrap items-center justify-between gap-3 pb-3">
+          <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle className="text-base">Services rendered</CardTitle>
-                <CardDescription>
-                  Lab tests, medications, imaging, consultation, supplies — every line is a bill item.
-                  {pendingRxLines.length > 0 && (
-                    <span className="mt-2 block text-[hsl(var(--clinical-urgent))]">
-                      {pendingRxLines.length} prescription line{pendingRxLines.length === 1 ? "" : "s"} awaiting payment
-                      before pharmacy can dispense.
-                    </span>
-                  )}
-                </CardDescription>
+                <h2 className="text-base font-semibold text-foreground">
+                  Items
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Bill <span className="font-clinical">{b.billNumber}</span>
+                  {b.issuedAt ? ` · ${formatClinicalDateTime(b.issuedAt)}` : ""}
+                  {b.visitReference ? ` · Visit ${b.visitReference}` : ""}
+                </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <StatusPill tone={s.tone}>{s.label}</StatusPill>
                 {canEdit && (
-                  <Button size="sm" onClick={() => setAddOpen(true)}>
-                    <Plus className="mr-1.5 h-4 w-4" />
-                    Add charge
-                  </Button>
-                )}
-                {canEdit && (
-                  <Button size="sm" variant="outline" onClick={() => setDiscountOpen(true)}>
-                    <Percent className="mr-1.5 h-4 w-4" />
-                    Discount
-                  </Button>
-                )}
-                {!isClosed && bill.paidMinor === 0 && (
-                  <Button size="sm" variant="ghost" onClick={() => setCancelBillOpen(true)}>
-                    <XCircle className="mr-1.5 h-4 w-4" />
-                    Cancel bill
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setAddOpen(true)}
+                  >
+                    <Plus className="mr-1.5 h-4 w-4" /> Add item
                   </Button>
                 )}
               </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {bill.items.length === 0 && (
-                <div className="rounded-md border border-dashed border-border py-8 text-center">
-                  <p className="text-sm text-muted-foreground">No charges on this bill yet.</p>
-                </div>
-              )}
-              {Array.from(groupedItems.entries()).map(([group, items]) => {
-                const total = totalsByGroup[group];
-                return (
-                  <div key={group} className="space-y-2">
-                    <div className="flex items-center justify-between border-b border-border pb-1">
-                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        {CHARGE_KIND_ICON[group] ?? "•"} {group} ({total?.itemCount ?? items.length})
-                      </p>
-                      <p className="font-clinical text-sm font-semibold">
-                        GH₵ {minorToGhs(total?.lineTotalMinor ?? 0)}
-                      </p>
-                    </div>
-                    {items.map((it) => (
-                      <div
-                        key={it.id}
-                        className="flex items-start justify-between gap-3 rounded-md border border-border bg-card px-3 py-2"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-medium text-foreground">{it.serviceName}</p>
-                            {pharmacyByBillItem.get(it.id)?.awaitingCashPayment && (
-                              <Badge variant="outline" className="border-[hsl(var(--clinical-urgent))] text-[hsl(var(--clinical-urgent))]">
-                                Rx awaits payment
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="patient-id mt-0.5">
-                            {it.serviceCode} · qty {it.quantity} · {PAYER_LABEL[it.payerType] ?? it.payerType}
+            </div>
+
+            {b.items.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+                Nothing on this bill yet.
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[620px] text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs tracking-wide text-muted-foreground uppercase">
+                      <th className="py-2 pr-3 font-medium">Service</th>
+                      <th className="px-3 py-2 font-medium">From</th>
+                      <th className="px-3 py-2 text-right font-medium">Qty</th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Price
+                      </th>
+                      <th className="px-3 py-2 font-medium">NHIS</th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Patient pays
+                      </th>
+                      {canEdit && (
+                        <th className="w-10 py-2">
+                          <span className="sr-only">Remove</span>
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {b.items.map((it) => (
+                      <tr key={it.id}>
+                        <td className="py-2.5 pr-3">
+                          <p className="font-medium text-foreground">
+                            {it.serviceName}
                           </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <p className="font-clinical text-sm font-semibold">GH₵ {minorToGhs(it.lineTotalMinor)}</p>
-                          {canEdit && (
+                          {waitingRx.has(it.id) && (
+                            <p className="text-xs text-muted-foreground">
+                              Pharmacy gives it once paid
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {chargeGroupLabel(it.serviceGroup)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-clinical">
+                          {Number(it.quantity)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-clinical">
+                          {formatMoney(it.unitPriceMinor)}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {it.nhisCoveredMinor > 0 ? (
+                            <StatusPill tone="info">
+                              {it.nhisCoveredMinor >= it.lineTotalMinor
+                                ? "Covered"
+                                : "Part covered"}
+                            </StatusPill>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-clinical font-medium">
+                          {formatMoney(patientShare(it))}
+                        </td>
+                        {canEdit && (
+                          <td className="py-2.5 text-right">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
-                              onClick={() => setRemoveChargeId(it.id)}
-                              disabled={removeCharge.isPending}
+                              className="h-8 w-8"
+                              aria-label={`Remove ${it.serviceName}`}
+                              onClick={() =>
+                                setRemoving({ id: it.id, name: it.serviceName })
+                              }
                             >
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Payments</CardTitle>
-              <CardDescription>
-                Record one or more payments against this bill. Methods include cash, mobile money (MTN/Telecel/AirtelTigo),
-                bank card/transfer, NHIS reimbursement.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {payments.length === 0 && (
-                <div className="rounded-md border border-dashed border-border py-6 text-center">
-                  <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
-                </div>
-              )}
-              {payments.length > 0 && (
-                <div className="overflow-hidden rounded-md border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-                        <th className="px-3 py-2 text-left">Receipt</th>
-                        <th className="px-3 py-2 text-left">When</th>
-                        <th className="px-3 py-2 text-left">Method</th>
-                        <th className="px-3 py-2 text-left">Reference</th>
-                        <th className="px-3 py-2 text-right">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {payments.map((p) => (
-                        <tr key={p.id}>
-                          <td className="px-3 py-2 font-clinical text-xs text-primary">{p.receiptNumber}</td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">{formatDateTime(p.receivedAt)}</td>
-                          <td className="px-3 py-2 text-xs">{METHOD_LABEL[p.method] ?? p.method}</td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">
-                            {p.momoTransactionId || p.bankReference || p.payerLabel || "—"}
                           </td>
-                          <td className="px-3 py-2 text-right font-clinical">GH₵ {minorToGhs(p.amountMinor)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {canPay && (
-                <Button onClick={() => setPayOpen(true)} className="w-full sm:w-auto">
-                  <CreditCard className="mr-1.5 h-4 w-4" />
-                  Record payment · GH₵ {minorToGhs(bill.balanceMinor)}
-                </Button>
-              )}
-              {isPaid && (
-                <div className="flex items-center gap-2 rounded-md border border-[hsl(var(--clinical-routine))] bg-[hsl(var(--clinical-routine-bg))] px-3 py-2 text-sm text-[hsl(var(--clinical-routine))]">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Bill fully settled
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+            <h2 className="text-base font-semibold text-foreground">
+              Payments
+            </h2>
+            {payments.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                No payments yet.
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-border">
+                {payments.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                  >
+                    <div>
+                      <p className="text-foreground">
+                        {methodLabel(p.method)} ·{" "}
+                        <span className="font-clinical">{p.receiptNumber}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.receivedAt
+                          ? formatClinicalDateTime(p.receivedAt)
+                          : "—"}
+                        {p.momoTransactionId || p.bankReference
+                          ? ` · Ref ${p.momoTransactionId || p.bankReference}`
+                          : ""}
+                      </p>
+                    </div>
+                    <span className="font-clinical font-medium">
+                      {formatMoney(p.amountMinor)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
-        {/* Summary */}
-        <Card className="lg:sticky lg:top-4 self-start">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Receipt className="h-4 w-4 text-muted-foreground" />
-              Bill summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <SummaryRow label="Subtotal" value={`GH₵ ${minorToGhs(bill.subtotalMinor)}`} />
-            <SummaryRow label="Discount" value={`- GH₵ ${minorToGhs(bill.discountMinor)}`} />
-            <SummaryRow label="Total" value={`GH₵ ${minorToGhs(bill.totalMinor)}`} bold />
-            {bill.nhisCoveredMinor > 0 && (
-              <SummaryRow label="NHIS covered" value={`GH₵ ${minorToGhs(bill.nhisCoveredMinor)}`} muted />
-            )}
-            <SummaryRow label="Paid" value={`GH₵ ${minorToGhs(bill.paidMinor)}`} muted />
-            <div className="border-t border-border pt-2">
-              <SummaryRow
-                label="Outstanding"
-                value={`GH₵ ${minorToGhs(bill.balanceMinor)}`}
-                bold
-                emphasis={bill.balanceMinor > 0 ? "warn" : "ok"}
+        <aside className="space-y-3 self-start rounded-xl border border-border bg-card p-4 sm:p-5 lg:sticky lg:top-4">
+          <dl className="space-y-1.5 text-sm">
+            <Row label="Subtotal" value={formatMoney(b.subtotalMinor)} />
+            {b.discountMinor > 0 && (
+              <Row
+                label="Discount"
+                value={`− ${formatMoney(b.discountMinor)}`}
               />
-            </div>
-            <div className="rounded-md bg-muted/30 p-2 text-xs text-muted-foreground">
-              <p>
-                Primary payer: <span className="font-medium text-foreground">{PAYER_LABEL[bill.primaryPayer] ?? bill.primaryPayer}</span>
-              </p>
-              {bill.secondaryPayer !== bill.primaryPayer && (
-                <p>
-                  Secondary: <span className="font-medium text-foreground">{PAYER_LABEL[bill.secondaryPayer] ?? bill.secondaryPayer}</span>
-                </p>
-              )}
-              {bill.visitReference && <p>Visit: <span className="font-clinical">{bill.visitReference}</span></p>}
-              {bill.notes && <p className="mt-1">{bill.notes}</p>}
-            </div>
-          </CardContent>
-        </Card>
+            )}
+            {b.nhisCoveredMinor > 0 && (
+              <Row
+                label="NHIS covers"
+                value={`− ${formatMoney(b.nhisCoveredMinor)}`}
+              />
+            )}
+          </dl>
+          <div className="rounded-lg bg-surface-subtle px-3 py-2">
+            <p className="text-xs text-muted-foreground">Patient pays</p>
+            <p className="font-clinical text-2xl font-semibold text-foreground">
+              {formatMoney(patientPays)}
+            </p>
+          </div>
+          <dl className="space-y-1.5 text-sm">
+            <Row label="Paid so far" value={formatMoney(b.paidMinor)} />
+            <Row
+              label="Still owed"
+              value={formatMoney(b.balanceMinor)}
+              strong
+            />
+            <Row label="How they pay" value={payerLabel(b.primaryPayer)} />
+          </dl>
+          {canPay && (
+            <Button className="w-full" onClick={() => setPaying(b)}>
+              <CreditCard className="mr-1.5 h-4 w-4" /> Take payment
+            </Button>
+          )}
+          {b.status === "PAID" && (
+            <InlineNotice tone="success">
+              {patientPays === 0
+                ? "Nothing to pay — NHIS covers this bill."
+                : "Paid in full."}
+            </InlineNotice>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" size="sm" onClick={() => printArea("bill")}>
+              <Printer className="mr-1.5 h-4 w-4" /> Print bill
+            </Button>
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setDiscountAmount(b.discountMinor > 0 ? (b.discountMinor / 100).toFixed(2) : "");
+                  setDiscountReason("");
+                  setDiscountOpen(true);
+                }}
+              >
+                <Percent className="mr-1.5 h-4 w-4" /> Apply discount
+              </Button>
+            )}
+          </div>
+          {!closed && b.status !== "PAID" && b.paidMinor === 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full border-destructive/40 text-destructive hover:bg-destructive/5"
+              onClick={() => setCancelOpen(true)}
+            >
+              Cancel bill
+            </Button>
+          )}
+        </aside>
       </div>
 
-      {/* Add charges dialog */}
+      {/* Printed bill — only shown on paper. */}
+      <div
+        data-print-area="bill"
+        className="hidden space-y-3 text-sm print:block"
+      >
+        <div className="text-center">
+          <p className="font-semibold">{facilityName}</p>
+          <p className="text-xs">Bill {b.billNumber}</p>
+        </div>
+        <p>
+          {name} {b.patientPublicId ? `· ${b.patientPublicId}` : ""}{" "}
+          {b.issuedAt ? `· ${formatClinicalDate(b.issuedAt)}` : ""}
+        </p>
+        <table className="w-full">
+          <tbody>
+            {b.items.map((it) => (
+              <tr key={it.id}>
+                <td>
+                  {it.serviceName} × {Number(it.quantity)}
+                </td>
+                <td className="text-right">{formatMoney(patientShare(it))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-right font-semibold">
+          Patient pays {formatMoney(patientPays)} · Paid{" "}
+          {formatMoney(b.paidMinor)} · Still owed {formatMoney(b.balanceMinor)}
+        </p>
+      </div>
+
+      <TakePaymentDialog
+        bill={paying}
+        onOpenChange={(o) => !o && setPaying(null)}
+      />
+
       <FormDialog
         open={addOpen}
-        onOpenChange={setAddOpen}
+        onOpenChange={(o) => {
+          setAddOpen(o);
+          if (!o) setDraftCharges([]);
+        }}
         size="xl"
-        title={`Add charges to bill ${bill.billNumber}`}
-        description="Add services given on this visit, such as tests, medicines, scans or supplies."
+        title="Add items to this bill"
+        description="Services given on this visit that aren't on the bill yet, such as supplies or a procedure."
         footer={
           <>
-            <Button variant="outline" onClick={() => { setDraftCharges([]); setAddOpen(false); }}>Cancel</Button>
-            <Button onClick={() => addCharges.mutate()} disabled={draftCharges.length === 0 || addCharges.isPending}>
-              {addCharges.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />}
-              Add {draftCharges.length || ""} charge{draftCharges.length === 1 ? "" : "s"}
+            <Button variant="outline" onClick={() => setAddOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => addCharges.mutate()}
+              disabled={draftCharges.length === 0 || addCharges.isPending}
+            >
+              {addCharges.isPending && (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              )}
+              {draftCharges.length > 1
+                ? `Add ${draftCharges.length} items`
+                : "Add item"}
             </Button>
           </>
         }
       >
-        <ChargeBuilder charges={draftCharges} onChange={setDraftCharges} defaultPayer={bill.primaryPayer} />
+        <ChargeBuilder
+          charges={draftCharges}
+          onChange={setDraftCharges}
+          defaultPayer={b.primaryPayer}
+        />
       </FormDialog>
 
-      {/* Discount dialog */}
       <FormDialog
         open={discountOpen}
         onOpenChange={setDiscountOpen}
         size="md"
-        title="Give a discount on this bill"
-        description="Taken off the bill total before NHIS and payments."
+        title={b.discountMinor > 0 ? "Change the discount" : "Apply a discount"}
+        description={
+          b.discountMinor > 0
+            ? `The bill already has a ${formatMoney(b.discountMinor)} discount. What you enter replaces it; it isn't added on top.`
+            : "Taken off the bill before NHIS and payments. The reason is kept with the bill."
+        }
         footer={
           <>
-            <Button variant="outline" onClick={() => setDiscountOpen(false)}>Cancel</Button>
-            <Button onClick={() => applyDiscount.mutate()} disabled={applyDiscount.isPending}>
-              {applyDiscount.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Percent className="mr-1.5 h-4 w-4" />}
+            <Button variant="outline" onClick={() => setDiscountOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => applyDiscount.mutate()}
+              disabled={
+                applyDiscount.isPending ||
+                !Number.isFinite(discountMinor) ||
+                Boolean(discountError) ||
+                !discountReason.trim()
+              }
+            >
+              {applyDiscount.isPending && (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              )}
               Apply discount
             </Button>
           </>
@@ -459,167 +575,91 @@ export function BillDetailView({ billId }: { billId: string }) {
       >
         <FormDialogSection>
           <div className="space-y-1.5">
-            <Label htmlFor="discount-amount">Discount amount (GH₵)</Label>
-            <Input id="discount-amount" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} placeholder="0.00" className="font-clinical" />
+            <Label htmlFor="discount-amount">Discount</Label>
+            <MoneyInput
+              id="discount-amount"
+              value={discountAmount}
+              onChange={setDiscountAmount}
+              error={discountError ?? undefined}
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="discount-reason">Reason</Label>
-            <Textarea id="discount-reason" rows={2} value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} placeholder="e.g. Hardship waiver, staff family" />
-          </div>
-        </FormDialogSection>
-      </FormDialog>
-
-      {/* Payment dialog */}
-      <FormDialog
-        open={payOpen}
-        onOpenChange={setPayOpen}
-        size="lg"
-        title="Take payment"
-        description={<>Still to pay: <span className="font-clinical font-semibold">GH₵ {minorToGhs(bill.balanceMinor)}</span></>}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setPayOpen(false)}>Cancel</Button>
-            <Button onClick={() => recordPayment.mutate()} disabled={recordPayment.isPending}>
-              {recordPayment.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CreditCard className="mr-1.5 h-4 w-4" />}
-              Take payment
-            </Button>
-          </>
-        }
-      >
-        <FormDialogSection title="Payment">
-          <div className="space-y-1.5">
-            <Label htmlFor="pay-method">How they&apos;re paying</Label>
-            <Select value={payMethod} onValueChange={(v) => setPayMethod(v as PaymentMethod)}>
-              <SelectTrigger id="pay-method" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(METHOD_LABEL).map(([v, label]) => (
-                  <SelectItem key={v} value={v}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="pay-amount">Amount (GH₵)</Label>
-            <Input id="pay-amount" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder={(bill.balanceMinor / 100).toFixed(2)} className="font-clinical" />
-            <button type="button" className="text-xs text-accent hover:underline" onClick={() => setPayAmount((bill.balanceMinor / 100).toFixed(2))}>
-              Pay the full amount
-            </button>
-          </div>
-        </FormDialogSection>
-
-        {MOMO_METHODS.has(payMethod) && (
-          <FormDialogSection title="Mobile money">
-            <div className="space-y-1.5">
-              <Label htmlFor="pay-momo">Mobile money number</Label>
-              <Input id="pay-momo" value={momoMsisdn} onChange={(e) => setMomoMsisdn(e.target.value)} placeholder="e.g. 024 123 4567" className="font-clinical" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="pay-momo-ref">Transaction reference</Label>
-              <Input id="pay-momo-ref" value={momoTxn} onChange={(e) => setMomoTxn(e.target.value)} className="font-clinical" />
-            </div>
-          </FormDialogSection>
-        )}
-
-        {BANK_METHODS.has(payMethod) && (
-          <FormDialogSection title="Bank">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="pay-bank">Bank reference or cheque number</Label>
-              <Input id="pay-bank" value={bankRef} onChange={(e) => setBankRef(e.target.value)} className="font-clinical" />
-            </div>
-          </FormDialogSection>
-        )}
-
-        <FormDialogSection title="More details">
-          <div className="space-y-1.5">
-            <Label htmlFor="pay-payer">Paid by (optional)</Label>
-            <Input id="pay-payer" value={payerLabel} onChange={(e) => setPayerLabel(e.target.value)} placeholder="e.g. Paid by a relative" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="pay-notes">Notes (optional)</Label>
-            <Textarea id="pay-notes" rows={2} value={payNotes} onChange={(e) => setPayNotes(e.target.value)} />
+            <Textarea
+              id="discount-reason"
+              rows={2}
+              value={discountReason}
+              onChange={(e) => setDiscountReason(e.target.value)}
+              placeholder="e.g. Hardship waiver approved by the administrator"
+            />
           </div>
         </FormDialogSection>
       </FormDialog>
 
       <ConfirmDialog
-        open={cancelBillOpen}
-        onOpenChange={(open) => {
-          setCancelBillOpen(open);
-          if (!open) setCancelBillReason("");
+        open={cancelOpen}
+        onOpenChange={(o) => {
+          setCancelOpen(o);
+          if (!o) setCancelReason("");
         }}
-        title="Cancel this bill?"
-        description={`${bill.billNumber} · ${bill.patientName}. This reverses unpaid charges for reporting — provide an audit reason.`}
+        title={`Cancel bill ${b.billNumber}?`}
+        description={`${name} won't be asked to pay it. The bill stays on record as cancelled.`}
         confirmLabel="Cancel bill"
+        cancelLabel="Keep the bill"
         destructive
         pending={cancelBill.isPending}
+        confirmDisabled={!cancelReason.trim()}
         footerExtra={
-          <div className="space-y-1">
-            <Label className="text-xs">Reason</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="cancel-reason">Reason</Label>
             <Textarea
-              rows={3}
-              value={cancelBillReason}
-              onChange={(e) => setCancelBillReason(e.target.value)}
-              placeholder="Why is this bill being cancelled?"
+              id="cancel-reason"
+              rows={2}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Created twice by mistake"
             />
           </div>
         }
         onConfirm={async () => {
-          const r = cancelBillReason.trim();
-          if (!r) {
-            toast.error("Cancellation reason is required");
-            throw new Error("missing reason");
-          }
-          await cancelBill.mutateAsync(r);
+          await cancelBill.mutateAsync();
         }}
       />
 
       <ConfirmDialog
-        open={removeChargeId !== null}
-        onOpenChange={(open) => {
-          if (!open) setRemoveChargeId(null);
-        }}
-        title="Remove charge?"
-        description="This line disappears from the open bill immediately. Removing the wrong charge may affect cashier reconciliation."
-        confirmLabel="Remove charge"
+        open={removing !== null}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Remove ${removing?.name ?? "this item"}?`}
+        description="It comes off this bill. Only remove items that weren't given."
+        confirmLabel="Remove item"
+        cancelLabel="Keep it"
         destructive
         pending={removeCharge.isPending}
         onConfirm={async () => {
-          if (!removeChargeId) return;
-          await removeCharge.mutateAsync(removeChargeId);
+          if (removing) await removeCharge.mutateAsync(removing.id);
         }}
       />
     </div>
   );
 }
 
-function SummaryRow({
+function Row({
   label,
   value,
-  bold,
-  muted,
-  emphasis,
+  strong,
 }: {
   label: string;
   value: string;
-  bold?: boolean;
-  muted?: boolean;
-  emphasis?: "warn" | "ok";
+  strong?: boolean;
 }) {
-  const valueClass = [
-    "font-clinical",
-    bold ? "font-semibold" : "",
-    muted ? "text-muted-foreground" : "text-foreground",
-    emphasis === "warn" ? "text-[hsl(var(--clinical-urgent))]" : "",
-    emphasis === "ok" ? "text-[hsl(var(--clinical-routine))]" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
   return (
-    <div className="flex items-baseline justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={valueClass}>{value}</span>
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd
+        className={`font-clinical ${strong ? "font-semibold text-foreground" : "text-foreground"}`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

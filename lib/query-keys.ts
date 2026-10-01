@@ -57,6 +57,7 @@ export const queryKeys = {
 
     // ── Clinical encounters (the workflow hub: nurse, OPD, lab, pharmacy)
     clinical: {
+      catalog: (group: string) => ["clinical", "catalog", group] as const,
       all: ["clinical"] as const,
       today: ["clinical", "encounters", "today"] as const,
       encounters: ["clinical", "encounters"] as const,
@@ -101,6 +102,9 @@ export const queryKeys = {
       ward: (wardId: string) => ["ipd", "ward", wardId] as const,
       admission: (admissionId: string) => ["ipd", "admission", admissionId] as const,
       mar: (admissionId: string) => ["ipd", "mar", admissionId] as const,
+      tpr: (admissionId: string) => ["ipd", "tpr", admissionId] as const,
+      activeAdmissions: ["clinical", "admissions", "active"] as const,
+      goingHome: ["ipd", "going-home"] as const,
     },
   
     // ── ANC
@@ -135,11 +139,40 @@ export const queryKeys = {
       movements: (itemId: string) => ["pharmacy-inventory", "movements", itemId] as const,
     },
   
+    // ── Audit
+    audit: {
+      events: ["audit", "events"] as const,
+    },
+
+    // ── Finance (prices, revenue, NHIS claims)
+    finance: {
+      all: ["finance"] as const,
+      dashboard: ["finance", "dashboard"] as const,
+      /** Shared with the bill item picker (ChargeBuilder). */
+      activeServices: ["finance", "catalog", "services", "active"] as const,
+      services: ["finance", "catalog", "services", "all"] as const,
+      groups: ["finance", "catalog", "groups"] as const,
+      /** Shared with the bill item picker (ChargeBuilder). */
+      pricing: ["finance", "pricing", "matrix"] as const,
+      oldPrices: ["finance", "pricing", "items"] as const,
+      revenue: (from: string, to: string) => ["finance", "revenue", from, to] as const,
+      claims: ["finance", "nhis", "claims"] as const,
+      reports: ["finance", "nhis", "reports"] as const,
+    },
+
     // ── Billing / NHIS
     billing: {
       claims: ["billing", "claims"] as const,
       claim: (id: string) => ["billing", "claim", id] as const,
       invoices: ["billing", "invoices"] as const,
+      all: ["billing"] as const,
+      dashboard: ["billing", "dashboard"] as const,
+      bills: (status: string, search: string) => ["billing", "bills", status, search] as const,
+      invoice: (billId: string) => ["billing", "invoice", billId] as const,
+      payments: ["billing", "payments"] as const,
+      reversals: ["billing", "payments", "reversals"] as const,
+      chargeKinds: ["billing", "charge-kinds"] as const,
+      patientBills: (patientId: string) => ["billing", "patient-bills", patientId] as const,
     },
   
     // ── Reports hub (definitions from backend catalogue)

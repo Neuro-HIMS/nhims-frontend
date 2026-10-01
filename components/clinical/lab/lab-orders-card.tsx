@@ -14,7 +14,7 @@ import { LabMalariaPanelReadonly, parseMalariaPanelJson } from "@/components/lab
 import { Button } from "@/components/ui/button";
 import { cleanPersonName } from "@/lib/display-name";
 import { formatClinicalDateTime } from "@/lib/dates";
-import { isWaitingToPay, labStatus, labUrgencyLabel } from "@/lib/lab-results";
+import { isWaitingToPay, labStatus, labUrgencyLabel, storedFlag } from "@/lib/lab-results";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { clinicalService } from "@/services/clinical.service";
@@ -107,6 +107,13 @@ function LabOrderRow({ order: o, open, onToggle }: { order: LabOrderDto; open: b
   const hasResults = o.status === "COMPLETED" || o.status === "AUTHORISED";
   const rejection = o.status === "CANCELLED" ? labService.rejectionFor(o.id) : null;
   const malaria = o.malariaPanelJson ? parseMalariaPanelJson(o.malariaPanelJson) : null;
+  // The key answer on the row itself (abnormal values first), so the doctor sees it without opening.
+  const summary = hasResults && o.results.length > 0
+    ? [...o.results]
+        .map((r) => ({ ...r, flag: storedFlag(r.flag) }))
+        .sort((a, b) => Number(b.flag !== "NORMAL") - Number(a.flag !== "NORMAL"))
+        .slice(0, 3)
+    : null;
 
   return (
     <li className={cn("rounded-lg border bg-card", hasResults ? "border-primary-border" : "border-border")}>
@@ -123,7 +130,19 @@ function LabOrderRow({ order: o, open, onToggle }: { order: LabOrderDto; open: b
           <span className="block text-xs text-muted-foreground">
             {labUrgencyLabel(o.priority)} · requested by {cleanPersonName(o.orderedByName) || "a clinician"}
             {o.orderedAt ? ` · ${formatClinicalDateTime(o.orderedAt)}` : ""}
-          </span>
+            {summary && (
+            <span className="mt-0.5 block text-sm">
+              {summary.map((r, i) => (
+                <span key={r.id} className={r.flag !== "NORMAL" ? "font-semibold text-destructive" : "text-foreground"}>
+                  {i > 0 ? " · " : ""}
+                  {r.analyte}: {r.value}
+                  {r.units ? ` ${r.units}` : ""}
+                </span>
+              ))}
+              {o.results.length > summary.length && <span className="text-muted-foreground"> · and {o.results.length - summary.length} more</span>}
+            </span>
+          )}
+        </span>
         </span>
         {isWaitingToPay(o) && <StatusPill tone="pending">Waiting to pay</StatusPill>}
         <StatusPill tone={rejection ? "error" : status.tone}>{rejection ? "Sample rejected" : status.label}</StatusPill>

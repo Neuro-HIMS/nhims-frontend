@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 
+import { CHARGE_KIND_FALLBACK } from "@/components/billing/lib/billing-utils";
+import { MoneyInput } from "@/components/common/money-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ChoiceOption } from "@/components/ui/choice-option";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { chargeGroupLabel, formatMoney, parseMoney, PAYER, payerLabel } from "@/lib/billing";
+import { queryKeys } from "@/lib/query-keys";
 import { billingService } from "@/services/billing.service";
 import { financeService } from "@/services/finance.service";
-import { ghsInputToMinor, minorToGhs, PAYER_LABEL } from "@/components/finance/finance-utils";
-import { CHARGE_KIND_FALLBACK, CHARGE_KIND_ICON } from "@/components/billing/lib/billing-utils";
 import type { ChargeInput } from "@/types/billing.types";
 import type { ServiceCatalogDto, ServicePricingDto } from "@/types/finance.types";
 
@@ -24,63 +28,52 @@ export interface DraftCharge extends ChargeInput {
   displayName: string;
 }
 
+const PAYER_CHOICES = Object.keys(PAYER).filter((p) => p !== "IGF");
+
 function makeRowId(): string {
   return `c-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function ChargeBuilder({
-  charges,
-  onChange,
-  defaultPayer,
-}: {
-  charges: DraftCharge[];
-  onChange: (next: DraftCharge[]) => void;
-  defaultPayer: string;
-}) {
+/** Builds the list of items for a new or existing bill (BIL-03 / BIL-04). */
+export function ChargeBuilder({ charges, onChange, defaultPayer }: { charges: DraftCharge[]; onChange: (next: DraftCharge[]) => void; defaultPayer: string }) {
   const services = useQuery({
-    queryKey: ["finance", "catalog", "services", "active"],
+    queryKey: queryKeys.finance.activeServices,
     queryFn: () => financeService.listServices(true),
   });
   const pricing = useQuery({
-    queryKey: ["finance", "pricing", "matrix"],
+    queryKey: queryKeys.finance.pricing,
     queryFn: () => financeService.listPricingMatrix(),
   });
   const kinds = useQuery({
-    queryKey: ["billing", "charge-kinds"],
+    queryKey: queryKeys.billing.chargeKinds,
     queryFn: () => billingService.chargeKinds(),
   });
+  const kindList = kinds.data && kinds.data.length > 0 ? kinds.data : CHARGE_KIND_FALLBACK;
 
-  const kindList = (kinds.data && kinds.data.length > 0) ? kinds.data : CHARGE_KIND_FALLBACK;
-
-  // Form state for a new charge row to be appended.
   const [mode, setMode] = useState<"catalog" | "custom">("catalog");
-  const [serviceId, setServiceId] = useState<string>("");
-  const [customName, setCustomName] = useState<string>("");
-  const [customGroup, setCustomGroup] = useState<string>("OTHER");
-  const [customCode, setCustomCode] = useState<string>("");
-  const [quantity, setQuantity] = useState<string>("1");
-  const [payer, setPayer] = useState<string>(defaultPayer);
-  const [unitOverride, setUnitOverride] = useState<string>("");
-  const [notes, setNotes] = useState<string>("");
+  const [serviceId, setServiceId] = useState("");
+  const [customName, setCustomName] = useState("");
+  const [customGroup, setCustomGroup] = useState("OTHER");
+  const [customCode, setCustomCode] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  // The item's payer follows the bill's until the cashier picks one.
+  const [payerChoice, setPayer] = useState<string | null>(null);
+  const payer = payerChoice ?? defaultPayer;
+  const [price, setPrice] = useState("");
+  const [notes, setNotes] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
 
-  useEffect(() => {
-    setPayer(defaultPayer);
-  }, [defaultPayer]);
-
-  const selectedService = useMemo<ServiceCatalogDto | undefined>(
-    () => (services.data ?? []).find((s) => s.id === serviceId),
-    [services.data, serviceId],
-  );
-
+  const selectedService = useMemo<ServiceCatalogDto | undefined>(() => (services.data ?? []).find((s) => s.id === serviceId), [services.data, serviceId]);
   const tariff = useMemo(() => lookupTariff(pricing.data ?? [], serviceId, payer), [pricing.data, serviceId, payer]);
 
   function addRow() {
+    const qty = Number(quantity);
+    if (!Number.isInteger(qty) || qty < 1) return setProblem("Enter a whole number of 1 or more.");
+    const priceMinor = price.trim() ? parseMoney(price) : NaN;
+    if (price.trim() && !Number.isFinite(priceMinor)) return setProblem("Enter the price like 12.50.");
     if (mode === "catalog") {
-      if (!serviceId || !selectedService) return;
-      const qty = Math.max(1, Number.parseFloat(quantity) || 1);
-      const unitMinor = unitOverride.trim()
-        ? Math.max(0, ghsInputToMinor(unitOverride))
-        : tariff?.unitPriceMinor ?? 0;
+      if (!selectedService) return setProblem("Choose a service.");
+      if (!tariff && !price.trim()) return setProblem("This service has no price for this payer. Enter the price.");
       onChange([
         ...charges,
         {
@@ -88,17 +81,15 @@ export function ChargeBuilder({
           serviceId,
           payerType: payer,
           quantity: qty,
-          unitPriceMinorOverride: unitOverride.trim() ? unitMinor : null,
+          unitPriceMinorOverride: price.trim() ? priceMinor : null,
           discountMinor: 0,
           notes: notes.trim(),
           displayName: selectedService.serviceName,
         },
       ]);
     } else {
-      if (!customName.trim() || !unitOverride.trim()) return;
-      const qty = Math.max(1, Number.parseFloat(quantity) || 1);
-      const unitMinor = Math.max(0, ghsInputToMinor(unitOverride));
-      if (Number.isNaN(unitMinor)) return;
+      if (!customName.trim()) return setProblem("Say what the item is.");
+      if (!price.trim() || !(priceMinor > 0)) return setProblem("Enter a price above 0.");
       onChange([
         ...charges,
         {
@@ -109,245 +100,162 @@ export function ChargeBuilder({
           customServiceGroup: customGroup,
           payerType: payer,
           quantity: qty,
-          unitPriceMinorOverride: unitMinor,
+          unitPriceMinorOverride: priceMinor,
           discountMinor: 0,
           notes: notes.trim(),
           displayName: customName.trim(),
         },
       ]);
     }
-    // reset row form
+    setProblem(null);
     setServiceId("");
     setCustomName("");
     setCustomCode("");
     setQuantity("1");
-    setUnitOverride("");
+    setPrice("");
     setNotes("");
   }
 
-  function removeRow(rowId: string) {
-    onChange(charges.filter((c) => c.rowId !== rowId));
-  }
-
-  // Compute the total for the visible draft list.
   const total = charges.reduce((sum, c) => {
     const unit = c.unitPriceMinorOverride ?? tariffForCharge(pricing.data ?? [], c)?.unitPriceMinor ?? 0;
     return sum + unit * (c.quantity ?? 1);
   }, 0);
 
+  const payerSelect = (
+    <Select value={payer} onValueChange={setPayer}>
+      <SelectTrigger id="cb-payer" className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {PAYER_CHOICES.map((p) => (
+          <SelectItem key={p} value={p}>
+            {PAYER[p]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-card p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <button
-            type="button"
-            className={`rounded-md border px-3 py-1.5 text-xs font-medium ${
-              mode === "catalog" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"
-            }`}
-            onClick={() => setMode("catalog")}
-          >
-            From service catalog
-          </button>
-          <button
-            type="button"
-            className={`rounded-md border px-3 py-1.5 text-xs font-medium ${
-              mode === "custom" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"
-            }`}
-            onClick={() => setMode("custom")}
-          >
-            Custom / ad-hoc charge
-          </button>
-        </div>
+      {pricing.isError && <p className="text-xs text-destructive">Prices couldn&apos;t be loaded, so amounts below may show as 0.00. Close this and try again.</p>}
+      <div className="space-y-3 rounded-lg border border-border bg-surface-subtle p-4">
+        <RadioGroup value={mode} onValueChange={(v) => setMode(v as "catalog" | "custom")} className="flex flex-wrap gap-2" aria-label="Where the item comes from">
+          <ChoiceOption>
+            <RadioGroupItem value="catalog" /> From the price list
+          </ChoiceOption>
+          <ChoiceOption>
+            <RadioGroupItem value="custom" /> Something not on the price list
+          </ChoiceOption>
+        </RadioGroup>
 
-        {mode === "catalog" ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Service *">
+        <div className="grid gap-3 md:grid-cols-2">
+          {mode === "catalog" ? (
+            <Field label="Service" htmlFor="cb-service">
               <Select value={serviceId} onValueChange={setServiceId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pick a service from catalog…" />
+                <SelectTrigger id="cb-service" className="w-full">
+                  <SelectValue placeholder="Choose a service" />
                 </SelectTrigger>
                 <SelectContent className="max-h-[320px]">
-                  {(services.data ?? []).length === 0 && (
-                    <div className="p-2 text-xs text-muted-foreground">
-                      No services available. Set up the catalog under Finance → Services.
-                    </div>
+                  {services.isPending ? (
+                    <div className="p-2 text-xs text-muted-foreground">Loading the price list…</div>
+                  ) : services.isError ? (
+                    <div className="p-2 text-xs text-destructive">The price list couldn&apos;t be loaded. Close this and try again.</div>
+                  ) : (
+                    (services.data ?? []).length === 0 && <div className="p-2 text-xs text-muted-foreground">The price list is empty. Ask the finance officer to add services.</div>
                   )}
                   {(services.data ?? []).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {CHARGE_KIND_ICON[s.serviceGroup] ?? "•"} {s.serviceName}{" "}
-                      <span className="text-xs text-muted-foreground">· {s.serviceGroup}</span>
+                      {s.serviceName} <span className="text-xs text-muted-foreground">· {chargeGroupLabel(s.serviceGroup)}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Payer for this line">
-              <Select value={payer} onValueChange={setPayer}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(PAYER_LABEL).map((p) => (
-                    <SelectItem key={p} value={p}>{PAYER_LABEL[p]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Quantity">
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="font-clinical"
-              />
-            </Field>
-            <Field label="Unit price (override)">
-              <div className="flex items-center gap-2">
-                <div className="flex-1 rounded-md border border-input bg-muted/30 px-3 py-2 text-sm font-clinical">
-                  {tariff
-                    ? `Tariff: GH₵ ${minorToGhs(tariff.unitPriceMinor)}`
-                    : selectedService
-                    ? "No tariff for this payer"
-                    : "Pick a service to see tariff"}
-                </div>
-                <Input
-                  placeholder="GH₵"
-                  value={unitOverride}
-                  onChange={(e) => setUnitOverride(e.target.value)}
-                  className="w-[140px] font-clinical"
-                />
-              </div>
-            </Field>
-            <Field label="Notes (optional)" className="md:col-span-2">
-              <Textarea
-                rows={1}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional clinical/billing context"
-              />
-            </Field>
-          </div>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Charge name *">
-              <Input
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="e.g. Surgical gloves (pair)"
-              />
-            </Field>
-            <Field label="Charge kind *">
-              <Select value={customGroup} onValueChange={setCustomGroup}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {kindList.map((k) => (
-                    <SelectItem key={k.value} value={k.value}>
-                      {CHARGE_KIND_ICON[k.value] ?? "•"} {k.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Internal code (optional)">
-              <Input
-                value={customCode}
-                onChange={(e) => setCustomCode(e.target.value)}
-                placeholder="AD-HOC"
-              />
-            </Field>
-            <Field label="Payer">
-              <Select value={payer} onValueChange={setPayer}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(PAYER_LABEL).map((p) => (
-                    <SelectItem key={p} value={p}>{PAYER_LABEL[p]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Quantity">
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="font-clinical"
-              />
-            </Field>
-            <Field label="Unit price (GH₵) *">
-              <Input
-                value={unitOverride}
-                onChange={(e) => setUnitOverride(e.target.value)}
-                placeholder="0.00"
-                className="font-clinical"
-              />
-            </Field>
-            <Field label="Notes (optional)" className="md:col-span-2">
-              <Textarea
-                rows={1}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="What was rendered? Any context for the cashier?"
-              />
-            </Field>
-          </div>
+          ) : (
+            <>
+              <Field label="What it is" htmlFor="cb-name">
+                <Input id="cb-name" value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="e.g. Surgical gloves (pair)" />
+              </Field>
+              <Field label="Type" htmlFor="cb-type">
+                <Select value={customGroup} onValueChange={setCustomGroup}>
+                  <SelectTrigger id="cb-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kindList.map((k) => (
+                      <SelectItem key={k.value} value={k.value}>
+                        {chargeGroupLabel(k.value)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Code (optional)" htmlFor="cb-code">
+                <Input id="cb-code" value={customCode} onChange={(e) => setCustomCode(e.target.value)} className="font-clinical" />
+              </Field>
+            </>
+          )}
+          <Field label="Who pays for this item" htmlFor="cb-payer">
+            {payerSelect}
+          </Field>
+          <Field label="Quantity" htmlFor="cb-qty">
+            <Input id="cb-qty" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ""))} className="font-clinical" />
+          </Field>
+          <Field label={mode === "catalog" ? "Price each (leave empty to use the price list)" : "Price each"} htmlFor="cb-price">
+            <MoneyInput id="cb-price" value={price} onChange={setPrice} placeholder={tariff ? (tariff.unitPriceMinor / 100).toFixed(2) : "0.00"} />
+            {mode === "catalog" && selectedService && (
+              <p className="text-xs text-muted-foreground">{tariff ? `Price list: ${formatMoney(tariff.unitPriceMinor)}` : "No price for this payer — enter one."}</p>
+            )}
+          </Field>
+          <Field label="Note (optional)" htmlFor="cb-notes" className="md:col-span-2">
+            <Textarea id="cb-notes" rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Given on the ward" />
+          </Field>
+        </div>
+        {problem && (
+          <p role="alert" className="text-xs text-destructive">
+            {problem}
+          </p>
         )}
-
-        <div className="mt-4 flex justify-end">
-          <Button type="button" onClick={addRow}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add charge to bill
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" onClick={addRow}>
+            <Plus className="mr-1.5 h-4 w-4" /> Add to the list
           </Button>
         </div>
       </div>
 
       {charges.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full min-w-[620px] text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <Th>Charge</Th>
-                <Th>Kind</Th>
-                <Th>Payer</Th>
-                <Th className="text-right">Qty</Th>
-                <Th className="text-right">Unit</Th>
-                <Th className="text-right">Total</Th>
-                <th />
+              <tr className="border-b border-border bg-surface-subtle text-left text-xs tracking-wide text-muted-foreground uppercase">
+                <th className="px-4 py-2.5 font-medium">Item</th>
+                <th className="px-4 py-2.5 font-medium">Type</th>
+                <th className="px-4 py-2.5 font-medium">Who pays</th>
+                <th className="px-4 py-2.5 text-right font-medium">Qty</th>
+                <th className="px-4 py-2.5 text-right font-medium">Price each</th>
+                <th className="px-4 py-2.5 text-right font-medium">Amount</th>
+                <th className="w-10" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {charges.map((c) => {
-                const tariffPrice = tariffForCharge(pricing.data ?? [], c)?.unitPriceMinor ?? 0;
-                const unit = c.unitPriceMinorOverride ?? tariffPrice;
-                const lineTotal = unit * (c.quantity ?? 1);
-                const kind = c.serviceId
-                  ? services.data?.find((s) => s.id === c.serviceId)?.serviceGroup ?? "OTHER"
-                  : c.customServiceGroup ?? "OTHER";
+                const unit = c.unitPriceMinorOverride ?? tariffForCharge(pricing.data ?? [], c)?.unitPriceMinor ?? 0;
+                const kind = c.serviceId ? (services.data?.find((s) => s.id === c.serviceId)?.serviceGroup ?? "OTHER") : (c.customServiceGroup ?? "OTHER");
                 return (
                   <tr key={c.rowId}>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <p className="font-medium text-foreground">{c.displayName}</p>
-                      {c.notes && <p className="patient-id mt-0.5">{c.notes}</p>}
+                      {c.notes && <p className="text-xs text-muted-foreground">{c.notes}</p>}
                     </td>
-                    <td className="px-4 py-3 text-xs">
-                      {CHARGE_KIND_ICON[kind] ?? "•"} {kind}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {PAYER_LABEL[c.payerType ?? ""] ?? c.payerType}
-                    </td>
-                    <td className="px-4 py-3 text-right font-clinical">{c.quantity ?? 1}</td>
-                    <td className="px-4 py-3 text-right font-clinical">GH₵ {minorToGhs(unit)}</td>
-                    <td className="px-4 py-3 text-right font-clinical font-semibold">GH₵ {minorToGhs(lineTotal)}</td>
-                    <td className="px-2 py-3 text-right">
-                      <Button variant="ghost" size="icon" onClick={() => removeRow(c.rowId)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                    <td className="px-4 py-2.5 text-muted-foreground">{chargeGroupLabel(kind)}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{payerLabel(c.payerType)}</td>
+                    <td className="px-4 py-2.5 text-right font-clinical">{c.quantity ?? 1}</td>
+                    <td className="px-4 py-2.5 text-right font-clinical">{formatMoney(unit)}</td>
+                    <td className="px-4 py-2.5 text-right font-clinical font-medium">{formatMoney(unit * (c.quantity ?? 1))}</td>
+                    <td className="px-2 py-2.5 text-right">
+                      <Button variant="ghost" size="icon" aria-label={`Remove ${c.displayName}`} onClick={() => onChange(charges.filter((x) => x.rowId !== c.rowId))}>
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </td>
                   </tr>
@@ -355,11 +263,11 @@ export function ChargeBuilder({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t border-border bg-muted/40">
-                <td colSpan={5} className="px-4 py-2.5 text-right text-sm font-medium">
-                  Charges total
+              <tr className="border-t border-border bg-surface-subtle">
+                <td colSpan={5} className="px-4 py-2.5 text-right font-medium">
+                  Total before NHIS
                 </td>
-                <td className="px-4 py-2.5 text-right font-clinical font-semibold">GH₵ {minorToGhs(total)}</td>
+                <td className="px-4 py-2.5 text-right font-clinical font-semibold">{formatMoney(total)}</td>
                 <td />
               </tr>
             </tfoot>
@@ -370,29 +278,23 @@ export function ChargeBuilder({
   );
 }
 
-function Field({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
+function Field({ label, htmlFor, children, className = "" }: { label: string; htmlFor: string; children: ReactNode; className?: string }) {
   return (
-    <div className={`space-y-1 ${className}`}>
-      <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
+    <div className={`space-y-1.5 ${className}`}>
+      <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>
   );
 }
 
-function Th({ children, className = "" }: { children?: ReactNode; className?: string }) {
-  return (
-    <th className={`px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground ${className}`}>
-      {children}
-    </th>
-  );
+function latest(list: ServicePricingDto[]): ServicePricingDto | null {
+  return [...list].sort((a, b) => (b.effectiveFrom ?? "").localeCompare(a.effectiveFrom ?? ""))[0] ?? null;
 }
 
 function lookupTariff(pricing: ServicePricingDto[], serviceId: string, payerType: string): ServicePricingDto | null {
   if (!serviceId) return null;
-  const direct = pricing.find((p) => p.active && p.serviceId === serviceId && p.payerType === payerType);
-  if (direct) return direct;
-  const cash = pricing.find((p) => p.active && p.serviceId === serviceId && p.payerType === "CASH");
-  return cash ?? null;
+  const forService = pricing.filter((p) => p.active && p.serviceId === serviceId);
+  return latest(forService.filter((p) => p.payerType === payerType)) ?? latest(forService.filter((p) => p.payerType === "CASH"));
 }
 
 function tariffForCharge(pricing: ServicePricingDto[], c: DraftCharge): ServicePricingDto | null {

@@ -428,12 +428,12 @@ function ConsultationWorkspace({ folder }: { folder: FolderViewDto }) {
                   patientId={patientId}
                   patientName={patientName}
                   payerType={encounter.payerType}
-                  canPrescribe={isPrescriber}
+                  canPrescribe={canWrite}
                 />
               </OrdersCard>
 
               <OrdersCard title="Treatments" description="Injections, drips, dressings and other care given here.">
-                <TreatmentsCard bare onlyThisVisit patientUuid={patientId} encounterId={encounterId} />
+                <TreatmentsCard bare onlyThisVisit readOnly={!canWrite} patientUuid={patientId} encounterId={encounterId} />
               </OrdersCard>
 
               <ConfirmDialog

@@ -8,7 +8,7 @@ import { StatusPill } from "@/components/common/status-pill";
 import { WaitingList } from "@/components/clinical/waiting-list";
 import { cleanPersonName, naturalName } from "@/lib/display-name";
 import { isSelfPay } from "@/lib/lab-results";
-import { isRxWaitingToPay, rxStatus } from "@/lib/pharmacy";
+import { isRxWaitingToPay, rxStatus, stockLevel } from "@/lib/pharmacy";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
 import { pharmacyInventoryService } from "@/services/pharmacy-inventory.service";
@@ -30,7 +30,7 @@ export function PharmacyQueueView() {
   });
 
   const rows = (queueQuery.data ?? []).filter((r) => r.status !== "DISPENSED" && r.status !== "CANCELLED");
-  const lowStock = (stockQuery.data ?? []).filter((s) => s.stockStatus === "LOW" || s.stockStatus === "OUT").length;
+  const lowStock = (stockQuery.data ?? []).filter((s) => stockLevel(s) !== "OK").length;
   const stats = {
     ready: rows.filter((r) => r.status === "READY").length,
     waitingToPay: rows.filter((r) => isRxWaitingToPay(r)).length,

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pill, Plus } from "lucide-react";
+import { AlertTriangle, Loader2, Pill, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -16,7 +16,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsField } from "@/components/records/shared/records-field";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { ErrorState } from "@/components/common/error-state";
+import { InlineNotice } from "@/components/common/inline-notice";
+import { useAllergyCheck } from "@/hooks/use-allergy-check";
 import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
 import { CardSkeleton } from "@/components/common/skeletons";
 import { StatusPill } from "@/components/common/status-pill";
@@ -29,7 +32,7 @@ import { clinicalService } from "@/services/clinical.service";
 import { queryKeys } from "@/lib/query-keys";
 import { useAuthStore } from "@/store/auth.store";
 
-import type { TreatmentStatus } from "@/types/clinical.types";
+import type { TreatmentDto, TreatmentStatus } from "@/types/clinical.types";
 import type { Visit } from "@/lib/clinical-types";
 
 const EMPTY_TX = {
@@ -50,16 +53,21 @@ interface TreatmentsCardProps {
   onlyThisVisit?: boolean;
   /** Inside a card that already has a title. */
   bare?: boolean;
+  /** Finished visit: show the list only. */
+  readOnly?: boolean;
 }
 
 /** DOC-14 — treatments and procedures given in the clinic or on the ward (the treatment sheet). */
-export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false, bare = false }: TreatmentsCardProps) {
+export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false, bare = false, readOnly = false }: TreatmentsCardProps) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
-  const canWrite = canWriteTreatments(role);
+  const canWrite = canWriteTreatments(role) && !readOnly;
+  const allergy = useAllergyCheck(patientUuid);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_TX);
+  const [overrideReason, setOverrideReason] = useState("");
+  const [confirming, setConfirming] = useState<{ t: TreatmentDto; status: TreatmentStatus } | null>(null);
 
   const treatmentsQuery = useQuery({
     queryKey: queryKeys.clinical.treatments(patientUuid),
@@ -76,11 +84,14 @@ export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false
         route: form.route,
         frequency: form.frequency,
         durationDays: parseInt(form.durationDays) || 0,
-        instructions: form.instructions.trim(),
+        instructions: [form.instructions.trim(), overrideReason.trim() ? `Allergy checked by prescriber: ${overrideReason.trim()}` : ""]
+          .filter(Boolean)
+          .join(". "),
       }),
     onSuccess: () => {
       toast.success("Treatment added.");
       setForm(EMPTY_TX);
+      setOverrideReason("");
       setShowForm(false);
       qc.invalidateQueries({ queryKey: queryKeys.clinical.treatments(patientUuid) });
     },
@@ -92,6 +103,7 @@ export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: queryKeys.clinical.treatments(patientUuid) });
       toast.success(`Treatment marked as ${treatmentStatus(v.status).label.toLowerCase()}.`);
+      setConfirming(null);
     },
     onError: (err) => toast.error(getFriendlyError(err).message),
   });
@@ -106,7 +118,12 @@ export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false
   function close() {
     setShowForm(false);
     setForm(EMPTY_TX);
+    setOverrideReason("");
   }
+
+  // Same allergy check as prescribing (DOC-07): the backend doesn't check treatments at all.
+  const clash = form.drug.trim() ? allergy.clashFor(form.drug) : null;
+  const allergyBlocks = !allergy.ready || Boolean(clash?.blocking) || (Boolean(clash) && !overrideReason.trim());
 
   const countLabel = `${list.length} treatment${list.length === 1 ? "" : "s"}${onlyThisVisit ? " on this visit" : ""}`;
 
@@ -146,13 +163,47 @@ export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false
             <Button type="button" variant="outline" onClick={close}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => createMut.mutate()} disabled={createMut.isPending || !form.drug.trim() || !form.dose.trim()}>
+            <Button type="button" onClick={() => createMut.mutate()} disabled={createMut.isPending || !form.drug.trim() || !form.dose.trim() || allergyBlocks}>
               {createMut.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
               Add treatment
             </Button>
           </>
         }
       >
+        {allergy.failed ? (
+          <InlineNotice tone="error" title="Allergies couldn't be loaded">
+            The treatment can&apos;t be checked against the patient&apos;s allergies, so it can&apos;t be added yet.{" "}
+            <button type="button" className="font-medium underline" onClick={allergy.retry}>
+              Try again
+            </button>
+          </InlineNotice>
+        ) : (
+          !allergy.ready && (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the patient&apos;s allergies…
+            </p>
+          )
+        )}
+        {clash && (
+          <div className="alert-critical space-y-2 rounded-lg border px-4 py-3" role="alert">
+            <p className="flex items-start gap-2 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                <span className="font-semibold">Allergy: {clash.allergy}.</span>{" "}
+                {clash.blocking ? "This clashes with the recorded allergy. Choose another treatment." : "This may clash with the allergy. Choose another, or say why it's safe."}
+              </span>
+            </p>
+            {!clash.blocking && (
+              <Textarea
+                aria-label="Why this treatment is safe"
+                rows={2}
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="Give anyway — I've checked because…"
+              />
+            )}
+          </div>
+        )}
         <FormDialogSection title="Medicine or procedure">
           <RecordsField label="Name" htmlFor="treatments-name" className="sm:col-span-2">
             <Input id="treatments-name" value={form.drug} onChange={(e) => update("drug", e.target.value)} placeholder="e.g. Artesunate injection, wound dressing" />
@@ -199,6 +250,22 @@ export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false
         </FormDialogSection>
       </FormDialog>
 
+      {confirming && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setConfirming(null)}
+          title={CONFIRM_COPY[confirming.status].title(confirming.t.drug)}
+          description={CONFIRM_COPY[confirming.status].description}
+          confirmLabel={CONFIRM_COPY[confirming.status].label}
+          cancelLabel="Go back"
+          destructive={confirming.status === "CANCELLED"}
+          pending={statusMut.isPending}
+          onConfirm={async () => {
+            await statusMut.mutateAsync({ id: confirming.t.id, status: confirming.status });
+          }}
+        />
+      )}
+
       {treatmentsQuery.isPending ? (
         <CardSkeleton />
       ) : treatmentsQuery.isError ? (
@@ -236,7 +303,11 @@ export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false
                 badges={<StatusPill tone={s.tone}>{s.label}</StatusPill>}
                 headerActions={
                   canWrite ? (
-                    <Select value={t.status} disabled={statusMut.isPending} onValueChange={(v) => statusMut.mutate({ id: t.id, status: v as TreatmentStatus })}>
+                    <Select
+                      value={t.status}
+                      disabled={statusMut.isPending && statusMut.variables?.id === t.id}
+                      onValueChange={(v) => setConfirming({ t, status: v as TreatmentStatus })}
+                    >
                       <SelectTrigger className="h-8 w-[140px] text-xs" aria-label={`Status of ${t.drug}`}>
                         <SelectValue />
                       </SelectTrigger>
@@ -267,6 +338,13 @@ export function TreatmentsCard({ patientUuid, encounterId, onlyThisVisit = false
     </div>
   );
 }
+
+const CONFIRM_COPY: Record<TreatmentStatus, { title: (drug: string) => string; description: string; label: string }> = {
+  ADMINISTERED: { title: (d) => `Record ${d} as given?`, description: "Only confirm once it has actually been given to the patient.", label: "Yes, it was given" },
+  WITHHELD: { title: (d) => `Record ${d} as held back?`, description: "Note why in the patient's notes so the next shift knows.", label: "Yes, held back" },
+  CANCELLED: { title: (d) => `Cancel ${d}?`, description: "It won't be given. This can't be undone here.", label: "Cancel treatment" },
+  ORDERED: { title: (d) => `Set ${d} back to ordered?`, description: "It will show as still to be given.", label: "Set back to ordered" },
+};
 
 /** Folder tab: the whole treatment sheet. */
 export function FolderTreatments({ patientUuid, visit }: { patientUuid: string; visit: Visit | null }) {

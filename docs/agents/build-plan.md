@@ -41,9 +41,9 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 | Line | Slices |
 |---|---|
 | Lab | ✅ LAB-08 → ✅ LAB-01 → ✅ LAB-02 → ✅ LAB-03 → ✅ LAB-05 → ✅ LAB-04 → ✅ LAB-06 → ✅ LAB-07 — **done, Stage 7 (2026-09-30)** |
-| Doctor orders | ✅ DOC-05 → ✅ DOC-06 → DOC-07 → ✅ DOC-08 → DOC-14 |
+| Doctor orders | ✅ DOC-05 → ✅ DOC-06 → ✅ DOC-07 → ✅ DOC-08 → ✅ DOC-14 |
 | Imaging | ✅ RAD-01 → ✅ RAD-02 → ✅ RAD-03 → ✅ RAD-04 — **done, Stage 8 (2026-09-30)** |
-| Pharmacy | PHA-09 → PHA-07 → PHA-06 → PHA-01 → PHA-02 → PHA-03 → PHA-04 → PHA-05 → PHA-08 → PHA-10 → PHA-11 |
+| Pharmacy | ✅ PHA-09 → ✅ PHA-07 → ✅ PHA-06 → ✅ PHA-01 → ✅ PHA-02 → ✅ PHA-03 → ✅ PHA-04 → ✅ PHA-05 → ✅ PHA-08 → ✅ PHA-10 → ✅ PHA-11 — **done, Stage 9 (2026-10-01)** |
 
 ✅ Milestone: J01 complete end to end; J04, J05, J06 pass.
 
@@ -51,8 +51,8 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 
 | Line | Slices |
 |---|---|
-| Cashier | BIL-01 → BIL-02 → BIL-03 → BIL-05 → BIL-04 → BIL-06 → BIL-07 |
-| Finance | FIN-02 → FIN-01 → FIN-04 → FIN-05 → FIN-06 → FIN-07 → FIN-08 → FIN-09 → FIN-03 |
+| Cashier | ✅ BIL-01 → ✅ BIL-02 → ✅ BIL-03 → ✅ BIL-05 → ✅ BIL-04 → ✅ BIL-06 → ✅ BIL-07 (mock) — **done, Stage 10 (2026-10-01)** |
+| Finance | ✅ FIN-02 → ✅ FIN-01 → ✅ FIN-04 → ✅ FIN-05 → ✅ FIN-06 → ✅ FIN-07 (mark as sent) → ✅ FIN-08 → ✅ FIN-09 → ✅ FIN-03 — **done, Stage 11 (2026-10-01)** |
 
 ✅ Milestone: J02 and J09 pass.
 

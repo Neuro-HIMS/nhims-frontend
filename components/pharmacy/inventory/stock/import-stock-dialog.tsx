@@ -67,7 +67,7 @@ export function ImportStockDialog({
       }}
       size="md"
       title="Upload a stock spreadsheet"
-      description="Each row is added to stock as a new batch. Use the template, or a stock list you downloaded from this page."
+      description="For a new delivery only. Every row is added to the stock already on the shelf as a new batch. Don't upload the stock list you downloaded, or the stock will be counted twice."
       footer={
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
           Cancel

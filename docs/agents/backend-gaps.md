@@ -161,3 +161,96 @@ One entry per missing or changed endpoint the frontend needs, written for the ba
 ### RAD-03 · Attach images / PDFs to an imaging report  (needed by: RAD-03)
 - Method & path: `GET/POST /clinical/radiology-orders/{id}/attachments` (multipart; JPEG, PNG, PDF; max 20 MB) → `{ id, fileName, contentType, url, sizeBytes }`
 - Frontend status: mocked in memory (`imaging-attachments`); without the mock the drop zone is hidden with "Attaching images isn't available yet"
+
+### BIL-APPEND-CLOSED · A settled visit bill rejects every later order  (BLOCKER — needed by: DOC-05, DOC-06, DOC-07, J01, J06)
+- Seen: `Bill.recomputeStatus()` marks a bill `PAID` as soon as nothing is owed. On an NHIS visit, that happens when the consultation is created (fully covered). On a cash visit, it happens when the cashier takes the consultation fee. After that, `BillingService.appendItem` throws `422 "Bill is closed; cannot append items"`, so the doctor can't order a lab test, a scan or a medicine on that visit. `ensureBillForEncounter` returns the existing (closed) bill instead of opening a new one.
+- Expected: orders keep adding to the visit bill (reopen a fully covered/paid bill to `PARTIAL`, which `Bill.reopen()` already supports, or open a follow-on bill for the visit)
+- Confirmed 2026-10-01 on a fresh NHIS visit: no bill at check-in. The first order (Malaria RDT) creates the bill, which is fully covered, so it closes as PAID straight away. The second order (FBC) is refused. So on NHIS visits only the **first** order of the whole visit goes through, which breaks J01 at the prescription step.
+- Frontend status: the message is reworded in `lib/api-errors.ts` (`KNOWN_MESSAGES`). J06 was verified on a cash visit before payment. NHIS visits can't get prescriptions until this is fixed.
+
+### PHA-04-not-given · Record medicines not given without dispensing anything  (needed by: PHA-04, DOC-07)
+- Method & path: `PATCH /clinical/prescriptions/{id}/lines/{lineId}` `{ status: "NOT_GIVEN", reason }` (or `pharmacyNotes` on the status PATCH)
+- Behaviour: keep the line's reason on the record; notify the prescriber ("Amoxicillin wasn't given: out of stock")
+- Frontend status: when at least one medicine is given, the reasons go into `pharmacyNotes` on the dispense call. When nothing is given there's no call to make: the pharmacist still gets the printable "Medicines not given" list, but nothing is recorded and the doctor isn't told.
+
+### PHA-04-finish · Pharmacy can't finish a visit while a medicine is still owed  (needed by: PHA-04, J01)
+- Seen: `POST /clinical/encounters/{id}/complete` refuses with "1 open prescription(s)", and with `force=true` refuses with "Pharmacy staff cannot force-complete an encounter"
+- Expected: either the pharmacist may close the remaining lines (not given, with a reason) so the prescription counts as finished, or may finish with a reason
+- Frontend status: "Finish the visit" is offered only when everything was given. Otherwise the screen says the doctor or nurse can finish the visit.
+
+### DOC-07-stock · Doctors can't see stock when prescribing  (needed by: DOC-07)
+- Seen: `GET /pharmacy/stock/overview` and `/pharmacy/inventory-items` allow pharmacy staff and admins only
+- Need: read-only stock status for prescribers (In stock / Low / Out per price-list entry)
+- Frontend status: the prescribe dialog shows stock pills only for roles that can read stock; doctors prescribe without them
+
+### PHA-09-catalog-roles · Pharmacy staff can't read the finance price list
+- Seen: `GET /finance/catalog/services` → 403 for PHARMACIST
+- Frontend status: the medicine form links price-list entries through `GET /clinical/catalog/services?group=PHARMACY` instead (works for pharmacy staff). No change needed unless pharmacy should see prices.
+
+### DOC-14-allergy · Treatments aren't checked against allergies  (needed by: DOC-14)
+- Seen: `POST /clinical/patients/{id}/treatments` accepts any medicine, even one matching an ALLERGY alert (prescriptions are checked; treatments aren't)
+- Expected: the same token check as prescriptions, with an override reason stored on the order
+- Frontend status: the treatment form runs the prescribing allergy check (`useAllergyCheck`): a direct match blocks the order, and a drug-group match needs a reason, which is saved in the instructions
+
+### DOC-14-status-reason · Reason when a treatment is held back or cancelled  (needed by: DOC-14, ward rounds)
+- Method & path: `PATCH /clinical/treatments/{id}/status` `{ status, reason }` (today only `status`)
+- Frontend status: status changes ask for confirmation; no reason is stored
+
+### BIL-02-status-filter · Bills list fails when filtered by status  (needed by: BIL-01, BIL-02)
+- Seen: `GET /billing/bills?status=OPEN` (and PAID, PARTIAL, CANCELLED…) → 500; without `status` it works, and `search` works
+- Frontend status: loads all bills and filters by status in the browser. Fine for now; slow once there are thousands of bills.
+
+### BIL-04-walk-in · Bill a walk-in customer without a patient record  (needed by: BIL-04)
+- Seen: `POST /billing/bills` → 422 "patientId is required"
+- Need: optional `patientId` with a `customerName` for over-the-counter sales
+- Frontend status: New bill requires choosing a registered patient; no walk-in option is shown
+
+### BIL-07-reverse · Reverse a payment with a reason  (needed by: BIL-07)
+- Method & path: `POST /billing/payments/{id}/reverse` `{ reason }`. `PaymentDto` gains `reversed`, `reversedAt`, `reversedByName`, `reversalReason`; the bill balance goes back up
+- Who: FINANCE_OFFICER, FACILITY_ADMIN, SUPER_ADMIN
+- Frontend status: mocked in memory (area `payment-reverse`): the payment shows "Reversed" and drops out of the totals, but bill balances don't change. Without the mock the menu item is hidden.
+
+### BIL-05-receipt · Receipt PDF and SMS receipt  (needed by: BIL-05)
+- Method & path: `GET /billing/payments/{id}/receipt.pdf`; `POST /billing/payments/{id}/send-sms`
+- Frontend status: the receipt is printed from the page (`ReceiptCard` + `printArea`); "Send receipt by SMS" isn't shown
+
+### BIL-06-cashier · Who took each payment, and payments by date  (needed by: BIL-06)
+- Seen: `PaymentDto` has only `receivedByUserId` (no name, no patient name), and `GET /billing/payments` returns just the latest 200 with no date filter
+- Need: `receivedByName`, `patientName`, `patientPublicId` on PaymentDto; `GET /billing/payments?from=&to=&method=` with paging
+- Frontend status: patient names come from the bills list; no "taken by" column; date filters work within the latest 200 (the page says so)
+
+### BIL-02-cap · The bills list stops at the latest 100  (needed by: BIL-01, BIL-02)
+- Seen: without `status`, `GET /billing/bills` returns `findTop100ByFacility_IdOrderByIssuedAtDesc` and applies `search` *after* the cap (`BillingOperationsService.listBills`), so older bills can't be found by search
+- Need: paged `GET /billing/bills?page=&size=&status=&search=&from=&to=` with the search done in the query
+- Frontend status: searching also looks up matching patients and loads all of their bills (`billsForPatient`, paged); the overview and list say "latest 100 bills"; reprinting a receipt for an older bill loads that bill directly
+
+### FIN-08-edit-lines · Changing a claim that already has lines fails  (BUG — needed by: FIN-06, FIN-08, FIN-07)
+- Seen: `PUT /finance/nhis/claims/{id}` → 500 when the claim already has lines. `replaceClaimLines` deletes and re-inserts in one transaction, and the inserts hit the unique `(claim_id, line_no)` before the deletes are flushed (`uq_nhis_line_pos`, V28).
+- Expected: flush the delete first (or update lines in place)
+- Frontend status: lines and note are read-only once a claim has lines, with a plain explanation. Resending unchanged lines works. NHIS's reason can't be saved on such claims (see FIN-07-response).
+
+### FIN-07-response · NHIS's answer and reason on a claim  (needed by: FIN-07, FIN-08, FIN-09)
+- Need: `PATCH /finance/nhis/claims/{id}/status` `{ status, reason }`, with `reason`, `answeredAt` and `answeredByName` on `FinanceNhisClaimDto`
+- Frontend status: the reason is saved in the claim notes ("NHIS said: …"), which only works while the claim has no lines. With sample data on, it's kept in memory (area `nhis-response`).
+
+### FIN-07-send · Send claims to NHIA  (needed by: FIN-07)
+- Seen: no NHIA connection. `SUBMITTED` is only a status.
+- Frontend status: "Mark selected as sent" / "Mark as sent", worded as "send them through the NHIA claims portal as usual, then mark them here"
+
+### FIN-02-future-price · A price with a later start date is charged straight away  (BUG — needed by: FIN-02)
+- Seen: `ServicePricingRepository.findFirst…ActiveTrueOrderByEffectiveFromDesc` picks the newest start date even when it's in the future
+- Expected: only prices with `effectiveFrom <= today` (and `effectiveTo` empty or later)
+- Frontend status: new prices always start today; no future start date is offered
+
+### FIN-09-period · The NHIS summary isn't for one month  (needed by: FIN-09)
+- Seen: `POST /finance/nhis/reports/generate` totals every claim, whatever `periodLabel` says
+- Frontend status: the month figures on screen are worked out from the claims; the saved summary is labelled with the month and says it covers all claims at the time it was saved
+
+### FIN-01-departments · Money by department  (needed by: FIN-01, FIN-04)
+- Need: `receivedByServiceGroup` in `/finance/revenue/summary`
+- Frontend status: not shown ("Money by department isn't available yet")
+
+### FIN-08-history · Claim history for finance officers  (needed by: FIN-08)
+- Seen: `GET /audit/events` is admin-only
+- Need: `GET /finance/nhis/claims/{id}/history` for finance roles
+- Frontend status: admins see the history from audit events; finance officers see created and last-changed times

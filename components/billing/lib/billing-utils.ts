@@ -14,10 +14,10 @@ export function billStatusPill(status: BillStatus | string): string {
     status === "PAID"
       ? "status-pill-active"
       : status === "PARTIAL"
-      ? "bg-[hsl(var(--clinical-urgent-bg))] text-[hsl(var(--clinical-urgent))]"
-      : status === "OPEN" || status === "INVOICED"
-      ? "status-pill-pending"
-      : "status-pill-inactive";
+        ? "bg-[hsl(var(--clinical-urgent-bg))] text-[hsl(var(--clinical-urgent))]"
+        : status === "OPEN" || status === "INVOICED"
+          ? "status-pill-pending"
+          : "status-pill-inactive";
   return `status-pill text-xs ${cls}`;
 }
 

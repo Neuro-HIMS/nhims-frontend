@@ -1,173 +1,161 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Download } from "lucide-react";
 
+import { BillsTable } from "@/components/billing/bills-table";
+import { ErrorState } from "@/components/common/error-state";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { daysAgoLocal, formatMoney, isWaitingForPayment, methodLabel, todayLocal } from "@/lib/billing";
+import { formatClinicalDate } from "@/lib/dates";
+import { streamLabel } from "@/lib/finance";
+import { queryKeys } from "@/lib/query-keys";
+import { billingService } from "@/services/billing.service";
 import { financeService } from "@/services/finance.service";
-import { METHOD_LABEL, minorToGhs, STREAM_LABEL } from "@/components/finance/finance-utils";
 
+type Period = "THIS_MONTH" | "LAST_MONTH" | "30D" | "CUSTOM";
+
+function monthBounds(offset: number): [string, string] {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return [iso(first), offset === 0 ? todayLocal() : iso(last)];
+}
+
+/** FIN-04 — money received in a period, by where it came from and how it was paid; money still owed. */
 export function RevenueView() {
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [appliedFrom, setAppliedFrom] = useState<string | undefined>(undefined);
-  const [appliedTo, setAppliedTo] = useState<string | undefined>(undefined);
+  const [period, setPeriod] = useState<Period>("THIS_MONTH");
+  const [from, setFrom] = useState(daysAgoLocal(29));
+  const [to, setTo] = useState(todayLocal());
+  const [start, end] = period === "THIS_MONTH" ? monthBounds(0) : period === "LAST_MONTH" ? monthBounds(-1) : period === "30D" ? [daysAgoLocal(29), todayLocal()] : [from, to];
 
-  const q = useQuery({
-    queryKey: ["finance", "revenue", "summary", appliedFrom ?? "", appliedTo ?? ""],
-    queryFn: () => financeService.revenueSummary({ from: appliedFrom, to: appliedTo }),
-  });
+  const revenueQuery = useQuery({ queryKey: queryKeys.finance.revenue(start, end), queryFn: () => financeService.revenueSummary({ from: start, to: end }) });
+  const billsQuery = useQuery({ queryKey: queryKeys.billing.bills("ALL", ""), queryFn: () => billingService.listBills({}) });
 
-  function applyDates() {
-    setAppliedFrom(from.trim() || undefined);
-    setAppliedTo(to.trim() || undefined);
+  const r = revenueQuery.data;
+  const streams = useMemo(() => Object.entries(r?.receivedByStream ?? {}).sort((a, b) => b[1] - a[1]), [r]);
+  const methods = useMemo(() => Object.entries(r?.receivedByMethod ?? {}).sort((a, b) => b[1] - a[1]), [r]);
+  const owed = useMemo(() => (billsQuery.data ?? []).filter(isWaitingForPayment).sort((a, b) => b.balanceMinor - a.balanceMinor), [billsQuery.data]);
+
+  function download() {
+    if (!r) return;
+    const lines: string[][] = [["Section", "Item", "Amount (GHS)"]];
+    lines.push(["Total", "Money received", (r.totalReceivedMinor / 100).toFixed(2)]);
+    for (const [k, v] of streams) lines.push(["Where from", streamLabel(k), (v / 100).toFixed(2)]);
+    for (const [k, v] of methods) lines.push(["How paid", methodLabel(k), (v / 100).toFixed(2)]);
+    for (const d of r.dailyReceived) lines.push(["Per day", d.day, (d.amountMinor / 100).toFixed(2)]);
+    const csv = lines.map((row) => row.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `revenue-${start}-to-${end}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Revenue analytics</CardTitle>
-          <CardDescription>
-            Where did the money come from. IGF lines are anything paid out-of-pocket; NHIS lines are reimbursable claims and
-            received reimbursements; donor + capitation are isolated for management reports.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div>
-            <p className="mb-1 text-xs font-medium text-muted-foreground">From</p>
-            <Input placeholder="YYYY-MM-DD" value={from} onChange={(e) => setFrom(e.target.value)} className="w-[160px]" />
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-medium text-muted-foreground">To</p>
-            <Input placeholder="YYYY-MM-DD" value={to} onChange={(e) => setTo(e.target.value)} className="w-[160px]" />
-          </div>
-          <Button variant="outline" onClick={applyDates}>Apply window</Button>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
+            <SelectTrigger className="h-9 w-44" aria-label="Period">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="THIS_MONTH">This month</SelectItem>
+              <SelectItem value="LAST_MONTH">Last month</SelectItem>
+              <SelectItem value="30D">Last 30 days</SelectItem>
+              <SelectItem value="CUSTOM">Choose dates</SelectItem>
+            </SelectContent>
+          </Select>
+          {period === "CUSTOM" && (
+            <>
+              <Input type="date" aria-label="From" className="h-9 w-40" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+              <Input type="date" aria-label="To" className="h-9 w-40" value={to} min={from} max={todayLocal()} onChange={(e) => setTo(e.target.value)} />
+            </>
+          )}
+          <span className="text-sm text-muted-foreground">
+            {formatClinicalDate(start)} to {formatClinicalDate(end)}
+          </span>
+        </div>
+        <Button variant="outline" size="sm" onClick={download} disabled={!r}>
+          <Download className="mr-1.5 h-4 w-4" /> Download as spreadsheet
+        </Button>
+      </div>
 
-      {q.isLoading && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-        </p>
-      )}
-
-      {q.data && (
+      {revenueQuery.isError ? (
+        <ErrorState error={revenueQuery.error} onRetry={() => void revenueQuery.refetch()} />
+      ) : revenueQuery.isPending ? (
+        <Skeleton className="h-40 w-full" />
+      ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <KpiCard title="Received" amount={q.data.totalReceivedMinor} subline={`${q.data.periodFrom} → ${q.data.periodTo}`} />
-            <KpiCard title="Accrued (claims pending)" amount={q.data.totalAccruedMinor} subline="NHIS + insurance accruals" />
-            <KpiCard title="Earned (cash basis)" amount={q.data.totalEarnedMinor} subline="Bills issued for OOP / IGF" />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="stat-card-label">Money received</p>
+              <p className="stat-card-value">{formatMoney(r!.totalReceivedMinor)}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="stat-card-label">Expected from NHIS and insurers</p>
+              <p className="stat-card-value">{formatMoney(r!.totalAccruedMinor)}</p>
+              <p className="text-xs text-muted-foreground">Claimed, not yet paid</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="stat-card-label">Days with money in</p>
+              <p className="stat-card-value">{r!.dailyReceived.filter((d) => d.amountMinor > 0).length}</p>
+            </div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Received by revenue stream</CardTitle>
-                <CardDescription>IGF / NHIS / donor / private insurance / corporate / other</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-1 text-sm">
-                {Object.entries(q.data.receivedByStream).length === 0 && (
-                  <p className="text-muted-foreground">No payments in this window.</p>
-                )}
-                {Object.entries(q.data.receivedByStream)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([stream, amt]) => (
-                    <div key={stream} className="flex items-center justify-between">
-                      <span>{STREAM_LABEL[stream] ?? stream}</span>
-                      <span className="font-clinical">GH₵ {minorToGhs(amt)}</span>
-                    </div>
-                  ))}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Accrued by stream (NHIS pipeline)</CardTitle>
-                <CardDescription>Claims not yet reimbursed — the receivable book.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-1 text-sm">
-                {Object.entries(q.data.accruedByStream).length === 0 && (
-                  <p className="text-muted-foreground">No accruals in this window.</p>
-                )}
-                {Object.entries(q.data.accruedByStream)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([stream, amt]) => (
-                    <div key={stream} className="flex items-center justify-between">
-                      <span>{STREAM_LABEL[stream] ?? stream}</span>
-                      <span className="font-clinical">GH₵ {minorToGhs(amt)}</span>
-                    </div>
-                  ))}
-              </CardContent>
-            </Card>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Breakdown title="Where it came from" rows={streams.map(([k, v]) => [streamLabel(k), v])} total={r!.totalReceivedMinor} />
+            <Breakdown title="How it was paid" rows={methods.map(([k, v]) => [methodLabel(k), v])} total={r!.totalReceivedMinor} />
           </div>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Received by payment method</CardTitle>
-              <CardDescription>Cash, Mobile Money (MTN/Telecel/AirtelTigo), bank, NHIS reimbursements…</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-                {Object.entries(q.data.receivedByMethod).length === 0 && (
-                  <p className="text-sm text-muted-foreground">No method breakdown to show.</p>
-                )}
-                {Object.entries(q.data.receivedByMethod)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([m, amt]) => (
-                    <div key={m} className="rounded-lg border border-border bg-card p-3">
-                      <p className="text-xs text-muted-foreground">{METHOD_LABEL[m] ?? m}</p>
-                      <p className="font-clinical text-lg">GH₵ {minorToGhs(amt)}</p>
-                    </div>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Daily received</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto rounded-md border border-border">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-border bg-muted/40">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Day</th>
-                      <th className="px-3 py-2 font-medium text-right">Received (GH₵)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {q.data.dailyReceived.map((p) => (
-                      <tr key={p.day} className="border-b border-border last:border-0">
-                        <td className="px-3 py-2 font-mono text-xs">{p.day}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{minorToGhs(p.amountMinor)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+          <p className="text-xs text-muted-foreground">Money by department isn&apos;t available yet.</p>
         </>
       )}
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold text-foreground">Money owed, not yet paid</h2>
+        <BillsTable
+          rows={billsQuery.data ? owed.slice(0, 10) : undefined}
+          isLoading={billsQuery.isPending}
+          error={billsQuery.error}
+          onRetry={() => void billsQuery.refetch()}
+          onTakePayment={() => {}}
+          hideActions
+          empty={{ illustration: "all-done", tone: "good-news", title: "Nothing owed", description: "Every self-pay bill is paid." }}
+        />
+        {owed.length > 10 && <p className="text-xs text-muted-foreground">Showing the 10 largest of {owed.length} in the last 100 bills. See Bills and payments for older ones.</p>}
+      </section>
     </div>
   );
 }
 
-function KpiCard({ title, amount, subline }: { title: string; amount: number; subline: string }) {
+function Breakdown({ title, rows, total }: { title: string; rows: [string, number][]; total: number }) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="font-clinical text-2xl font-semibold text-foreground">GH₵ {minorToGhs(amount)}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{subline}</p>
-      </CardContent>
-    </Card>
+    <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">Nothing received in this period.</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {rows.map(([label, v]) => (
+            <li key={label} className="grid grid-cols-[1fr_auto] items-center gap-3 text-sm">
+              <span>
+                <span className="text-foreground">{label}</span>
+                <span className="mt-1 block h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                  <span className="block h-full rounded-full bg-primary" style={{ width: `${total ? (v / total) * 100 : 0}%` }} />
+                </span>
+              </span>
+              <span className="font-clinical">{formatMoney(v)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

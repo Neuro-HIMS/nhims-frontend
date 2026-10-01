@@ -1,48 +1,53 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Receipt } from "lucide-react";
+import { FilePlus2 } from "lucide-react";
 
-import { ModuleSubNav } from "@/components/layouts/module-subnav";
+import { BillDetailView } from "@/components/billing/views/bill-detail-view";
 import { BillingDashboardView } from "@/components/billing/views/billing-dashboard-view";
 import { BillsView } from "@/components/billing/views/bills-view";
 import { NewBillView } from "@/components/billing/views/new-bill-view";
-import { BillDetailView } from "@/components/billing/views/bill-detail-view";
 import { PaymentsView } from "@/components/billing/views/payments-view";
+import { ModuleSubNav } from "@/components/layouts/module-subnav";
+import { PageCard } from "@/components/layouts/page-card";
+import { Button } from "@/components/ui/button";
 
 const SUB_NAV = [
-  { label: "Dashboard", view: "dashboard", href: "/billing?view=dashboard" },
-  { label: "Bills & Invoices", view: "bills", href: "/billing?view=bills" },
-  { label: "New Bill", view: "new", href: "/billing?view=new" },
+  { label: "Overview", view: "dashboard", href: "/billing?view=dashboard" },
+  { label: "Bills", view: "bills", href: "/billing?view=bills" },
   { label: "Payments", view: "payments", href: "/billing?view=payments" },
 ];
 
+const VIEWS = ["dashboard", "bills", "payments", "new"];
+
+/** Cashier: page → workspace → view. One bill (`view=bills&billId=`) replaces the tabs. */
 export function BillingWorkspace() {
   const searchParams = useSearchParams();
-  const view = searchParams.get("view") ?? "dashboard";
+  const requested = searchParams.get("view");
+  const view = requested && VIEWS.includes(requested) ? requested : "dashboard";
   const billId = searchParams.get("billId");
+
+  if (view === "bills" && billId) return <BillDetailView billId={billId} />;
+  if (view === "new") return <NewBillView />;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <Receipt className="h-5 w-5 text-primary" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-foreground">Billing</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Cashier workflow for invoices, charges, and payments. Tracks every service rendered to a patient — lab,
-            medication, imaging, consultation — under one bill per visit.
-          </p>
-        </div>
-      </div>
-
+      <PageCard
+        title="Bills and payments"
+        description="Create bills, take payments and print receipts."
+        actions={
+          <Button asChild>
+            <Link href="/billing?view=new">
+              <FilePlus2 className="mr-1.5 h-4 w-4" /> New bill
+            </Link>
+          </Button>
+        }
+      />
       <ModuleSubNav items={SUB_NAV} basePath="/billing" />
-
       <div className="pt-2">
         {view === "dashboard" && <BillingDashboardView />}
-        {view === "bills" && (billId ? <BillDetailView billId={billId} /> : <BillsView />)}
-        {view === "new" && <NewBillView />}
+        {view === "bills" && <BillsView />}
         {view === "payments" && <PaymentsView />}
       </div>
     </div>

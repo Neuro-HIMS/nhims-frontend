@@ -359,6 +359,15 @@ export const clinicalService = {
     })();
   },
 
+  /** Medicine label as a blob URL (revoke it when done). Throws on failure so the caller can say so. */
+  async dispenseLabelUrl(prescriptionId: string, dispenseId: string): Promise<string> {
+    const res = await apiClient.get<Blob>(`/clinical/prescriptions/${prescriptionId}/dispense-label.pdf`, {
+      params: { dispenseId },
+      responseType: "blob",
+    });
+    return URL.createObjectURL(res.data);
+  },
+
   openPharmacyDispenseLabelPdf(prescriptionId: string, dispenseId: string): void {
     void (async () => {
       const res = await apiClient.get<Blob>(`/clinical/prescriptions/${prescriptionId}/dispense-label.pdf`, {

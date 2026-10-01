@@ -5,10 +5,25 @@ import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
 import type { StockCsvImportResultDto } from "@/types/pharmacy-inventory.types";
 
-/** Splits "Row 4: Unknown stock code" into its row number and message. */
+/** Backend row messages (PharmacyStockImportExportService) in plain words. */
+const ROW_PROBLEMS: [RegExp, string][] = [
+  [/quantity.*required/i, "The quantity is missing."],
+  [/invalid quantity/i, "The quantity isn't a number."],
+  [/quantity must be positive/i, "The quantity must be more than 0."],
+  [/unknown item/i, "This medicine isn't in the medicines list. Check the stock code or the name."],
+  [/item is inactive/i, "This medicine is switched off in the medicines list."],
+  [/supplier not found/i, "This supplier isn't in the suppliers list."],
+  [/invalid expiry/i, "The expiry date isn't readable. Write it as 2027-06-30."],
+  [/stopped after/i, "Only the first rows were read. Split the spreadsheet into smaller files."],
+  [/empty csv/i, "The spreadsheet has no rows."],
+];
+
+/** Splits "Row 4: unknown item" into its row number and a plain message. */
 function splitRow(error: string): { row: string; message: string } {
   const m = /^\s*(?:row|line)\s*#?\s*(\d+)\s*[:\-–]\s*(.*)$/i.exec(error);
-  return m ? { row: m[1], message: m[2] } : { row: "—", message: error };
+  const text = m ? m[2] : error;
+  const plain = ROW_PROBLEMS.find(([re]) => re.test(text))?.[1] ?? "This row couldn't be read. Check it against the template.";
+  return { row: m ? m[1] : "—", message: plain };
 }
 
 /** PHA-11 — what happened to each row of an uploaded stock spreadsheet. */

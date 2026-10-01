@@ -94,6 +94,7 @@ const KNOWN_MESSAGES: [RegExp, string][] = [
     /bill is closed; cannot append/i,
     "This visit's bill is already settled, so new tests or medicines can't be added to it yet. Tell your facility administrator.",
   ],
+  [/insufficient stock in lot|lot quantity cannot go negative/i, "There isn't enough left in that batch. The stock may have just changed. Check the batches and try again."],
 ];
 
 function shortReference(): string {

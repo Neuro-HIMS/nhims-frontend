@@ -47,8 +47,10 @@ function lineProblem(l: Line): string | null {
   if (!l.itemId) return "Choose the medicine.";
   const q = Number.parseFloat(l.qty);
   if (!Number.isFinite(q) || q <= 0) return "Enter how many arrived.";
-  if (l.expiry && l.expiry < todayIso()) return "This batch has already expired.";
-  if (l.cost.trim() && !Number.isFinite(Number.parseFloat(l.cost))) return "Cost must be a number.";
+  if (!l.expiry) return "Enter the expiry date printed on the pack.";
+  if (l.expiry < todayIso()) return "This batch has already expired.";
+  if (!/^\d+(\.\d+)?$/.test(l.qty.trim())) return "Enter how many arrived as a number, e.g. 100.";
+  if (l.cost.trim() && !/^\d+(\.\d{1,2})?$/.test(l.cost.trim())) return "Cost must be an amount like 2.50.";
   return null;
 }
 
@@ -158,7 +160,7 @@ function Body({ open, onOpenChange, items, suppliers, defaultItemId, onReceiveLi
             return (
               <li key={l.key} className="rounded-lg border border-border p-3" aria-label={`Line ${i + 1}`}>
                 <div className="grid gap-3 sm:grid-cols-12">
-                  <div className="space-y-1.5 sm:col-span-4">
+                  <div className="space-y-1.5 sm:col-span-3">
                     <Label htmlFor={`rcv-item-${l.key}`}>Medicine</Label>
                     <Select value={l.itemId} onValueChange={(v) => patch(l.key, { itemId: v })}>
                       <SelectTrigger id={`rcv-item-${l.key}`} className="w-full">
@@ -185,7 +187,7 @@ function Body({ open, onOpenChange, items, suppliers, defaultItemId, onReceiveLi
                     <Label htmlFor={`rcv-qty-${l.key}`}>Quantity</Label>
                     <Input id={`rcv-qty-${l.key}`} inputMode="decimal" className="font-clinical" value={l.qty} onChange={(e) => patch(l.key, { qty: e.target.value })} />
                   </div>
-                  <div className="space-y-1.5 sm:col-span-1">
+                  <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor={`rcv-unit-${l.key}`}>Unit</Label>
                     <Input id={`rcv-unit-${l.key}`} value={l.unit} onChange={(e) => patch(l.key, { unit: e.target.value })} placeholder="tablet" />
                   </div>
