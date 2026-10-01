@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChoiceOption } from "@/components/ui/choice-option";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
 import { InlineNotice } from "@/components/common/inline-notice";
 import { NhisCheck } from "@/components/records/nhis-check";
 import type { Patient } from "@/components/records/lib/records-types";
+import { SearchablePicker } from "@/components/common/searchable-picker";
 import { getFriendlyError } from "@/lib/api-errors";
 import { queryKeys } from "@/lib/query-keys";
 import { appointmentsService } from "@/services/appointments.service";
@@ -164,19 +165,14 @@ export function StartVisitDialog({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="start-visit-doctor">Doctor (optional)</Label>
-          <Select value={clinicianUserId} onValueChange={setClinicianUserId}>
-            <SelectTrigger id="start-visit-doctor" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__any__">Any available doctor</SelectItem>
-              {(cliniciansQuery.data ?? []).map((c) => (
-                <SelectItem key={c.userId} value={c.userId}>
-                  {c.fullName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchablePicker
+            id="start-visit-doctor"
+            value={clinicianUserId}
+            onChange={setClinicianUserId}
+            loading={cliniciansQuery.isPending}
+            searchPlaceholder="Doctor's name"
+            options={[{ value: "__any__", label: "Any available doctor" }, ...(cliniciansQuery.data ?? []).map((c) => ({ value: c.userId, label: c.fullName }))]}
+          />
         </div>
       </FormDialogSection>
 

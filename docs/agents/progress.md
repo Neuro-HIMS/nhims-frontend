@@ -565,3 +565,98 @@ Nice-to-haves done: summary labels, "Uses self-pay price" for NHIS, "moved back 
 `tsc` and lint clean for finance.
 
 **Backend gaps logged:** FIN-08-edit-lines (bug), FIN-07-response, FIN-07-send, FIN-02-future-price (bug), FIN-09-period, FIN-01-departments, FIN-08-history.
+
+---
+
+## Stage 12 — Wards (2026-10-01)
+
+**User requests during the stage:**
+1. Long lists must be searchable and contained. New shared `SearchablePicker` (search box, a scrolling list the width of the field, label plus a second line, keyboard support), recorded in 03-components. Used for:
+   - the admit dialog's visit and bed;
+   - doctors in booking, start visit, triage and referrals;
+   - services in booking and bill items;
+   - medicines and suppliers in receive stock;
+   - price-list entries and suppliers in the medicine form.
+2. Wards and beds set up in Facility settings. New tab **Wards and beds**:
+   - add or edit a ward (name, code, type, for men/women/children/anyone, location, notes, first beds with numbering);
+   - add beds in bulk (prefix, first number, how many, type, with a preview and clash check);
+   - edit or switch off a bed (number, type, notes).
+   - Beds or wards in use can't be renamed or switched off.
+   - Sample data in this browser (area `ipd-wards`) until the backend has ward endpoints (WRD-setup). The Wards screens read from it.
+
+**Gap list:**
+- One 666-line workspace: a bed board with "occupied" only, a separate MAR/TPR tab with free-text forms behind an admission picker, and an admissions table.
+- Discharge was a text box.
+- The folder's admit form took free-typed ward and bed names.
+
+**Backend facts:**
+- No wards for this facility and no API to make them.
+- The board knows only occupied or free.
+- MAR statuses are DUE/GIVEN/HELD/MISSED with no "given by".
+- No discharge confirmation or bed cleaning.
+- Discharge needs a price-list entry coded IPD_BED_DAY (missing for this facility, so 422).
+- Death has no fields of its own.
+
+**Built:**
+- `lib/wards.ts`:
+  - bed states: Free · Occupied · Going home · Being cleaned;
+  - day of stay;
+  - dose views: Due now · Overdue · Not due yet · Given · Held back · Missed;
+  - reasons, discharge outcomes, ward/bed type labels.
+- `useWardBoard`: occupancy worked out from the active admissions on each render, so there's no stale board.
+- NUR-07 beds: ward chips, "x of y beds used · z free", bed tiles with patient and day, "Admit a patient here", "Mark bed ready".
+- DOC-10 `AdmitDialog`:
+  - searchable visit and bed;
+  - only beds that are free right now;
+  - a bed taken meanwhile is flagged and Admit blocked;
+  - success panel → Go to ward.
+  - Used from the Wards header, the bed board, and the consultation/folder "Admit".
+- Admission page:
+  - **Ward care** — NUR-08: plan doses (from the doctor's orders, route must be chosen, repeat every 6/8/12/24 h, allergy warning) and record each dose (Given / Held back / Missed with reason, allergy check, no future times, a recheck stops two nurses recording the same dose). NUR-09: observations with age ranges, trend charts and a table.
+  - **Ward round** — DOC-11: notes, with diagnoses carried from the last note; lab, scans, medicines and treatment orders.
+- DOC-12 `DischargeDialog`:
+  - outcome; death needs a time (after admission, not future) and a cause;
+  - final diagnosis and codes, what was done;
+  - take-home medicines (with "Prescribe take-home medicines") and follow-up booking;
+  - confirm, then a printable discharge summary that stays open.
+- NUR-10 "Going home": confirm left → bed "Being cleaned" → "Mark bed ready" (sample data `bed-cleaning`, said on screen; hidden without it).
+- The folder's ward stays use the same admit and discharge dialogs.
+
+**Review (general-purpose stand-in):** 2 blocking, both fixed:
+- a bed could be double-booked when it was taken while the dialog was open;
+- the sample board could show stale occupancy.
+
+Should-fix done:
+- no take-home medicines for a death;
+- death time checks;
+- deaths skip Going home;
+- beds of leaving patients aren't free;
+- dose recheck;
+- partial dose-plan retry;
+- overdue state;
+- no future times;
+- allergy retry;
+- sample-data notice.
+
+Nice-to-haves done: "Given" turned off when a blocking allergy appears, allergy warning when planning.
+
+**Found while testing:**
+1. Discharge refused (no IPD_BED_DAY): the message is now in plain words, and the entry was added through Services and prices as the finance officer.
+2. The discharge summary was lost when the admission left the active list: the dialog now has a stable place.
+3. The ward-round note needed DHIMS2 diagnoses re-entered: they're now carried over.
+4. Ceftriaxone IV defaulted to "By mouth": the route is now required.
+
+**Verified live:**
+1. `test.doctor` admitted from the consultation's "Admit" (Female Medical Ward, FM-01).
+2. `test.nurse`:
+   - the board showed 1 of 8 used;
+   - planned 3 Ceftriaxone doses, recorded one given and one held back ("Patient refused");
+   - Amoxicillin flagged against the Penicillin alert, with Save blocked until confirmed;
+   - observations recorded.
+3. `test.doctor`: ward-round note (Malaria, new case); a second note had the diagnoses carried. Discharged with "Went home — better" and follow-up booked for 15 Oct 2026; the summary is printable.
+4. Going home → confirm left → FM-01 "Being cleaned" → Mark bed ready → Free.
+5. Admin: added "Female Surgical Ward" (FSW, 4 beds) plus 2 private beds (FSW-05, FSW-06); it shows on the board. Admitted via the searchable visit picker ("picker" → 1 of 10) to FSW-01.
+
+`tsc` clean. Project lint is now 3 errors / 3 warnings, all in older files (it was 13/13 at the start of Stage 9).
+
+**Backend gaps logged:** WRD-setup (blocker for real wards), WRD-bed-day, NUR-10, NUR-08-who, DOC-12-death.

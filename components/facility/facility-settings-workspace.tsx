@@ -9,6 +9,7 @@ import { FacilityDiagnosisClassificationsSettings } from "@/components/facility/
 import { FacilityConfigView } from "@/components/facility/views/facility-config-view";
 import { FacilityProfileView } from "@/components/facility/views/facility-profile-view";
 import { FacilityServicesView } from "@/components/facility/views/facility-services-view";
+import { WardsSetupView } from "@/components/facility/views/wards-setup-view";
 import { authService } from "@/services/auth.service";
 import { facilityService } from "@/services/facility.service";
 import { useAuthStore } from "@/store/auth.store";
@@ -36,6 +37,7 @@ const VIEW_CONFIG = [
   { id: "services", label: "Services", description: "Switch sections on or off for everyone." },
   { id: "config", label: "Opening hours and booking rules", description: "Appointment and visit rules." },
   { id: "conditions", label: "Diagnosis list", description: "The diagnoses your team can pick from a visit." },
+  { id: "wards", label: "Wards and beds", description: "The wards, their beds and what each bed is. Doctors admit to these beds." },
 ] as const;
 
 const SUB_NAV = VIEW_CONFIG.map((v) => ({
@@ -236,6 +238,8 @@ export function FacilitySettingsWorkspace({ facilityName, facilityCode }: Facili
           )}
 
           {activeView === "conditions" && <FacilityDiagnosisClassificationsSettings />}
+
+          {activeView === "wards" && <WardsSetupView />}
         </div>
       )}
     </div>
@@ -410,7 +414,7 @@ function parseDataUrl(dataUrl: string): { contentType: string; base64: string } 
 }
 
 function isViewId(value: string | null): value is ViewId {
-  return value === "profile" || value === "services" || value === "config" || value === "conditions";
+  return value === "profile" || value === "services" || value === "config" || value === "conditions" || value === "wards";
 }
 
 function parseBoundedInt(raw: string, min: number, max: number, fallback: number): number {

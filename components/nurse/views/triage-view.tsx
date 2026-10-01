@@ -7,7 +7,7 @@ import { ArrowLeft, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -16,6 +16,7 @@ import { SaveIndicator } from "@/components/common/save-indicator";
 import { FormSkeleton } from "@/components/common/skeletons";
 import { UnitInput } from "@/components/common/unit-input";
 import { PatientBanner } from "@/components/clinical/patient-banner";
+import { SearchablePicker } from "@/components/common/searchable-picker";
 import { getFriendlyError } from "@/lib/api-errors";
 import { queryKeys } from "@/lib/query-keys";
 import { encounterStatusLabel } from "@/lib/status-labels";
@@ -456,15 +457,14 @@ export function TriageView() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="max-w-sm space-y-1.5">
             <label htmlFor="triage-doctor" className="text-sm font-medium text-foreground">Doctor (optional)</label>
-            <Select value={clinicianId} onValueChange={setClinicianId}>
-              <SelectTrigger id="triage-doctor"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__any__">Any available doctor</SelectItem>
-                {(cliniciansQuery.data ?? []).map((c) => (
-                  <SelectItem key={c.userId} value={c.userId}>{c.fullName}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchablePicker
+              id="triage-doctor"
+              value={clinicianId}
+              onChange={setClinicianId}
+              loading={cliniciansQuery.isPending}
+              searchPlaceholder="Doctor's name"
+              options={[{ value: "__any__", label: "Any available doctor" }, ...(cliniciansQuery.data ?? []).map((c) => ({ value: c.userId, label: c.fullName }))]}
+            />
           </div>
 
           <div className="flex flex-col items-end gap-2">

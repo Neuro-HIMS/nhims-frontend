@@ -44,6 +44,7 @@ import type {
 } from "@/types/appointments.types";
 import type { ServiceCatalogDto } from "@/types/finance.types";
 import { minorToGhs, PAYER_LABEL, SERVICE_GROUP_LABEL } from "@/components/finance/finance-utils";
+import { SearchablePicker } from "@/components/common/searchable-picker";
 
 /**
  * The booking form proper. The mini patient card is rendered at the
@@ -310,25 +311,15 @@ export function BookingForm({
               </Select>
             </Field>
             <Field label="Service">
-              <Select value={serviceId} onValueChange={setServiceId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pick a service…" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[320px]">
-                  {filteredServices.length === 0 && (
-                    <div className="p-2 text-xs text-muted-foreground">
-                      No services for this visit type yet. Switch the visit type, or add the service under
-                      Finance.
-                    </div>
-                  )}
-                  {filteredServices.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.serviceName}{" "}
-                      <span className="text-xs text-muted-foreground">· {SERVICE_GROUP_LABEL[s.serviceGroup] ?? s.serviceGroup}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchablePicker
+                aria-label="Service"
+                value={serviceId}
+                onChange={setServiceId}
+                placeholder="Choose a service"
+                searchPlaceholder="Service name"
+                emptyText="No services for this visit type yet. Switch the visit type, or ask finance to add the service."
+                options={filteredServices.map((s) => ({ value: s.id, label: s.serviceName, description: SERVICE_GROUP_LABEL[s.serviceGroup] ?? s.serviceGroup }))}
+              />
             </Field>
 
             <Field label="How they'll pay">
@@ -370,23 +361,16 @@ export function BookingForm({
             </Field>
 
             <Field label="Doctor (optional)" className="md:col-span-2">
-              <Select
+              <SearchablePicker
+                aria-label="Doctor"
                 value={clinicianId || "__unassigned"}
-                onValueChange={(v) => setClinicianId(v === "__unassigned" ? "" : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  <SelectItem value="__unassigned">Any available doctor</SelectItem>
-                  {filteredCliniciansList.map((c) => (
-                    <SelectItem key={c.userId} value={c.userId}>
-                      {c.fullName}{" "}
-                      <span className="text-xs text-muted-foreground">· {prettyRole(c.role)}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(v) => setClinicianId(v === "__unassigned" ? "" : v)}
+                searchPlaceholder="Doctor's name"
+                options={[
+                  { value: "__unassigned", label: "Any available doctor" },
+                  ...filteredCliniciansList.map((c) => ({ value: c.userId, label: c.fullName, description: prettyRole(c.role) })),
+                ]}
+              />
             </Field>
           </div>
         </div>

@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/common/error-state";
 import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
 import { CardSkeleton } from "@/components/common/skeletons";
 import { StatusPill } from "@/components/common/status-pill";
+import { SearchablePicker } from "@/components/common/searchable-picker";
 import { referralStatus, referralUrgency } from "@/lib/status-labels";
 import { getFriendlyError } from "@/lib/api-errors";
 import { appointmentsService } from "@/services/appointments.service";
@@ -192,22 +193,14 @@ export function FolderReferrals({ visit }: FolderReferralsProps) {
             </Select>
           </RecordsField>
           <RecordsField label="Doctor (optional)" htmlFor="referrals-doctor">
-            <Select
+            <SearchablePicker
+              id="referrals-doctor"
               value={form.assignedToUserId ?? "__any__"}
-              onValueChange={(v) => setForm({ ...form, assignedToUserId: v === "__any__" ? undefined : v })}
-            >
-              <SelectTrigger id="referrals-doctor" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__any__">Anyone in that department</SelectItem>
-                {(cliniciansQuery.data ?? []).map((c) => (
-                  <SelectItem key={c.userId} value={c.userId}>
-                    {c.fullName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setForm({ ...form, assignedToUserId: v === "__any__" ? undefined : v })}
+              loading={cliniciansQuery.isPending}
+              searchPlaceholder="Doctor's name"
+              options={[{ value: "__any__", label: "Anyone in that department" }, ...(cliniciansQuery.data ?? []).map((c) => ({ value: c.userId, label: c.fullName }))]}
+            />
           </RecordsField>
         </FormDialogSection>
         <FormDialogSection title="Why" columns={1}>

@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import { SearchablePicker } from "@/components/common/searchable-picker";
 import { queryKeys } from "@/lib/query-keys";
 import { clinicalService } from "@/services/clinical.service";
 import { pharmacyInventoryService } from "@/services/pharmacy-inventory.service";
@@ -123,36 +124,26 @@ function Body({ open, onOpenChange, pending, initial, onSubmit }: InventoryItemF
       <FormDialogSection title="Price list and supplier">
         <div className="space-y-1.5">
           <Label htmlFor="it-catalog">Price-list entry</Label>
-          <Select value={catalogId} onValueChange={setCatalogId}>
-            <SelectTrigger id="it-catalog" className="w-full">
-              <SelectValue placeholder={catalogQuery.isPending ? "Loading…" : "Not linked"} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Not linked</SelectItem>
-              {pharmacyCatalog.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.serviceName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchablePicker
+            id="it-catalog"
+            value={catalogId}
+            onChange={setCatalogId}
+            loading={catalogQuery.isPending}
+            searchPlaceholder="Price-list entry"
+            options={[{ value: "__none__", label: "Not linked" }, ...pharmacyCatalog.map((c) => ({ value: c.id, label: c.serviceName, description: c.serviceCode }))]}
+          />
           <p className="text-xs text-muted-foreground">Needed to give it from a prescription.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="it-supplier">Usual supplier (optional)</Label>
-          <Select value={supplierId} onValueChange={setSupplierId}>
-            <SelectTrigger id="it-supplier" className="w-full">
-              <SelectValue placeholder="None" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">None</SelectItem>
-              {(suppliersQuery.data ?? []).map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchablePicker
+            id="it-supplier"
+            value={supplierId}
+            onChange={setSupplierId}
+            loading={suppliersQuery.isPending}
+            searchPlaceholder="Supplier name"
+            options={[{ value: "__none__", label: "None" }, ...(suppliersQuery.data ?? []).map((s) => ({ value: s.id, label: s.name }))]}
+          />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="it-notes">Notes (optional)</Label>

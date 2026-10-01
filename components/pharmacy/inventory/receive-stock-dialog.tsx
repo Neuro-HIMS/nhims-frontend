@@ -7,7 +7,8 @@ import { FormDialog, FormDialogSection } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import { SearchablePicker } from "@/components/common/searchable-picker";
 import { getFriendlyError } from "@/lib/api-errors";
 import type { PharmacyInventoryItemDto, PharmacySupplierDto, ReceiveStockPayload } from "@/types/pharmacy-inventory.types";
 
@@ -127,19 +128,13 @@ function Body({ open, onOpenChange, items, suppliers, defaultItemId, onReceiveLi
       <FormDialogSection title="Delivery">
         <div className="space-y-1.5">
           <Label htmlFor="rcv-supplier">Supplier (optional)</Label>
-          <Select value={supplierId} onValueChange={setSupplierId}>
-            <SelectTrigger id="rcv-supplier" className="w-full">
-              <SelectValue placeholder="None" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">None</SelectItem>
-              {activeSuppliers.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchablePicker
+            id="rcv-supplier"
+            value={supplierId}
+            onChange={setSupplierId}
+            searchPlaceholder="Supplier name"
+            options={[{ value: "__none__", label: "None" }, ...activeSuppliers.map((s) => ({ value: s.id, label: s.name, description: s.city || undefined }))]}
+          />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="rcv-invoice">Invoice or delivery note number (optional)</Label>
@@ -162,18 +157,15 @@ function Body({ open, onOpenChange, items, suppliers, defaultItemId, onReceiveLi
                 <div className="grid gap-3 sm:grid-cols-12">
                   <div className="space-y-1.5 sm:col-span-3">
                     <Label htmlFor={`rcv-item-${l.key}`}>Medicine</Label>
-                    <Select value={l.itemId} onValueChange={(v) => patch(l.key, { itemId: v })}>
-                      <SelectTrigger id={`rcv-item-${l.key}`} className="w-full">
-                        <SelectValue placeholder="Choose…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {items.map((it) => (
-                          <SelectItem key={it.id} value={it.id}>
-                            {it.displayName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchablePicker
+                      id={`rcv-item-${l.key}`}
+                      value={l.itemId}
+                      onChange={(v) => patch(l.key, { itemId: v })}
+                      placeholder="Choose…"
+                      searchPlaceholder="Medicine or stock code"
+                      emptyText="No medicine matches. Add it in the Medicines list first."
+                      options={items.map((it) => ({ value: it.id, label: it.displayName, description: [it.dosageForm, it.strength, it.skuCode].filter(Boolean).join(" · ") || undefined, keywords: it.skuCode }))}
+                    />
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor={`rcv-batch-${l.key}`}>Batch number</Label>

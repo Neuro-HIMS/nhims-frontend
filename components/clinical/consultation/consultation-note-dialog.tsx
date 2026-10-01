@@ -33,6 +33,11 @@ interface ConsultationNoteDialogProps {
   note?: ConsultationNoteDto | null;
   /** Pre-fills "Main complaint" for a new note (e.g. the triage complaint). */
   defaultComplaint?: string;
+  /**
+   * New note only: carry the diagnoses over from this earlier note (ward rounds on the same stay), so the
+   * DHIMS2 fields don't have to be found again. The principal diagnosis becomes an old case.
+   */
+  diagnosesFrom?: ConsultationNoteDto | null;
 }
 
 /**
@@ -46,11 +51,16 @@ export function ConsultationNoteDialog(props: ConsultationNoteDialogProps) {
   return <NoteDialogBody {...props} />;
 }
 
-function NoteDialogBody({ open, onOpenChange, encounterId, visitNumber, note, defaultComplaint = "" }: ConsultationNoteDialogProps) {
+function NoteDialogBody({ open, onOpenChange, encounterId, visitNumber, note, defaultComplaint = "", diagnosesFrom = null }: ConsultationNoteDialogProps) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
-  const [draft, setDraft] = useState<ConsultationDraft>(() => (note ? noteToDraft(note) : EMPTY_DRAFT));
-  const [complaint, setComplaint] = useState(note?.chiefComplaint ?? defaultComplaint);
+  const [draft, setDraft] = useState<ConsultationDraft>(() => {
+    if (note) return noteToDraft(note);
+    if (!diagnosesFrom) return EMPTY_DRAFT;
+    const carried = noteToDraft(diagnosesFrom);
+    return { ...carried, history: "", examination: "", assessment: "", plan: "", editingNoteId: null, principalCase: carried.principal ? "old" : carried.principalCase };
+  });
+  const [complaint, setComplaint] = useState(note?.chiefComplaint ?? (defaultComplaint || diagnosesFrom?.chiefComplaint || ""));
 
   const patch = (p: Partial<ConsultationDraft>) => setDraft((d) => ({ ...d, ...p }));
   const payload = buildNotePayload(draft, complaint.trim(), role);

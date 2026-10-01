@@ -254,3 +254,24 @@ One entry per missing or changed endpoint the frontend needs, written for the ba
 - Seen: `GET /audit/events` is admin-only
 - Need: `GET /finance/nhis/claims/{id}/history` for finance roles
 - Frontend status: admins see the history from audit events; finance officers see created and last-changed times
+
+### WRD-setup · No way to set up wards and beds  (BLOCKER for a real ward board — needed by: NUR-07, DOC-10)
+- Seen: wards and beds are only seeded by migration V21 for facilities that existed then. This facility has none (`GET /ipd/board` → `wards: []`), and there's no API to add them.
+- Need: `GET/POST/PUT /ipd/wards` and `/ipd/wards/{id}/beds` (name, code, beds, switch off) for the facility administrator
+- Frontend status: Facility settings → **Wards and beds** sets up wards (name, code, type, who it's for, location) and beds (number, type, notes, switch off; beds in use can't be switched off or renumbered). With sample data on (area `ipd-wards`) it is saved in this browser (`localStorage`). The bed board, admit dialog and ward screens read it through `ipdService.wardSource()`, and occupancy comes from the real active admissions, matched by ward and bed name. Admissions are real (ward/bed names, no `bedId`). When the server has wards of its own, those are used and shown read-only in settings. Swap `listConfiguredWards/saveWard/addBeds/saveBed` to the real endpoints when they exist.
+
+### WRD-bed-day · Discharge needs a price-list entry coded IPD_BED_DAY
+- Seen: `POST /clinical/admissions/{id}/discharge` → 422 "IPD bed-day catalogue row missing for facility — run migrations (V34) or create service IPD_BED_DAY", for facilities created after V34
+- Frontend status: the message is reworded (`KNOWN_MESSAGES`) to tell staff to ask finance to add a "Ward bed (per day)" service with code IPD_BED_DAY. Added through Services and prices in the local test data.
+
+### NUR-10 · Confirm the patient left; bed being cleaned  (needed by: NUR-10, NUR-07)
+- Need: `POST /clinical/admissions/{id}/left` (who, when), bed state `CLEANING` on the board, and `POST /ipd/beds/{id}/ready`
+- Frontend status: in-memory sample data (area `bed-cleaning`): "Going home" list → "Confirm they've left" → bed "Being cleaned" → "Mark bed ready". Without sample data the bed is free at discharge and Going home explains that.
+
+### NUR-08-who · Who gave a dose / took observations
+- Seen: `IpdMarEntryDto` and `IpdTprReadingDto` have no `givenByName` / `recordedByName` (the nurse is stored on the MAR row but not returned)
+- Frontend status: times are shown, names aren't
+
+### DOC-12-death · Death details on discharge
+- Need: `dateOfDeath`, `causeOfDeath` on the discharge request and `AdmissionDto`
+- Frontend status: required in the form and written at the start of the discharge summary

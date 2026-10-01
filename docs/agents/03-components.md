@@ -152,6 +152,7 @@ interface WaitingListProps<T> {
 | `DatePickerField` | `components/ui/date-picker-field.tsx` | Exists | All dates. Display `DD/MM/YYYY` via `lib/dates.ts` |
 | `UnitInput` | `components/common/unit-input.tsx` | Build | Input with suffix unit ("°C", "mmHg", "kg", "%") + optional out-of-range warning under it |
 | `MoneyInput` | `components/common/money-input.tsx` | Build | "GH₵" prefix, 2 decimals, tabular |
+| `SearchablePicker` | `components/common/searchable-picker.tsx` | Built | **Any choice from a list that can grow long** (patients, visits, doctors, medicines, price-list entries, suppliers, beds): search box above a contained, scrolling list the width of the field (max ~16 rows visible). Options have a label and an optional second line. Plain `Select` only for short fixed lists (status, urgency, how often) |
 | `PhoneInput` | `components/common/phone-input.tsx` | Build | Ghana format, example placeholder |
 | `UploadDropzone` | `components/common/upload-dropzone.tsx` | Build | 02 §9; `{ accept; maxSizeMb; onFile; helperText; state }` |
 | `ClassificationPicker` | `components/clinical/classification-picker.tsx` | Evolve | Diagnosis search — shows the diagnosis name first, code as small grey text |

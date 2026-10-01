@@ -1,38 +1,7 @@
-import type { BedBoardDto, IpdBoardDto } from "@/types/ipd.types";
-
 /**
- * Sample wards (area `ipd-wards`) for a facility that has none set up — backend-gaps.md#WRD-setup.
- * Beds have no catalogue id (`sample-…`), so admissions use the ward and bed names.
+ * Discharge confirmation and bed cleaning (area `bed-cleaning`) — backend-gaps.md#NUR-10. Kept in this
+ * browser's storage so it survives a reload; other computers don't see it.
  */
-const SAMPLE: { name: string; code: string; prefix: string; beds: number }[] = [
-  { name: "Male Medical Ward", code: "MMW", prefix: "MM", beds: 8 },
-  { name: "Female Medical Ward", code: "FMW", prefix: "FM", beds: 8 },
-  { name: "Children's Ward", code: "CW", prefix: "CW", beds: 6 },
-];
-
-export function sampleBoard(occupied: Map<string, { admissionId: string; patientName: string; patientPublicId: string }>, key: (ward: string, bed: string) => string): IpdBoardDto {
-  return {
-    wards: SAMPLE.map((w) => ({
-      id: `sample-${w.code}`,
-      name: w.name,
-      code: w.code,
-      beds: Array.from({ length: w.beds }, (_, i): BedBoardDto => {
-        const label = `${w.prefix}-${String(i + 1).padStart(2, "0")}`;
-        const who = occupied.get(key(w.name, label));
-        return {
-          id: `sample-${w.code}-${i + 1}`,
-          label,
-          occupied: Boolean(who),
-          activeAdmissionId: who?.admissionId ?? null,
-          patientName: who?.patientName ?? "",
-          patientPublicId: who?.patientPublicId ?? "",
-        };
-      }),
-    })),
-  };
-}
-
-/** Beds waiting to be cleaned after a patient left (area `bed-cleaning`) — backend-gaps.md#NUR-10. */
 export interface GoingHome {
   admissionId: string;
   patientName: string;
@@ -43,27 +12,56 @@ export interface GoingHome {
   left: boolean;
 }
 
-const goingHome = new Map<string, GoingHome>();
-const cleaning = new Set<string>();
+interface Store {
+  goingHome: GoingHome[];
+  cleaning: string[];
+}
+
+const KEY = "nhims.sample.bed-cleaning.v1";
+
+function read(): Store {
+  try {
+    const raw = typeof window === "undefined" ? null : window.localStorage.getItem(KEY);
+    if (raw) return JSON.parse(raw) as Store;
+  } catch {
+    // ignore
+  }
+  return { goingHome: [], cleaning: [] };
+}
+
+function write(s: Store): void {
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {
+    // storage blocked
+  }
+}
 
 export function mockAddGoingHome(g: GoingHome): void {
-  goingHome.set(g.admissionId, g);
+  const s = read();
+  s.goingHome = [...s.goingHome.filter((x) => x.admissionId !== g.admissionId), g];
+  write(s);
 }
 
 export function mockGoingHome(): GoingHome[] {
-  return [...goingHome.values()].filter((g) => !g.left).sort((a, b) => a.dischargedAt.localeCompare(b.dischargedAt));
+  return read()
+    .goingHome.filter((g) => !g.left)
+    .sort((a, b) => a.dischargedAt.localeCompare(b.dischargedAt));
 }
 
 export function mockConfirmLeft(admissionId: string, bedKey: string): void {
-  const g = goingHome.get(admissionId);
-  if (g) g.left = true;
-  if (bedKey) cleaning.add(bedKey);
+  const s = read();
+  s.goingHome = s.goingHome.map((g) => (g.admissionId === admissionId ? { ...g, left: true } : g));
+  if (bedKey && !s.cleaning.includes(bedKey)) s.cleaning.push(bedKey);
+  write(s);
 }
 
 export function mockCleaningBeds(): string[] {
-  return [...cleaning];
+  return read().cleaning;
 }
 
 export function mockBedReady(bedKey: string): void {
-  cleaning.delete(bedKey);
+  const s = read();
+  s.cleaning = s.cleaning.filter((k) => k !== bedKey);
+  write(s);
 }

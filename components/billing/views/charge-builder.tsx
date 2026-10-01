@@ -14,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ChoiceOption } from "@/components/ui/choice-option";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { SearchablePicker } from "@/components/common/searchable-picker";
 import { chargeGroupLabel, formatMoney, parseMoney, PAYER, payerLabel } from "@/lib/billing";
 import { queryKeys } from "@/lib/query-keys";
 import { billingService } from "@/services/billing.service";
@@ -152,25 +153,16 @@ export function ChargeBuilder({ charges, onChange, defaultPayer }: { charges: Dr
         <div className="grid gap-3 md:grid-cols-2">
           {mode === "catalog" ? (
             <Field label="Service" htmlFor="cb-service">
-              <Select value={serviceId} onValueChange={setServiceId}>
-                <SelectTrigger id="cb-service" className="w-full">
-                  <SelectValue placeholder="Choose a service" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[320px]">
-                  {services.isPending ? (
-                    <div className="p-2 text-xs text-muted-foreground">Loading the price list…</div>
-                  ) : services.isError ? (
-                    <div className="p-2 text-xs text-destructive">The price list couldn&apos;t be loaded. Close this and try again.</div>
-                  ) : (
-                    (services.data ?? []).length === 0 && <div className="p-2 text-xs text-muted-foreground">The price list is empty. Ask the finance officer to add services.</div>
-                  )}
-                  {(services.data ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.serviceName} <span className="text-xs text-muted-foreground">· {chargeGroupLabel(s.serviceGroup)}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchablePicker
+                id="cb-service"
+                value={serviceId}
+                onChange={setServiceId}
+                loading={services.isPending}
+                placeholder="Choose a service"
+                searchPlaceholder="Service name or code"
+                emptyText={services.isError ? "The price list couldn't be loaded. Close this and try again." : "No service matches. Ask the finance officer to add it."}
+                options={(services.data ?? []).map((s) => ({ value: s.id, label: s.serviceName, description: `${chargeGroupLabel(s.serviceGroup)} · ${s.serviceCode}`, keywords: s.serviceCode }))}
+              />
             </Field>
           ) : (
             <>

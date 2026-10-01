@@ -3,11 +3,12 @@ import type { IpdMarEntryDto } from "@/types/ipd.types";
 
 // ── Beds ──────────────────────────────────────────────────────────────────
 
-export type BedState = "FREE" | "OCCUPIED" | "CLEANING";
+export type BedState = "FREE" | "OCCUPIED" | "GOING_HOME" | "CLEANING";
 
 const BED: Record<BedState, { label: string; tone: PillTone }> = {
   FREE: { label: "Free", tone: "success" },
   OCCUPIED: { label: "Occupied", tone: "info" },
+  GOING_HOME: { label: "Going home", tone: "pending" },
   CLEANING: { label: "Being cleaned", tone: "warning" },
 };
 
@@ -32,10 +33,11 @@ export function bedKey(ward: string, bed: string): string {
 
 // ── Medicines given (MAR) ─────────────────────────────────────────────────
 
-export type MarView = "DUE_NOW" | "NOT_DUE" | "GIVEN" | "HELD" | "MISSED";
+export type MarView = "DUE_NOW" | "OVERDUE" | "NOT_DUE" | "GIVEN" | "HELD" | "MISSED";
 
 const MAR: Record<MarView, { label: string; tone: PillTone }> = {
   DUE_NOW: { label: "Due now", tone: "warning" },
+  OVERDUE: { label: "Overdue", tone: "error" },
   NOT_DUE: { label: "Not due yet", tone: "neutral" },
   GIVEN: { label: "Given", tone: "success" },
   HELD: { label: "Held back", tone: "neutral" },
@@ -53,6 +55,7 @@ export function marView(entry: Pick<IpdMarEntryDto, "status" | "scheduledFor">, 
   const at = new Date(entry.scheduledFor).getTime();
   if (Number.isNaN(at)) return "DUE_NOW";
   if (at - now > DUE_WINDOW_MS) return "NOT_DUE";
+  if (now - at > DUE_WINDOW_MS) return "OVERDUE";
   return "DUE_NOW";
 }
 
@@ -77,3 +80,43 @@ export const DISCHARGE_OUTCOMES = [
   { code: "AMA", label: "Left against medical advice" },
   { code: "DECEASED", label: "Died" },
 ] as const;
+
+// ── Ward set-up labels ────────────────────────────────────────────────────
+
+export const WARD_KINDS = [
+  { code: "GENERAL", label: "General (medical)" },
+  { code: "SURGICAL", label: "Surgical" },
+  { code: "MATERNITY", label: "Maternity" },
+  { code: "CHILDREN", label: "Children" },
+  { code: "INTENSIVE", label: "Intensive care" },
+  { code: "ISOLATION", label: "Isolation" },
+  { code: "PRIVATE", label: "Private" },
+  { code: "OTHER", label: "Other" },
+] as const;
+
+export const WARD_FOR = [
+  { code: "MEN", label: "Men" },
+  { code: "WOMEN", label: "Women" },
+  { code: "CHILDREN", label: "Children" },
+  { code: "MIXED", label: "Anyone" },
+] as const;
+
+export const BED_KINDS = [
+  { code: "STANDARD", label: "Standard" },
+  { code: "PRIVATE", label: "Private room" },
+  { code: "INTENSIVE", label: "Intensive care" },
+  { code: "COT", label: "Cot" },
+  { code: "DELIVERY", label: "Delivery bed" },
+] as const;
+
+export function bedKindLabel(kind: string): string {
+  return BED_KINDS.find((k) => k.code === kind)?.label ?? "Standard";
+}
+
+export function wardKindLabel(kind: string): string {
+  return WARD_KINDS.find((k) => k.code === kind)?.label ?? "Other";
+}
+
+export function wardForLabel(code: string): string {
+  return WARD_FOR.find((k) => k.code === code)?.label ?? "Anyone";
+}

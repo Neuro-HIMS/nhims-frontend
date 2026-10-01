@@ -16,7 +16,11 @@ import { useAuthStore } from "@/store/auth.store";
 
 const SUB_NAV = [
   { label: "Beds", view: "beds", href: "/wards?view=beds" },
-  { label: "Patients on the ward", view: "admissions", href: "/wards?view=admissions" },
+  {
+    label: "Patients on the ward",
+    view: "admissions",
+    href: "/wards?view=admissions",
+  },
   { label: "Going home", view: "discharge", href: "/wards?view=discharge" },
 ];
 
@@ -39,7 +43,11 @@ export function WardsWorkspace() {
       <PageCard
         title="Wards"
         description="Beds, patients on the ward, their medicines and observations, and discharges."
-        actions={canAdmitAndDischarge(role) ? <Button onClick={() => setAdmitting(true)}>Admit a patient</Button> : undefined}
+        actions={
+          canAdmitAndDischarge(role) ? (
+            <Button onClick={() => setAdmitting(true)}>Admit a patient</Button>
+          ) : undefined
+        }
       />
       <ModuleSubNav items={SUB_NAV} basePath="/wards" />
       <div className="pt-2">

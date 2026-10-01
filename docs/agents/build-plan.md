@@ -60,7 +60,7 @@ See `progress.md` for what shipped and the two open backend gaps (`GET /notifica
 
 | Line | Slices |
 |---|---|
-| Wards | NUR-07 → DOC-10 → NUR-08 → NUR-09 → DOC-11 → DOC-12 → NUR-10 |
+| Wards | ✅ NUR-07 → ✅ DOC-10 → ✅ NUR-08 → ✅ NUR-09 → ✅ DOC-11 → ✅ DOC-12 → ✅ NUR-10 (sample) — **done, Stage 12 (2026-10-01)**; ward set-up in Facility settings (sample) |
 | Maternity | MID-01 → MID-02 → MID-03 → MID-04 → MID-05 → MID-06 → MID-07 |
 | Emergency | NUR-11 |
 | Referrals | DOC-09 |
